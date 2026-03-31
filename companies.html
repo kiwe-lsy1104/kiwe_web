@@ -1,0 +1,498 @@
+﻿<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <script src="js/error_translator.js"></script>
+  <meta charset="UTF-8">
+  <base href="./">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy"
+    content="default-src 'self' https: 'unsafe-inline' 'unsafe-eval'; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://unpkg.com https://*.lucide.dev http://127.0.0.1:* http://localhost:*; img-src 'self' data: https:; font-src 'self' https: data:;">
+  <title>사업장 관리 - KiWE 측정 관리</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script>
+    window.onerror = function (msg, url, line, col, error) {
+      console.error("Global Error:", msg, url, line);
+      const root = document.getElementById('root');
+      if (root && (root.innerHTML.includes('로딩') || root.innerHTML === '')) {
+        root.innerHTML = `<div style="padding: 40px; text-align: center; font-family: sans-serif;">
+          <div style="color: #e11d48; font-size: 24px; font-weight: bold; mb: 10px;">시스템 로드 오류</div>
+          <div style="color: #64748b; margin-top: 10px;">화면을 불러오는 중 문제가 발생했습니다.<br/>잠시 후 다시 시도해주세요.</div>
+          <button onclick="location.reload()" style="margin-top: 20px; padding: 10px 20px; background: #4f46e5; color: white; border: none; border-radius: 8px; cursor: pointer;">새로고침</button>
+        </div>`;
+      }
+      return false;
+    };
+  </script>
+  <script type="module">
+    import { checkAuth } from './js/auth.js';
+    checkAuth();
+  </script>
+</head>
+
+<body class="bg-slate-50 min-h-screen">
+  <div id="root">
+    <div
+      style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; gap: 15px; font-family: sans-serif;">
+      <div
+        style="width: 40px; height: 40px; border: 4px solid #f3f3f3; border-top: 4px solid #4f46e5; border-radius: 50%; animation: spin 1s linear infinite;">
+      </div>
+      <div style="font-weight: bold; color: #475569;">시스템 로딩 중...</div>
+      <style>
+        @keyframes spin {
+          0% {
+            transform: rotate(0deg);
+          }
+
+          100% {
+            transform: rotate(360deg);
+          }
+        }
+      </style>
+    </div>
+  </div>
+
+  <script type="module">
+    import {
+      Building2, Plus, Search, Trash2, Edit3,
+      ChevronLeft, Save, X, Download, Filter, Home
+    } from 'https://esm.sh/lucide-react@0.263.1';
+
+    const { useState, useEffect, useMemo } = React;
+    const e = React.createElement;
+
+    // ==== Supabase Client ====
+    const SUPABASE_URL = 'https://jztrnwchgxymknjvsbkl.supabase.co';
+    const SUPABASE_KEY = 'sb_publishable_Z8oriOCik8fZlnAMgznUMg_IhmmFQ33';
+    let supabase;
+    try {
+      supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    } catch (err) {
+      console.error("Supabase Init Error:", err);
+    }
+
+    // ==== Auth Helpers ====
+    function checkAuth() {
+      const userStr = localStorage.getItem('kiwe_user');
+      const user = userStr ? JSON.parse(userStr) : null;
+      if (!user && !window.location.pathname.endsWith('index.html')) {
+        window.location.href = 'index.html';
+        return null;
+      }
+      return user;
+    }
+
+    const INITIAL_FORM = {
+      com_reg_no: '',
+      com_name: '',
+      office_name: '안산',
+      manager_name: '',
+      manager_contact: '',
+      ceo_name: '',
+      post_code: '',
+      address: '',
+      block_address: '',
+      tel: '',
+      fax: '',
+      biz_type: '',
+      main_product: '',
+      remarks: '',
+      manage_status: '정상', // '정상' or '관리중지'
+      manage_remark: ''
+    };
+
+    function CompaniesManagement() {
+      const [user, setUser] = useState(null);
+      const [companies, setCompanies] = useState([]);
+      const [loading, setLoading] = useState(true);
+      const [searchTerm, setSearchTerm] = useState('');
+      const [isModalOpen, setIsModalOpen] = useState(false);
+      const [formData, setFormData] = useState(INITIAL_FORM);
+      const [editingId, setEditingId] = useState(null);
+
+      useEffect(() => {
+        const session = checkAuth();
+        if (session) {
+          setUser(session);
+          fetchCompanies();
+        }
+      }, []);
+
+      async function fetchCompanies() {
+        setLoading(true);
+        try {
+          const { data, error } = await supabase
+            .from('kiwe_companies')
+            .select('*')
+            .order('id');
+          if (error) throw error;
+          setCompanies(data || []);
+        } catch (err) {
+          console.error('Error fetching companies:', err);
+          alert('데이터를 불러오는데 실패했습니다.');
+        } finally {
+          setLoading(false);
+        }
+      }
+
+      const generateNextId = async () => {
+        const { data, error } = await supabase
+          .from('kiwe_companies')
+          .select('com_id')
+          .order('id', { ascending: false })
+          .limit(1);
+
+        if (error) return 'K-0001';
+
+        if (data && data.length > 0) {
+          const lastId = data[0].com_id;
+          if (lastId && lastId.startsWith('K-')) {
+            const nextNum = (parseInt(lastId.split('-')[1]) || 0) + 1;
+            return `K-${String(nextNum).padStart(4, '0')}`;
+          }
+        }
+        return 'K-0001';
+      };
+
+      const handleSubmit = async (ev) => {
+        ev.preventDefault();
+
+        const normalizedComName = (formData.com_name || '').replace(/\(주\)/g, '㈜').trim();
+
+        if (!editingId) {
+          const { data: dupe } = await supabase
+            .from('kiwe_companies')
+            .select('com_id')
+            .match({ com_name: normalizedComName, com_reg_no: formData.com_reg_no })
+            .limit(1);
+
+          if (dupe && dupe.length > 0) {
+            alert('이미 등록된 사업장입니다. (사업장명과 사업자등록번호가 모두 일치함)');
+            return;
+          }
+        }
+
+        try {
+          // Remove unnecessary spaces and use user input as-is
+          const normalizedOffice = (formData.office_name || '안산').trim();
+
+          // Remove id and created_at to avoid "GENERATED ALWAYS" error on update
+          const { id, created_at, ...rest } = formData;
+          const dataToSave = { ...rest, com_name: normalizedComName, office_name: normalizedOffice };
+
+          if (editingId) {
+            const { error } = await supabase
+              .from('kiwe_companies')
+              .update(dataToSave)
+              .eq('com_id', editingId);
+            if (error) throw error;
+          } else {
+            const nextId = await generateNextId();
+            const { error } = await supabase
+              .from('kiwe_companies')
+              .insert([{ ...dataToSave, com_id: nextId }]);
+            if (error) throw error;
+          }
+
+          alert(editingId ? '수정되었습니다.' : '등록되었습니다.');
+          setIsModalOpen(false);
+          setFormData(INITIAL_FORM);
+          setEditingId(null);
+          fetchCompanies();
+        } catch (err) {
+          console.error('Error saving company:', err);
+          alert('저장에 실패했습니다.');
+        }
+      };
+
+      const handleDelete = async (id) => {
+        if (!confirm('정말로 삭제하시겠습니까? 관련 데이터가 모두 삭제될 수 있습니다.')) return;
+
+        try {
+          const { error } = await supabase
+            .from('kiwe_companies')
+            .delete()
+            .eq('com_id', id);
+          if (error) throw error;
+          alert('삭제되었습니다.');
+          fetchCompanies();
+        } catch (err) {
+          console.error('Error deleting company:', err);
+          alert('삭제에 실패했습니다.');
+        }
+      };
+
+      useEffect(() => {
+        const handleEsc = (event) => {
+          if (event.key === 'Escape') setIsModalOpen(false);
+        };
+        window.addEventListener('keydown', handleEsc);
+        return () => window.removeEventListener('keydown', handleEsc);
+      }, []);
+
+      const openEdit = (company) => {
+        setFormData({ ...INITIAL_FORM, ...company });
+        setEditingId(company.com_id);
+        setIsModalOpen(true);
+      };
+
+      const filteredCompanies = useMemo(() => {
+        if (!searchTerm) return companies;
+
+        // Smart Search Normalization: Remove (주), ㈜, and all whitespaces
+        const normalizeForSearch = (str) => (str || '').replace(/\(주\)|㈜|\s/g, '').toLowerCase();
+        const normTerm = normalizeForSearch(searchTerm);
+
+        return companies.filter(company => {
+          const normName = normalizeForSearch(company.com_name);
+          const normOffice = normalizeForSearch(company.office_name);
+          const normManager = normalizeForSearch(company.manager_name);
+          const normRegNo = normalizeForSearch(company.com_reg_no);
+          const normId = normalizeForSearch(company.com_id);
+
+          return normName.includes(normTerm) ||
+            normOffice.includes(normTerm) ||
+            normManager.includes(normTerm) ||
+            normRegNo.includes(normTerm) ||
+            normId.includes(normTerm);
+        });
+      }, [companies, searchTerm]);
+
+      if (!user) return null;
+
+      return e('div', { className: "flex flex-col min-h-screen" },
+        e('header', { className: "h-16 border-b flex items-center justify-between px-6 sticky top-0 z-40 bg-white/90 backdrop-blur-md" },
+          e('div', { className: "flex items-center gap-4" },
+            e('a', { href: "main.html", className: "p-2 hover:bg-slate-100 rounded-lg text-slate-500" },
+              e(Home, { size: 20 })
+            ),
+            e('div', { className: "h-6 w-px bg-slate-200" }),
+            e('h1', { className: "text-lg font-bold flex items-center gap-2" },
+              e(Building2, { size: 20, className: "text-blue-600" }),
+              "사업장 관리"
+            ),
+            e('div', { className: "h-6 w-px bg-slate-200 mx-1" }),
+            e('a', { href: "records.html", className: "flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 text-indigo-600 border border-indigo-100 rounded-lg text-xs font-bold hover:bg-indigo-100 transition-colors" },
+              e(ChevronLeft, { size: 14 }),
+              "측정기록카드"
+            )
+          ),
+          e('div', { className: "flex items-center gap-3" },
+            e('button', {
+              onClick: () => { setFormData(INITIAL_FORM); setEditingId(null); setIsModalOpen(true); },
+              className: "bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 text-sm font-semibold transition-all shadow-md shadow-blue-100"
+            },
+              e(Plus, { size: 18 }),
+              " 신규 사업장 등록"
+            )
+          )
+        ),
+        e('main', { className: "flex-1 p-6" },
+          e('div', { className: "bg-white p-4 rounded-xl border border-slate-200 shadow-sm mb-6 flex flex-wrap items-center gap-4" },
+            e('div', { className: "relative flex-1 min-w-[300px]" },
+              e(Search, { className: "absolute left-3 top-1/2 -translate-y-1/2 text-slate-400", size: 18 }),
+              e('input', {
+                type: "text",
+                placeholder: "사업장명, 지청, 담당자 검색 (통합 검색)...",
+                value: searchTerm,
+                onChange: (event) => setSearchTerm(event.target.value),
+                className: "w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+              })
+            ),
+            e('div', { className: "flex items-center gap-2 text-sm text-slate-500 font-bold uppercase tracking-widest" },
+              e(Filter, { size: 16 }),
+              `데이터: ${filteredCompanies.length}건`
+            )
+          ),
+          e('div', { className: "bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden overflow-x-auto" },
+            e('table', { className: "w-full text-left border-collapse min-w-[1000px]" },
+              e('thead', { className: "bg-slate-50 border-b border-slate-200 text-slate-500 text-[10px] uppercase tracking-wider font-extrabold" },
+                e('tr', null,
+                  e('th', { className: "px-6 py-4" }, "고유 ID"),
+                  e('th', { className: "px-6 py-4" }, "상태"),
+                  e('th', { className: "px-6 py-4" }, "사업장명"),
+                  e('th', { className: "px-6 py-4" }, "관할지청"),
+                  e('th', { className: "px-6 py-4" }, "대표자"),
+                  e('th', { className: "px-6 py-4" }, "담당자"),
+                  e('th', { className: "px-6 py-4 text-right pr-12" }, "관리")
+                )
+              ),
+              e('tbody', { className: "divide-y divide-slate-100 text-[13px]" },
+                loading ? e('tr', null, e('td', { colSpan: "7", className: "px-6 py-12 text-center text-slate-400" }, "데이터 로딩 중...")) :
+                  filteredCompanies.length === 0 ? e('tr', null, e('td', { colSpan: "7", className: "px-6 py-12 text-center text-slate-400" }, "검색 결과가 없습니다.")) :
+                    filteredCompanies.map((company) =>
+                      e('tr', { key: company.com_id, onDoubleClick: () => openEdit(company), className: `hover:bg-blue-50/30 transition-colors group cursor-pointer ${company.manage_status === '관리중지' ? 'bg-slate-50 opacity-70' : ''}` },
+                        e('td', { className: "px-6 py-4 font-mono text-blue-600 font-bold" }, company.com_id),
+                        e('td', { className: "px-6 py-4" },
+                          company.manage_status === '관리중지'
+                            ? e('span', { className: "px-2 py-1 bg-red-100 text-red-600 rounded text-xs font-bold whitespace-nowrap" }, "관리중지")
+                            : e('span', { className: "px-2 py-1 bg-emerald-100 text-emerald-600 rounded text-xs font-bold whitespace-nowrap" }, "정상")
+                        ),
+                        e('td', { className: "px-6 py-4 font-bold text-slate-800" },
+                          e('div', { className: "flex flex-col" },
+                            company.com_name,
+                            company.manage_status === '관리중지' && company.manage_remark && e('span', { className: "text-red-500 text-xs mt-0.5" }, `사유: ${company.manage_remark}`)
+                          )
+                        ),
+                        e('td', { className: "px-6 py-4 text-slate-600" }, company.office_name),
+                        e('td', { className: "px-6 py-4 text-slate-600" }, company.ceo_name),
+                        e('td', { className: "px-6 py-4 text-slate-600" }, company.manager_name),
+                        e('td', { className: "px-6 py-4 text-right" },
+                          e('div', { className: "flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity pr-6" },
+                            e('button', { onClick: () => openEdit(company), className: "p-2 hover:bg-blue-100 text-blue-600 rounded-lg" },
+                              e(Edit3, { size: 16 })
+                            ),
+                            e('button', { onClick: () => handleDelete(company.com_id), className: "p-2 hover:bg-red-100 text-red-600 rounded-lg" },
+                              e(Trash2, { size: 16 })
+                            )
+                          )
+                        )
+                      )
+                    )
+              )
+            )
+          )
+        ),
+        isModalOpen ? e('div', { className: "fixed inset-0 z-50 flex items-center justify-center p-4" },
+          e('div', { className: "absolute inset-0 bg-slate-900/40 backdrop-blur-sm", onClick: () => setIsModalOpen(false) }),
+          e('div', { className: "bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col z-10 overflow-hidden" },
+            e('div', { className: "p-4 border-b flex items-center justify-between bg-slate-50" },
+              e('h2', { className: "text-lg font-bold flex items-center gap-2" },
+                e(Building2, { size: 20, className: "text-blue-600" }),
+                editingId ? '사업장 정보 수정' : '신규 사업장 등록'
+              ),
+              e('div', { className: "flex items-center gap-4" },
+                // Status Toggle
+                e('div', { className: "flex bg-slate-200 p-1 rounded-lg" },
+                  e('button', {
+                    type: 'button',
+                    onClick: () => setFormData({ ...formData, manage_status: '정상' }),
+                    className: `px-3 py-1.5 rounded-md text-xs font-bold transition-all ${formData.manage_status !== '관리중지' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`
+                  }, "정상"),
+                  e('button', {
+                    type: 'button',
+                    onClick: () => setFormData({ ...formData, manage_status: '관리중지' }),
+                    className: `px-3 py-1.5 rounded-md text-xs font-bold transition-all ${formData.manage_status === '관리중지' ? 'bg-white text-red-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`
+                  }, "관리중지")
+                ),
+                e('button', { onClick: () => setIsModalOpen(false), className: "p-1.5 hover:bg-slate-200 rounded-lg text-slate-400" },
+                  e(X, { size: 20 })
+                )
+              )
+            ),
+            e('form', { onSubmit: handleSubmit, className: "flex-1 overflow-y-auto p-5" },
+              e('div', { className: "grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3" },
+                // Conditional Remark Field
+                formData.manage_status === '관리중지' && e('div', { className: "col-span-2 bg-red-50 border border-red-100 p-3 rounded-xl mb-2 animate-fadeIn" },
+                  e('label', { className: "text-xs font-bold text-red-500 ml-1 block mb-1" }, "관리 중지 사유 (필수)"),
+                  e('input', {
+                    required: true,
+                    value: formData.manage_remark,
+                    onChange: (event) => setFormData({ ...formData, manage_remark: event.target.value }),
+                    className: "w-full px-3 py-2 bg-white border border-red-200 rounded-lg outline-none focus:ring-2 focus:ring-red-500 text-sm",
+                    placeholder: "예: 폐업, 거래 중단 등"
+                  })
+                ),
+                e('div', { className: "col-span-2 text-xs font-bold text-blue-600 flex items-center gap-2 mb-1 uppercase tracking-widest" },
+                  e('div', { className: "w-1.5 h-3 bg-blue-600 rounded-full" }),
+                  "사업장 기본 정보 (필수)"
+                ),
+                e('div', { className: "space-y-1" },
+                  e('label', { className: "text-xs font-bold text-slate-400 ml-1" }, "사업장 관리번호 *"),
+                  e('input', { required: true, value: formData.com_reg_no, onChange: (event) => setFormData({ ...formData, com_reg_no: event.target.value }), className: "w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 text-sm", placeholder: "관리공단 등록 번호" })
+                ),
+                e('div', { className: "space-y-1" },
+                  e('label', { className: "text-xs font-bold text-slate-400 ml-1" }, "사업장명 *"),
+                  e('input', { required: true, value: formData.com_name, onChange: (event) => setFormData({ ...formData, com_name: event.target.value }), className: "w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 font-bold text-sm" })
+                ),
+                e('div', { className: "space-y-1" },
+                  e('label', { className: "text-xs font-bold text-slate-400 ml-1" }, "관할지청 * (경기, 평택, 서울서부, 안산 추천)"),
+                  e('input', {
+                    required: true,
+                    list: "office-list",
+                    value: formData.office_name,
+                    onChange: (event) => setFormData({ ...formData, office_name: event.target.value }),
+                    className: "w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 text-sm",
+                    placeholder: "지청명 입력 또는 선택"
+                  }),
+                  e('datalist', { id: "office-list" },
+                    e('option', { value: "안산" }),
+                    e('option', { value: "경기" }),
+                    e('option', { value: "평택" }),
+                    e('option', { value: "서울서부" })
+                  )
+                ),
+                e('div', { className: "space-y-1" },
+                  e('label', { className: "text-xs font-bold text-slate-400 ml-1" }, "대표자명 *"),
+                  e('input', { required: true, value: formData.ceo_name, onChange: (event) => setFormData({ ...formData, ceo_name: event.target.value }), className: "w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm" })
+                ),
+                e('div', { className: "space-y-1" },
+                  e('label', { className: "text-xs font-bold text-slate-400 ml-1" }, "담당자명 *"),
+                  e('input', { required: true, value: formData.manager_name, onChange: (event) => setFormData({ ...formData, manager_name: event.target.value }), className: "w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm" })
+                ),
+                e('div', { className: "space-y-1" },
+                  e('label', { className: "text-xs font-bold text-slate-400 ml-1" }, "우편번호 *"),
+                  e('input', { required: true, value: formData.post_code, onChange: (event) => setFormData({ ...formData, post_code: event.target.value }), className: "w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm" })
+                ),
+                e('div', { className: "col-span-2 space-y-1" },
+                  e('label', { className: "text-xs font-bold text-slate-400 ml-1" }, "소재지 *"),
+                  e('input', { required: true, value: formData.address, onChange: (event) => setFormData({ ...formData, address: event.target.value }), className: "w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm" })
+                ),
+                e('div', { className: "col-span-2 text-xs font-bold text-slate-400 flex items-center gap-2 mt-2 mb-1 uppercase tracking-widest" },
+                  e('div', { className: "w-1.5 h-3 bg-slate-200 rounded-full" }),
+                  "추가 파트너 정보 (선택)"
+                ),
+                e('div', { className: "space-y-1" },
+                  e('label', { className: "text-xs font-bold text-slate-400 ml-1" }, "담당자 연락처"),
+                  e('input', { value: formData.manager_contact, onChange: (event) => setFormData({ ...formData, manager_contact: event.target.value }), className: "w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm" })
+                ),
+                e('div', { className: "space-y-1" },
+                  e('label', { className: "text-xs font-bold text-slate-400 ml-1" }, "블럭 소재지"),
+                  e('input', { value: formData.block_address, onChange: (event) => setFormData({ ...formData, block_address: event.target.value }), className: "w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm" })
+                ),
+                e('div', { className: "space-y-1" },
+                  e('label', { className: "text-xs font-bold text-slate-400 ml-1" }, "전화번호"),
+                  e('input', { value: formData.tel, onChange: (event) => setFormData({ ...formData, tel: event.target.value }), className: "w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm" })
+                ),
+                e('div', { className: "space-y-1" },
+                  e('label', { className: "text-xs font-bold text-slate-400 ml-1" }, "팩스번호"),
+                  e('input', { value: formData.fax, onChange: (event) => setFormData({ ...formData, fax: event.target.value }), className: "w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm" })
+                ),
+                e('div', { className: "space-y-1" },
+                  e('label', { className: "text-xs font-bold text-slate-400 ml-1" }, "업종"),
+                  e('input', { value: formData.biz_type, onChange: (event) => setFormData({ ...formData, biz_type: event.target.value }), className: "w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm" })
+                ),
+                e('div', { className: "space-y-1" },
+                  e('label', { className: "text-xs font-bold text-slate-400 ml-1" }, "주생산품"),
+                  e('input', { value: formData.main_product, onChange: (event) => setFormData({ ...formData, main_product: event.target.value }), className: "w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm" })
+                ),
+                e('div', { className: "col-span-2 space-y-1" },
+                  e('label', { className: "text-xs font-bold text-slate-400 ml-1" }, "비고"),
+                  e('textarea', { value: formData.remarks, onChange: (event) => setFormData({ ...formData, remarks: event.target.value }), rows: "2", className: "w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl resize-none text-sm" })
+                )
+              ),
+              e('div', { className: "mt-6 flex gap-3 sticky bottom-0 bg-white pt-4 border-t border-slate-100" },
+                e('button', { type: "button", onClick: () => setIsModalOpen(false), className: "flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition-all text-sm" }, "취소"),
+                e('button', { type: "submit", className: "flex-[2] py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-lg transition-all active:scale-[0.98] text-sm" },
+                  editingId ? '정보 업데이트' : '사업장 등록 완료'
+                )
+              )
+            )
+          )
+        ) : null
+      );
+    }
+
+    const rootElement = document.getElementById('root');
+    if (rootElement) {
+      const root = ReactDOM.createRoot(rootElement);
+      root.render(e(CompaniesManagement));
+    }
+  </script>
+</body>
+
+</html>

@@ -1,0 +1,2411 @@
+﻿<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <meta charset="UTF-8">
+    <base href="./">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self' https: 'unsafe-inline' 'unsafe-eval'; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://unpkg.com https://*.lucide.dev http://127.0.0.1:* http://localhost:*; img-src 'self' data: https:; font-src 'self' https: data:;">
+    <title>평가원 관리 및 설정 - KiWE 측정 관리</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script>
+        window.onerror = function (msg, url, line, col, error) {
+            console.error("Global Error:", msg, url, line);
+            const root = document.getElementById('root');
+            if (root && (root.innerHTML.includes('로딩') || root.innerHTML === '')) {
+                root.innerHTML = `<div style="padding: 40px; text-align: center; font-family: sans-serif;">
+                    <div style="color: #e11d48; font-size: 24px; font-weight: bold; mb: 10px;">시스템 로드 오류</div>
+                    <div style="color: #64748b; margin-top: 10px;">화면을 불러오는 중 문제가 발생했습니다.<br/>잠시 후 다시 시도해주세요.</div>
+                    <button onclick="location.reload()" style="margin-top: 20px; padding: 10px 20px; background: #4f46e5; color: white; border: none; border-radius: 8px; cursor: pointer;">새로고침</button>
+                </div>`;
+            }
+            return false;
+        };
+    </script>
+    <script src="js/error_translator.js"></script>
+    <script type="module">
+        import { checkAuth } from './js/auth.js';
+        checkAuth();
+    </script>
+</head>
+
+<body class="bg-gray-100 min-h-screen text-slate-800 font-sans">
+    <div id="root">
+        <div
+            style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; gap: 15px; font-family: sans-serif;">
+            <div
+                style="width: 40px; height: 40px; border: 4px solid #f3f3f3; border-top: 4px solid #4f46e5; border-radius: 50%; animation: spin 1s linear infinite;">
+            </div>
+            <div style="font-weight: bold; color: #475569;">시스템 로딩 중...</div>
+            <style>
+                @keyframes spin {
+                    0% {
+                        transform: rotate(0deg);
+                    }
+
+                    100% {
+                        transform: rotate(360deg);
+                    }
+                }
+            </style>
+        </div>
+    </div>
+
+    <script src="js/error_translator.js"></script>
+    <script type="module">
+        const { useState, useEffect, useMemo } = React;
+        const e = React.createElement;
+        import * as XLSX from 'https://esm.sh/xlsx@0.18.5';
+        import * as VehicleAPI from './js/vehicle.js';
+        import HazardManagement from './js/hazard_management.js';
+
+        let supabase;
+        try {
+            supabase = window.supabase.createClient('https://jztrnwchgxymknjvsbkl.supabase.co', 'sb_publishable_Z8oriOCik8fZlnAMgznUMg_IhmmFQ33');
+        } catch (err) {
+            console.error("Supabase Init Error:", err);
+        }
+
+        // ==== TAB 1: 사용자 관리 ====
+        function UserTab() {
+            const [users, setUsers] = useState([]);
+            const [isModalOpen, setIsModalOpen] = useState(false);
+            const [formData, setFormData] = useState({ user_id: '', user_pw: '', user_name: '', role: '일반', department: '', position: '', job_title: '', join_date: '', resign_date: '' });
+            const [isEdit, setIsEdit] = useState(false);
+
+            useEffect(() => { fetchUsers(); }, []);
+
+            useEffect(() => {
+                const handleEsc = (ev) => {
+                    if (ev.key === 'Escape') setIsModalOpen(false);
+                };
+                window.addEventListener('keydown', handleEsc);
+                return () => window.removeEventListener('keydown', handleEsc);
+            }, []);
+
+            const fetchUsers = async () => {
+                const { data } = await supabase.from('kiwe_users').select('*').order('user_id');
+                setUsers(data || []);
+            };
+
+            const openNew = async () => {
+                let nextId = 'VIP-0001';
+                try {
+                    const { data } = await supabase.from('kiwe_users').select('user_id').order('user_id', { ascending: false }).limit(1);
+                    if (data && data.length > 0) {
+                        const lastId = data[0].user_id;
+                        if (lastId && lastId.startsWith('VIP-')) {
+                            const num = parseInt(lastId.split('-')[1]);
+                            nextId = `VIP-${String(num + 1).padStart(4, '0')}`;
+                        }
+                    }
+                } catch (err) {
+                    console.error("ID Generation Error", err);
+                }
+
+                setFormData({ user_id: nextId, user_pw: '', user_name: '', role: '일반', department: '', position: '', job_title: '', join_date: '', resign_date: '' });
+                setIsEdit(false);
+                setIsModalOpen(true);
+            };
+
+            const openEdit = (u) => {
+                setFormData(u);
+                setIsEdit(true);
+                setIsModalOpen(true);
+            };
+
+            const closeModal = () => setIsModalOpen(false);
+
+            const handleSave = async (ev) => {
+                ev.preventDefault();
+                try {
+                    if (!isEdit) {
+                        const { error } = await supabase.from('kiwe_users').insert([formData]);
+                        if (error) throw error;
+                    } else {
+                        const { error } = await supabase.from('kiwe_users').update(formData).eq('user_id', formData.user_id);
+                        if (error) throw error;
+                    }
+                    closeModal();
+                    fetchUsers();
+                } catch (err) { alert('오류: ' + err.message); }
+            };
+
+            const handleDelete = async () => {
+                if (confirm('해당 사용자를 [퇴사] 처리 하시겠습니까? 로그인이 차단됩니다.')) {
+                    const today = new Date().toISOString().split('T')[0];
+                    const { error } = await supabase.from('kiwe_users').update({ resign_date: today }).eq('user_id', formData.user_id);
+                    if (error) throw error;
+                    closeModal();
+                    fetchUsers();
+                }
+            };
+
+            return e('div', { className: "max-w-7xl mx-auto space-y-6" },
+                e('div', { className: "flex justify-between items-center px-2" },
+                    e('div', { className: "space-y-1" },
+                        e('h2', { className: "text-2xl font-black text-slate-800" }, "사용자 관리"),
+                        e('p', { className: "text-slate-500 font-medium" }, "시스템 접속 권한 및 사용자 정보를 관리합니다.")
+                    ),
+                    e('button', { onClick: openNew, className: "bg-blue-600 text-white px-8 py-3 rounded-xl font-bold hover:bg-blue-700 shadow-lg transition-all transform hover:-translate-y-1" }, "신규 사용자 등록")
+                ),
+                e('div', { className: "bg-white rounded-2xl shadow-lg border border-slate-100 overflow-hidden" },
+                    e('table', { className: "w-full text-left" },
+                        e('thead', { className: "bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider text-sm" },
+                            e('tr', null,
+                                e('th', { className: "px-8 py-4" }, "사용자 ID"),
+                                e('th', { className: "px-8 py-4" }, "성명"),
+                                e('th', { className: "px-8 py-4" }, "부서 / 직책"),
+                                e('th', { className: "px-8 py-4" }, "직무"),
+                                e('th', { className: "px-8 py-4" }, "권한"),
+                                e('th', { className: "px-8 py-4" }, "입사일"),
+                                e('th', { className: "px-8 py-4" }, "상태"),
+                                e('th', { className: "px-8 py-4 text-right" }, "관리")
+                            )
+                        ),
+                        e('tbody', { className: "divide-y divide-slate-100 text-base" },
+                            users.map((u, idx) => e('tr', { key: idx, className: "hover:bg-blue-50/50 transition-colors" },
+                                e('td', { className: "px-8 py-4 font-mono text-slate-600 font-bold" }, u.user_id),
+                                e('td', { className: "px-8 py-4 font-bold text-slate-800 text-lg" }, u.user_name),
+                                e('td', { className: "px-8 py-4 text-slate-600 text-sm" }, `${u.department} ${u.position ? `/ ${u.position}` : ''}`),
+                                e('td', { className: "px-8 py-4 text-slate-600 text-sm" }, u.job_title),
+                                e('td', { className: "px-8 py-4 font-medium text-slate-600" }, u.role),
+                                e('td', { className: "px-8 py-4 text-slate-500 text-sm" }, u.join_date || '-'),
+                                e('td', { className: "px-8 py-4 font-medium text-slate-600" },
+                                    e('span', { className: `px-3 py-1 rounded-lg text-sm font-bold ${!u.resign_date ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}` },
+                                        u.resign_date ? `퇴사(${u.resign_date})` : '재직'
+                                    )
+                                ),
+                                e('td', { className: "px-8 py-4 text-right" },
+                                    e('button', { onClick: () => openEdit(u), className: "bg-slate-100 text-slate-700 font-bold px-6 py-2 rounded-lg hover:bg-slate-200 transition-colors text-sm" }, "관리")
+                                )
+                            ))
+                        )
+                    )
+                ),
+                isModalOpen && e('div', { className: "fixed inset-0 bg-slate-900/70 backdrop-blur-sm flex items-center justify-center z-50 p-6" },
+                    e('div', { className: "bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden animate-slideUp" },
+                        e('div', { className: "p-8 border-b bg-slate-50" },
+                            e('h3', { className: "text-2xl font-black text-slate-800" }, isEdit ? '사용자 정보 수정' : '신규 사용자 등록'),
+                            e('p', { className: "text-slate-500 mt-1 font-medium" }, "사용자의 로그인 정보 및 권한을 설정합니다.")
+                        ),
+                        e('form', { onSubmit: handleSave, className: "p-8 space-y-6" },
+                            e('div', { className: "space-y-2" },
+                                e('label', { className: "text-sm font-bold text-slate-500" }, "사용자 ID (자동생성)"),
+                                e('input', { readOnly: true, value: formData.user_id, className: "w-full p-4 border rounded-xl outline-none bg-slate-100 text-slate-500 font-bold cursor-not-allowed" })
+                            ),
+                            e('div', { className: "space-y-2" },
+                                e('label', { className: "text-sm font-bold text-slate-500" }, "비밀번호"),
+                                e('input', { required: true, type: "text", value: formData.user_pw, onChange: (ev) => setFormData({ ...formData, user_pw: ev.target.value }), className: "w-full p-4 border rounded-xl outline-none focus:border-blue-500 bg-slate-50 focus:bg-white transition-colors font-bold", placeholder: "비밀번호 입력" })
+                            ),
+                            e('div', { className: "space-y-2" },
+                                e('label', { className: "text-sm font-bold text-slate-500" }, "성명"),
+                                e('input', { required: true, value: formData.user_name, onChange: (ev) => setFormData({ ...formData, user_name: ev.target.value }), className: "w-full p-4 border rounded-xl outline-none focus:border-blue-500 bg-slate-50 focus:bg-white transition-colors font-bold", placeholder: "성명 입력" })
+                            ),
+                            e('div', { className: "grid grid-cols-3 gap-4" },
+                                e('div', { className: "space-y-2" },
+                                    e('label', { className: "text-sm font-bold text-slate-500" }, "부서"),
+                                    e('input', { value: formData.department, onChange: (ev) => setFormData({ ...formData, department: ev.target.value }), className: "w-full p-4 border rounded-xl outline-none focus:border-blue-500 bg-slate-50 focus:bg-white transition-colors font-bold" })
+                                ),
+                                e('div', { className: "space-y-2" },
+                                    e('label', { className: "text-sm font-bold text-slate-500" }, "직책"),
+                                    e('input', { value: formData.position, onChange: (ev) => setFormData({ ...formData, position: ev.target.value }), className: "w-full p-4 border rounded-xl outline-none focus:border-blue-500 bg-slate-50 focus:bg-white transition-colors font-bold" })
+                                ),
+                                e('div', { className: "space-y-2" },
+                                    e('label', { className: "text-sm font-bold text-slate-500" }, "직무"),
+                                    e('input', { value: formData.job_title, onChange: (ev) => setFormData({ ...formData, job_title: ev.target.value }), className: "w-full p-4 border rounded-xl outline-none focus:border-blue-500 bg-slate-50 focus:bg-white transition-colors font-bold" })
+                                )
+                            ),
+                            e('div', { className: "grid grid-cols-2 gap-6" },
+                                e('div', { className: "space-y-2" },
+                                    e('label', { className: "text-sm font-bold text-slate-500" }, "권한"),
+                                    e('input', { value: formData.role, onChange: (ev) => setFormData({ ...formData, role: ev.target.value }), className: "w-full p-4 border rounded-xl outline-none focus:border-blue-500 bg-slate-50 focus:bg-white transition-colors font-bold", placeholder: "예: 관리자" })
+                                ),
+                                e('div', { className: "space-y-2" },
+                                    e('label', { className: "text-sm font-bold text-slate-500" }, "입사일자"),
+                                    e('input', { type: "date", value: formData.join_date, onChange: (ev) => setFormData({ ...formData, join_date: ev.target.value }), className: "w-full p-4 border rounded-xl outline-none focus:border-blue-500 bg-slate-50 focus:bg-white transition-colors font-bold" })
+                                )
+                            ),
+                            e('div', { className: "space-y-2" },
+                                e('label', { className: "text-sm font-bold text-slate-500" }, "퇴사일자 (비워두면 재직)"),
+                                e('input', { type: "date", value: formData.resign_date, onChange: (ev) => setFormData({ ...formData, resign_date: ev.target.value }), className: "w-full p-4 border rounded-xl outline-none focus:border-blue-500 bg-slate-50 focus:bg-white transition-colors font-bold" })
+                            ),
+                            e('div', { className: "pt-8 flex gap-4" },
+                                e('button', { type: "button", onClick: closeModal, className: "flex-1 py-4 bg-slate-100 text-slate-600 font-bold rounded-xl hover:bg-slate-200 transition-colors" }, "취소"),
+                                isEdit && !formData.resign_date && e('button', { type: "button", onClick: handleDelete, className: "flex-1 py-4 bg-red-100 text-red-600 font-bold rounded-xl hover:bg-red-200 transition-colors" }, "퇴사처리"),
+                                e('button', { type: "submit", className: "flex-[2] py-4 bg-blue-600 text-white font-bold rounded-xl shadow-lg hover:bg-blue-700 transition-colors" }, "저장하기")
+                            )
+                        )
+                    )
+                )
+            );
+        }
+
+        // ==== TAB 2: 보유 장비 현황 ====
+        function EquipmentTab() {
+            const [equipments, setEquipments] = useState([]);
+            const [isModalOpen, setIsModalOpen] = useState(false);
+            const [formData, setFormData] = useState({ id: '', eq_name: '', equipment_type: '고유량', limit_count: 0, serial_no: '' });
+            const [isEdit, setIsEdit] = useState(false);
+
+            useEffect(() => { fetchEquipments(); }, []);
+
+            useEffect(() => {
+                const handleEsc = (e) => {
+                    if (e.key === 'Escape') setIsModalOpen(false);
+                };
+                window.addEventListener('keydown', handleEsc);
+                return () => window.removeEventListener('keydown', handleEsc);
+            }, []);
+
+            const fetchEquipments = async () => {
+                const { data } = await supabase.from('kiwe_equipments').select('*').order('equipment_type').order('eq_name');
+                setEquipments(data || []);
+            };
+
+            const openNew = () => {
+                setFormData({ eq_name: '', equipment_type: '고유량', limit_count: 0, serial_no: '' });
+                setIsEdit(false);
+                setIsModalOpen(true);
+            };
+
+            const openEdit = (eq) => {
+                setFormData({
+                    id: eq.id,
+                    eq_name: eq.eq_name || '',
+                    eq_name: eq.eq_name || '',
+                    equipment_type: eq.equipment_type || '고유량',
+                    limit_count: eq.limit_count || 0,
+                    serial_no: eq.serial_no || ''
+                });
+                setIsEdit(true);
+                setIsModalOpen(true);
+            };
+
+            const closeModal = () => setIsModalOpen(false);
+
+            const handleSave = async (e) => {
+                e.preventDefault();
+                const payload = {
+                    eq_name: formData.eq_name,
+                    equipment_type: formData.equipment_type,
+                    limit_count: Number(formData.limit_count),
+                    serial_no: formData.serial_no
+                };
+                if (isEdit) await supabase.from('kiwe_equipments').update(payload).eq('id', formData.id);
+                else await supabase.from('kiwe_equipments').insert([payload]);
+                closeModal(); fetchEquipments();
+            };
+
+            const handleDelete = async () => {
+                if (confirm('삭제하시겠습니까?')) {
+                    await supabase.from('kiwe_equipments').delete().eq('id', formData.id);
+                    closeModal(); fetchEquipments();
+                }
+            };
+
+            return e('div', { className: "max-w-7xl mx-auto space-y-6" },
+                e('div', { className: "flex justify-between items-center px-2" },
+                    e('div', { className: "space-y-1" },
+                        e('h2', { className: "text-2xl font-black text-slate-800" }, "보유 장비 현황"),
+                        e('p', { className: "text-slate-500 font-medium" }, "실시간 보유 중인 장비 수량을 관리합니다.")
+                    ),
+                    e('button', { onClick: openNew, className: "bg-indigo-600 text-white px-8 py-3 rounded-xl font-bold hover:bg-indigo-700 shadow-lg transition-all transform hover:-translate-y-1" }, "장비 추가")
+                ),
+                e('div', { className: "bg-white rounded-2xl shadow-lg border border-slate-100 overflow-hidden" },
+                    e('table', { className: "w-full text-left" },
+                        e('thead', { className: "bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider text-sm" },
+                            e('tr', null,
+                                e('th', { className: "px-8 py-4" }, "구분"),
+                                e('th', { className: "px-8 py-4" }, "장비명"),
+                                e('th', { className: "px-8 py-4" }, "보유장비수"),
+                                e('th', { className: "px-8 py-4 text-right" }, "관리")
+                            )
+                        ),
+                        e('tbody', { className: "divide-y divide-slate-100 text-base" },
+                            equipments.map((eq) => e('tr', { key: eq.id, className: "hover:bg-indigo-50/50 transition-colors" },
+                                e('td', { className: "px-8 py-4 font-bold text-indigo-600" }, eq.equipment_type || '-'),
+                                e('td', { className: "px-8 py-4 font-bold text-slate-800" }, eq.eq_name),
+                                e('td', { className: "px-8 py-4 font-mono text-indigo-600 font-bold" }, `${eq.limit_count} 개`),
+                                e('td', { className: "px-8 py-4 text-right" },
+                                    e('button', { onClick: () => openEdit(eq), className: "bg-slate-100 text-slate-700 font-bold px-6 py-2 rounded-lg hover:bg-slate-200 transition-colors text-sm" }, "수정/관리")
+                                )
+                            )),
+                            equipments.length === 0 && e('tr', null, e('td', { colSpan: "4", className: "px-8 py-10 text-center text-slate-400 font-medium" }, "등록된 장비 정보가 없습니다."))
+                        )
+                    )
+                ),
+                isModalOpen && e('div', { className: "fixed inset-0 bg-slate-900/70 backdrop-blur-sm flex items-center justify-center z-50 p-6" },
+                    e('div', { className: "bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden animate-slideUp" },
+                        e('div', { className: "p-6 border-b bg-slate-50" },
+                            e('h3', { className: "text-xl font-black text-slate-800" }, isEdit ? '장비 정보 수정' : '신규 장비 등록')
+                        ),
+                        e('form', { onSubmit: handleSave, className: "p-8 space-y-6" },
+                            e('div', { className: "grid grid-cols-1 gap-4" },
+                                e('div', { className: "space-y-1" },
+                                    e('label', { className: "text-xs font-bold text-slate-400" }, "구분 *"),
+                                    e('select', { required: true, value: formData.equipment_type, onChange: (ev) => setFormData({ ...formData, equipment_type: ev.target.value }), className: "w-full p-4 border rounded-xl outline-none focus:border-indigo-500 bg-slate-50 focus:bg-white transition-colors font-bold" },
+                                        e('option', { value: "고유량" }, "고유량"),
+                                        e('option', { value: "소음기" }, "소음기"),
+                                        e('option', { value: "길에어" }, "길에어"),
+                                        e('option', { value: "7L" }, "7L"),
+                                        e('option', { value: "저유량" }, "저유량"),
+                                        e('option', { value: "유량보정기" }, "유량보정기"),
+                                        e('option', { value: "기타" }, "기타")
+                                    )
+                                ),
+                                e('div', { className: "space-y-1" },
+                                    e('label', { className: "text-xs font-bold text-slate-400" }, "장비명"),
+                                    e('input', { required: true, value: formData.eq_name, onChange: (ev) => setFormData({ ...formData, eq_name: ev.target.value }), className: "w-full p-4 border rounded-xl outline-none focus:border-indigo-500 bg-slate-50 focus:bg-white transition-colors font-bold", placeholder: "장비명 입력" })
+                                ),
+                                e('div', { className: "space-y-1" },
+                                    e('label', { className: "text-xs font-bold text-slate-400" }, "제조번호 (Serial No.)"),
+                                    e('input', { value: formData.serial_no, onChange: (ev) => setFormData({ ...formData, serial_no: ev.target.value }), className: "w-full p-4 border rounded-xl outline-none focus:border-indigo-500 bg-slate-50 focus:bg-white transition-colors font-bold", placeholder: "S/N 입력" })
+                                ),
+                                e('div', { className: "space-y-1" },
+                                    e('label', { className: "text-xs font-bold text-slate-400" }, "보유장비수"),
+                                    e('input', { type: "number", required: true, value: formData.limit_count, onChange: (ev) => setFormData({ ...formData, limit_count: ev.target.value }), className: "w-full p-4 border rounded-xl outline-none focus:border-indigo-500 bg-slate-50 focus:bg-white transition-colors font-bold", placeholder: "수량 입력" })
+                                )
+                            ),
+                            e('div', { className: "flex gap-3 pt-4" },
+                                e('button', { type: "button", onClick: closeModal, className: "flex-1 py-4 bg-slate-100 rounded-xl font-bold" }, "취소"),
+                                isEdit && e('button', { type: "button", onClick: handleDelete, className: "flex-1 py-4 bg-red-50 text-red-600 rounded-xl font-bold" }, "삭제"),
+                                e('button', { type: "submit", className: "flex-[2] py-4 bg-indigo-600 text-white rounded-xl font-bold shadow-lg" }, "저장")
+                            )
+                        )
+                    )
+                )
+            );
+        }
+
+        // ==== TAB 3: 지정현황 ====
+        function AgencyTab() {
+            const [agencies, setAgencies] = useState([]);
+            const [isModalOpen, setIsModalOpen] = useState(false);
+            const [formData, setFormData] = useState({ id: '', approval_date: '', office_name: '안산', limit_under_5: 0, limit_over_5: 0 });
+            const [isEdit, setIsEdit] = useState(false);
+
+            useEffect(() => { fetchAgencies(); }, []);
+
+            useEffect(() => {
+                const handleEsc = (e) => {
+                    if (e.key === 'Escape') setIsModalOpen(false);
+                };
+                window.addEventListener('keydown', handleEsc);
+                return () => window.removeEventListener('keydown', handleEsc);
+            }, []);
+
+            const fetchAgencies = async () => {
+                const { data } = await supabase.from('kiwe_agencies').select('*').order('id');
+                setAgencies(data || []);
+            };
+
+            const stats = useMemo(() => {
+                const totalUnder5 = agencies.reduce((sum, a) => sum + (Number(a.limit_under_5) || 0), 0);
+                const totalOver5 = agencies.reduce((sum, a) => sum + (Number(a.limit_over_5) || 0), 0);
+                return { totalUnder5, totalOver5 };
+            }, [agencies]);
+
+            const openNew = () => {
+                setFormData({ approval_date: '', office_name: '안산', limit_under_5: 0, limit_over_5: 0 });
+                setIsEdit(false);
+                setIsModalOpen(true);
+            };
+
+            const openEdit = (a) => {
+                setFormData({
+                    id: a.id,
+                    approval_date: a.approval_date || '',
+                    office_name: a.office_name || '안산',
+                    limit_under_5: a.limit_under_5 || 0,
+                    limit_over_5: a.limit_over_5 || 0
+                });
+                setIsEdit(true);
+                setIsModalOpen(true);
+            };
+
+            const closeModal = () => setIsModalOpen(false);
+
+            const handleSave = async (e) => {
+                e.preventDefault();
+                const payload = {
+                    approval_date: formData.approval_date,
+                    office_name: formData.office_name,
+                    limit_under_5: Number(formData.limit_under_5),
+                    limit_over_5: Number(formData.limit_over_5)
+                };
+                if (isEdit) await supabase.from('kiwe_agencies').update(payload).eq('id', formData.id);
+                else await supabase.from('kiwe_agencies').insert([payload]);
+                closeModal(); fetchAgencies();
+            };
+
+            const handleDelete = async () => {
+                if (confirm('삭제하시겠습니까?')) {
+                    await supabase.from('kiwe_agencies').delete().eq('id', formData.id);
+                    closeModal(); fetchAgencies();
+                }
+            };
+
+            return e('div', { className: "max-w-7xl mx-auto space-y-6" },
+                e('div', { className: "flex justify-between items-center px-2" },
+                    e('div', { className: "space-y-1" },
+                        e('h2', { className: "text-2xl font-black text-slate-800" }, "지정현황"),
+                        e('p', { className: "text-slate-500 font-medium" }, "연간 측정 한도 및 지청별 지정 상태를 관리합니다.")
+                    ),
+                    e('button', { onClick: openNew, className: "bg-emerald-600 text-white px-8 py-3 rounded-xl font-bold hover:bg-emerald-700 shadow-lg transition-all transform hover:-translate-y-1" }, "지정 정보 추가")
+                ),
+                e('div', { className: "grid grid-cols-2 gap-6 mb-6" },
+                    e('div', { className: "bg-white p-6 rounded-2xl border border-emerald-100 shadow-sm flex flex-col items-center justify-center gap-1" },
+                        e('p', { className: "text-xs font-bold text-emerald-600 uppercase tracking-widest" }, "지정한계 (5인 미만) 총계"),
+                        e('p', { className: "text-3xl font-black text-slate-800" }, stats.totalUnder5.toLocaleString(), e('span', { className: "text-sm font-bold text-slate-400 ml-1" }, "건"))
+                    ),
+                    e('div', { className: "bg-white p-6 rounded-2xl border border-indigo-100 shadow-sm flex flex-col items-center justify-center gap-1" },
+                        e('p', { className: "text-xs font-bold text-indigo-600 uppercase tracking-widest" }, "지정한계 (5인 이상) 총계"),
+                        e('p', { className: "text-3xl font-black text-slate-800" }, stats.totalOver5.toLocaleString(), e('span', { className: "text-sm font-bold text-slate-400 ml-1" }, "건"))
+                    )
+                ),
+                e('div', { className: "bg-white rounded-2xl shadow-lg border border-slate-100 overflow-hidden" },
+                    e('table', { className: "w-full text-left" },
+                        e('thead', { className: "bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider text-sm" },
+                            e('tr', null,
+                                e('th', { className: "px-8 py-4" }, "관할지청"),
+                                e('th', { className: "px-8 py-4" }, "지정통보일"),
+                                e('th', { className: "px-8 py-4" }, "지정한계 (5인미만)"),
+                                e('th', { className: "px-8 py-4" }, "지정한계 (5인이상)"),
+                                e('th', { className: "px-8 py-4 text-right pr-20" }, "수정/관리")
+                            )
+                        ),
+                        e('tbody', { className: "divide-y divide-slate-100 text-base" },
+                            agencies.map(a => e('tr', { key: a.id, className: "hover:bg-emerald-50/50 transition-colors" },
+                                e('td', { className: "px-8 py-4 font-black text-slate-800" }, a.office_name),
+                                e('td', { className: "px-8 py-4 text-slate-500 text-sm font-bold" }, a.approval_date || '-'),
+                                e('td', { className: "px-8 py-4 font-bold text-blue-600" }, `${a.limit_under_5.toLocaleString()} 건`),
+                                e('td', { className: "px-8 py-4 font-bold text-indigo-600" }, `${a.limit_over_5.toLocaleString()} 건`),
+                                e('td', { className: "px-8 py-4 text-right pr-12" },
+                                    e('button', { onClick: () => openEdit(a), className: "bg-slate-100 text-slate-700 font-bold px-6 py-2 rounded-lg hover:bg-slate-200 transition-colors text-sm" }, "수정/관리")
+                                )
+                            ))
+                        )
+                    )
+                ),
+                isModalOpen && e('div', { className: "fixed inset-0 bg-slate-900/70 backdrop-blur-sm flex items-center justify-center z-50 p-6" },
+                    e('div', { className: "bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden animate-slideUp" },
+                        e('div', { className: "p-6 border-b bg-slate-50" },
+                            e('h3', { className: "text-xl font-black text-slate-800" }, isEdit ? '지정 정보 수정' : '신규 지정 정보 등록')
+                        ),
+                        e('form', { onSubmit: handleSave, className: "p-8 space-y-6" },
+                            e('div', { className: "grid grid-cols-2 gap-4" },
+                                e('div', { className: "space-y-1" },
+                                    e('label', { className: "text-xs font-bold text-slate-400" }, "지정일자 (approval_date)"),
+                                    e('input', { type: "date", value: formData.approval_date, onChange: (ev) => setFormData({ ...formData, approval_date: ev.target.value }), className: "w-full p-3 border rounded-xl" })
+                                ),
+                                e('div', { className: "space-y-1" },
+                                    e('label', { className: "text-xs font-bold text-slate-400" }, "관할지청 (office_name)"),
+                                    e('select', { value: formData.office_name, onChange: (ev) => setFormData({ ...formData, office_name: ev.target.value }), className: "w-full p-3 border rounded-xl font-bold" },
+                                        e('option', { value: "안산" }, "안산"),
+                                        e('option', { value: "경기" }, "경기"),
+                                        e('option', { value: "평택" }, "평택"),
+                                        e('option', { value: "서울서부" }, "서울서부"),
+                                        e('option', { value: "기타" }, "기타")
+                                    )
+                                ),
+                                e('div', { className: "space-y-1" },
+                                    e('label', { className: "text-xs font-bold text-blue-600" }, "한도 (5인 미만)"),
+                                    e('input', { type: "number", required: true, value: formData.limit_under_5, onChange: (ev) => setFormData({ ...formData, limit_under_5: ev.target.value }), className: "w-full p-3 border-2 border-blue-50 rounded-xl focus:border-blue-500 outline-none font-bold" })
+                                ),
+                                e('div', { className: "space-y-1" },
+                                    e('label', { className: "text-xs font-bold text-indigo-600" }, "한도 (5인 이상)"),
+                                    e('input', { type: "number", required: true, value: formData.limit_over_5, onChange: (ev) => setFormData({ ...formData, limit_over_5: ev.target.value }), className: "w-full p-3 border-2 border-indigo-50 rounded-xl focus:border-indigo-500 outline-none font-bold" })
+                                )
+                            ),
+                            e('div', { className: "flex gap-3 pt-4" },
+                                e('button', { type: "button", onClick: closeModal, className: "flex-1 py-3 bg-slate-100 rounded-xl font-bold" }, "취소"),
+                                isEdit && e('button', { type: "button", onClick: handleDelete, className: "flex-1 py-3 bg-red-100 text-red-600 rounded-xl font-bold" }, "삭제"),
+                                e('button', { type: "submit", className: "flex-[2] py-3 bg-emerald-600 text-white rounded-xl font-bold shadow-lg" }, "저장하기")
+                            )
+                        )
+                    )
+                )
+            );
+        }
+
+
+
+        // ===================== 단가설정 (5-Tab 구조) =====================
+        function PriceTab() {
+            // Sub-tab IDs
+            const SUB_TABS = [
+                { id: 'mgmt', label: '기본관리비', color: 'emerald' },
+                { id: 'ana_gen', label: '분석수수료 (일반)', color: 'blue' },
+                { id: 'ana_sup', label: '분석수수료 (비용지원)', color: 'violet' },
+                { id: 'eng', label: '엔지니어링 노임', color: 'amber' },
+                { id: 'contract', label: '계약단가 (사업장별)', color: 'rose' },
+                { id: 'discount', label: '할인단가 (정액)', color: 'teal' },
+            ];
+            const [subTab, setSubTab] = useState('mgmt');
+            const [years, setYears] = useState([]);
+            const [data, setData] = useState({});       // { year: { category: [items] } }
+            const [policies, setPolicies] = useState({});
+            const [loading, setLoading] = useState(false);
+            const [saving, setSaving] = useState(false);
+            const [dirty, setDirty] = useState(false);
+
+            // Modals
+            const [addItemModal, setAddItemModal] = useState(false);
+            const [newItem, setNewItem] = useState({ sub_category: '', method_name: '', item_name: '', target_category: null });
+            const [addYearModal, setAddYearModal] = useState(false);
+            const [newYear, setNewYear] = useState('');
+
+            const tabConfig = {
+                mgmt: { price_type: '일반', category: '기본관리비' },
+                ana_gen: { price_type: '일반', category: '분석수수료' },
+                ana_sup: { price_type: '비용지원', category: null }, // Load both 분석수수료 and 기본관리비
+                eng: { price_type: '엔지니어링', category: null }, // all categories
+                contract: { price_type: null, category: null }, // handled by ContractPriceTab
+                discount: { price_type: null, category: null }, // handled by DiscountPriceTab
+            };
+
+            useEffect(() => { loadData(); }, [subTab]);
+
+            const loadData = async () => {
+                setLoading(true); setDirty(false);
+                try {
+                    const cfg = tabConfig[subTab];
+                    let q = supabase.from('kiwe_price_settings').select('*')
+                        .eq('price_type', cfg.price_type)
+                        .order('year', { ascending: true })
+                        .order('sort_order');
+                    if (cfg.category) q = q.eq('category', cfg.category);
+
+                    const { data: rows } = await q;
+                    const foundYears = [...new Set((rows || []).map(r => r.year))].sort();
+                    const ys = foundYears.length > 0 ? foundYears : [new Date().getFullYear()];
+                    setYears(ys);
+
+                    // Organize by year → category → items[]
+                    const org = {};
+                    ys.forEach(y => org[y] = {});
+                    (rows || []).forEach(row => {
+                        if (!org[row.year]) org[row.year] = {};
+                        const cat = row.category;
+                        if (!org[row.year][cat]) org[row.year][cat] = [];
+                        org[row.year][cat].push(row);
+                    });
+                    setData(org);
+
+                    // 비용지원 정책 별도 로드
+                    if (subTab === 'ana_sup') {
+                        const { data: pRows } = await supabase.from('kiwe_price_settings')
+                            .select('*').eq('price_type', '비용지원').eq('category', '지원정책');
+                        const polMap = {};
+                        ys.forEach(y => polMap[y] = {});
+                        (pRows || []).forEach(p => { if (polMap[p.year]) polMap[p.year][p.item_name] = p.unit_price; });
+                        setPolicies(polMap);
+                    }
+                } catch (err) { console.error(err); }
+                setLoading(false);
+            };
+
+            const fmt = n => Number(n || 0).toLocaleString('ko-KR');
+
+            const updateItem = (year, cat, idx, field, val) => {
+                setData(prev => {
+                    const copy = JSON.parse(JSON.stringify(prev));
+                    if (copy[year]?.[cat]?.[idx] !== undefined) {
+                        const newVal = (field === 'unit_price') ? (Number(String(val).replace(/,/g, '')) || 0) : val;
+
+                        // Metadata fields (sub_category, method_name, item_name) should stay sync across years for same item index
+                        if (['sub_category', 'method_name', 'item_name'].includes(field)) {
+                            years.forEach(y => {
+                                if (copy[y]?.[cat]?.[idx]) copy[y][cat][idx][field] = newVal;
+                            });
+                        } else {
+                            copy[year][cat][idx][field] = newVal;
+                        }
+                    }
+                    return copy;
+                });
+                setDirty(true);
+            };
+
+            const updatePolicy = (year, key, val) => {
+                setPolicies(prev => ({ ...prev, [year]: { ...prev[year], [key]: Number(String(val).replace(/,/g, '')) || 0 } }));
+                setDirty(true);
+            };
+
+            const deleteItem = async (item) => {
+                if (!confirm(`'${item.item_name}' 항목을 삭제하시겠습니까?`)) return;
+                if (item.id) {
+                    const { error } = await supabase.from('kiwe_price_settings').delete().eq('id', item.id);
+                    if (error) { alert('삭제 오류: ' + error.message); return; }
+                }
+                loadData();
+            };
+
+            const openAddYear = () => {
+                const last = years.length > 0 ? Math.max(...years) : new Date().getFullYear();
+                setNewYear(String(last + 1));
+                setAddYearModal(true);
+            };
+
+            const doAddYear = () => {
+                const y = parseInt(newYear);
+                if (!y || y < 2020 || y > 2040) { alert('올바른 연도를 입력하세요.'); return; }
+                if (years.includes(y)) { alert(`${y}년은 이미 존재합니다.`); return; }
+                const last = years.length > 0 ? Math.max(...years) : y - 1;
+                setYears(prev => [...prev, y].sort());
+                setData(prev => {
+                    const copy = JSON.parse(JSON.stringify(prev));
+                    copy[y] = {};
+                    const lastData = copy[last] || {};
+                    Object.entries(lastData).forEach(([cat, list]) => {
+                        copy[y][cat] = list.map(it => ({ ...it, id: undefined, year: y, unit_price: it.unit_price || 0 }));
+                    });
+                    return copy;
+                });
+                if (subTab === 'ana_sup') {
+                    setPolicies(prev => ({ ...prev, [y]: { ...(prev[last] || {}) } }));
+                }
+                setDirty(true);
+                setAddYearModal(false);
+            };
+
+            const removeYear = (y) => {
+                if (!confirm(`${y}년 단가 설정을 제거하시겠습니까? (화면에서만 제거, DB 데이터는 유지됩니다)`)) return;
+                setYears(prev => prev.filter(yr => yr !== y));
+                setData(prev => { const c = JSON.parse(JSON.stringify(prev)); delete c[y]; return c; });
+            };
+
+            const openAddItem = (cat = null, defaults = {}) => {
+                setNewItem({
+                    sub_category: defaults.sub_category || '',
+                    method_name: defaults.method_name || '',
+                    item_name: defaults.item_name || '',
+                    target_category: cat
+                });
+                setAddItemModal(true);
+            };
+
+            const doAddItem = () => {
+                const name = newItem.item_name.trim();
+                if (!name) { alert(subTab === 'eng' ? '소분류(품명)를 입력하세요.' : '분석법(구분)을 입력하세요.'); return; }
+                const cat = newItem.target_category || (subTab === 'eng' ? '엔지니어링노임' : '분석수수료');
+                const pt = tabConfig[subTab].price_type;
+                setData(prev => {
+                    const copy = JSON.parse(JSON.stringify(prev));
+                    years.forEach(y => {
+                        if (!copy[y]) copy[y] = {};
+                        if (!copy[y][cat]) copy[y][cat] = [];
+                        const exists = copy[y][cat].some(it => it.item_name === name);
+                        if (!exists) {
+                            copy[y][cat].push({
+                                year: y, price_type: pt, category: cat,
+                                sub_category: newItem.sub_category.trim() || null,
+                                method_name: newItem.method_name.trim() || null,
+                                item_name: name, unit_price: 0, is_fixed: false
+                            });
+                        }
+                    });
+                    return copy;
+                });
+                setDirty(true);
+                setAddItemModal(false);
+            };
+
+            const saveAll = async () => {
+                setSaving(true);
+                try {
+                    const cfg = tabConfig[subTab];
+                    const rows = [];
+                    years.forEach(y => {
+                        Object.entries(data[y] || {}).forEach(([cat, list]) => {
+                            if (cat === '지원정책') return;
+                            list.forEach((it, i) => {
+                                rows.push({
+                                    year: y, price_type: cfg.price_type, category: cat,
+                                    item_name: it.item_name,
+                                    sub_category: it.sub_category || null,
+                                    method_name: it.method_name || null,
+                                    item_code: it.item_code || null,
+                                    unit_price: Number(it.unit_price) || 0,
+                                    sort_order: i + 1, is_fixed: !!it.is_fixed
+                                });
+                            });
+                        });
+                        if (subTab === 'ana_sup') {
+                            Object.entries(policies[y] || {}).forEach(([key, val]) => {
+                                rows.push({
+                                    year: y, price_type: '비용지원', category: '지원정책',
+                                    item_name: key, unit_price: Number(val) || 0, sort_order: 99, is_fixed: true
+                                });
+                            });
+                        }
+                    });
+                    // dedupe
+                    const map = new Map();
+                    rows.forEach(r => map.set(`${r.year}_${r.price_type}_${r.category}_${r.item_name}`, r));
+                    const final = Array.from(map.values());
+                    const { error } = await supabase.from('kiwe_price_settings')
+                        .upsert(final, { onConflict: 'year,price_type,category,item_name' });
+                    if (error) throw error;
+                    alert('저장되었습니다.');
+                    setDirty(false);
+                    loadData();
+                } catch (err) { alert('저장 실패: ' + err.message); }
+                setSaving(false);
+            };
+
+            // ─── 렌더: 기본관리비 ───────────────────────────────────────────
+            const renderMgmt = () => {
+                // 기본관리비 항목은 2025년(또는 첫 연도) 기준으로 행 결정
+                const baseYear = years.includes(2025) ? 2025 : (years[0] || null);
+                const baseItems = baseYear ? (data[baseYear]?.['기본관리비'] || []) : [];
+                return e('div', { className: 'space-y-4' },
+                    baseItems.length === 0 && !loading && e('div', { className: 'text-center py-16 text-slate-400 font-bold' }, 'DB에 기본관리비 데이터가 없습니다.'),
+                    baseItems.length > 0 && e('div', { className: 'bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden' },
+                        e('div', { className: 'bg-emerald-50 px-6 py-4 border-b border-emerald-200 flex justify-between items-center' },
+                            e('div', null,
+                                e('h3', { className: 'font-black text-emerald-800 text-lg' }, '기본관리비'),
+                                e('p', { className: 'text-xs text-emerald-600 font-bold mt-0.5' }, '사업장 규모별 고정 항목 — 연도별 단가만 수정 가능합니다.')
+                            )
+                        ),
+                        e('div', { className: 'overflow-x-auto' },
+                            e('table', { className: 'w-full text-sm' },
+                                e('thead', null, e('tr', { className: 'bg-slate-50 text-xs text-slate-500 font-bold border-b' },
+                                    e('th', { className: 'px-5 py-3 text-left w-10' }, 'No'),
+                                    e('th', { className: 'px-5 py-3 text-left' }, '사업장 규모'),
+                                    ...years.map(y => e('th', { key: y, className: 'px-4 py-3 text-right min-w-[130px]' },
+                                        e('div', { className: 'flex items-center justify-end gap-1.5' },
+                                            e('span', null, `${y}년`),
+                                            years.length > 1 && e('button', {
+                                                onClick: () => removeYear(y),
+                                                className: 'text-slate-300 hover:text-red-400 text-xs font-bold transition-colors leading-none',
+                                                title: `${y}년 숨기기`
+                                            }, '✕')
+                                        )
+                                    ))
+                                )),
+                                e('tbody', { className: 'divide-y divide-slate-100' },
+                                    baseItems.map((it, idx) => e('tr', { key: idx, className: 'hover:bg-emerald-50/30 transition-colors' },
+                                        e('td', { className: 'px-5 py-3 text-slate-400 font-bold text-xs' }, idx + 1),
+                                        e('td', { className: 'px-5 py-3 font-bold text-slate-700' }, it.item_name),
+                                        ...years.map(y => {
+                                            const item = data[y]?.['기본관리비']?.[idx];
+                                            return e('td', { key: y, className: 'px-3 py-2 text-right' },
+                                                e('input', {
+                                                    type: 'text',
+                                                    value: fmt(item?.unit_price),
+                                                    onChange: ev => updateItem(y, '기본관리비', idx, 'unit_price', ev.target.value),
+                                                    className: 'w-32 px-3 py-1.5 border border-slate-200 rounded-lg text-right text-sm font-black outline-none focus:ring-2 focus:ring-emerald-300 bg-white'
+                                                })
+                                            );
+                                        })
+                                    ))
+                                )
+                            )
+                        )
+                    )
+                );
+            };
+
+            const renderAnalysis = (priceType, color) => {
+                const baseYear = years.includes(2025) ? 2025 : (years[0] || null);
+                const baseItems = baseYear ? (data[baseYear]?.['분석수수료'] || []) : [];
+                const baseMgmt = baseYear ? (data[baseYear]?.['기본관리비'] || []) : [];
+                const isSup = priceType === '비용지원';
+                const borderColor = isSup ? 'violet' : 'blue';
+                const POLICY_FIELDS = [
+                    ['신규_지원율', '신규 지원율 (%)'],
+                    ['신규_한도', '신규 한도액 (원)'],
+                    ['기존_지원율', '기존 지원율 (%)'],
+                    ['기존_한도', '기존 한도액 (원)'],
+                ];
+                return e('div', { className: 'space-y-5' },
+                    // 비용지원 정책 카드
+                    isSup && e('div', { className: 'bg-violet-50 rounded-2xl border border-violet-200 shadow-sm p-5' },
+                        e('div', { className: 'flex items-center gap-2 mb-4' },
+                            e('span', { className: 'px-2 py-0.5 bg-violet-600 text-white rounded text-xs font-bold' }, 'Policy'),
+                            e('h3', { className: 'font-black text-violet-800' }, '공단 비용지원 정책 설정')
+                        ),
+                        e('div', { className: 'grid gap-4', style: { gridTemplateColumns: `repeat(${Math.min(years.length, 4)}, minmax(0,1fr))` } },
+                            years.map(y => e('div', { key: y, className: 'bg-white/70 rounded-xl border border-violet-100 p-4 space-y-3' },
+                                e('div', { className: 'text-sm font-black text-violet-700 border-b border-violet-100 pb-1.5 mb-2' }, `${y}년`),
+                                POLICY_FIELDS.map(([key, label]) => e('div', { key },
+                                    e('label', { className: 'block text-[10px] font-bold text-slate-400 mb-0.5' }, label),
+                                    e('input', {
+                                        type: 'text', value: fmt(policies[y]?.[key]),
+                                        onChange: ev => updatePolicy(y, key, ev.target.value),
+                                        className: 'w-full px-3 py-1.5 border border-violet-200 rounded-lg text-right text-sm font-black outline-none focus:ring-2 focus:ring-violet-300'
+                                    })
+                                ))
+                            ))
+                        )
+                    ),
+
+                    // 추가: 비용지원 기본관리비 (있는 경우에만 표시)
+                    isSup && baseMgmt.length > 0 && e('div', { className: 'bg-white rounded-2xl border border-violet-200 shadow-sm overflow-hidden' },
+                        e('div', { className: 'bg-violet-50 px-6 py-4 border-b border-violet-200' },
+                            e('h3', { className: 'font-black text-violet-800 text-lg' }, '비용지원 기본관리비'),
+                            e('p', { className: 'text-xs text-violet-600 font-bold mt-0.5' }, '비용지원 사업의 기본 행정관리비 단가입니다.')
+                        ),
+                        e('div', { className: 'overflow-x-auto' },
+                            e('table', { className: 'w-full text-sm' },
+                                e('thead', null, e('tr', { className: 'bg-slate-50 text-xs text-slate-500 font-bold border-b' },
+                                    e('th', { className: 'px-5 py-3 text-left w-10' }, 'No'),
+                                    e('th', { className: 'px-5 py-3 text-left' }, '항목명'),
+                                    ...years.map(y => e('th', { key: y, className: 'px-4 py-3 text-right min-w-[130px]' }, `${y}년`))
+                                )),
+                                e('tbody', { className: 'divide-y divide-slate-100' },
+                                    baseMgmt.map((it, idx) => e('tr', { key: idx, className: 'hover:bg-violet-50/30' },
+                                        e('td', { className: 'px-5 py-3 text-slate-400 font-bold text-xs' }, idx + 1),
+                                        e('td', { className: 'px-5 py-3 font-bold text-slate-700' }, it.item_name),
+                                        ...years.map(y => {
+                                            const item = data[y]?.['기본관리비']?.[idx];
+                                            return e('td', { key: y, className: 'px-3 py-2 text-right' },
+                                                e('input', {
+                                                    type: 'text',
+                                                    value: fmt(item?.unit_price),
+                                                    onChange: ev => updateItem(y, '기본관리비', idx, 'unit_price', ev.target.value),
+                                                    className: 'w-32 px-3 py-1.5 border border-slate-200 rounded-lg text-right text-sm font-black outline-none focus:ring-2 focus:ring-violet-300 bg-white'
+                                                })
+                                            );
+                                        })
+                                    ))
+                                )
+                            )
+                        )
+                    ),
+
+                    // 분석수수료 테이블
+                    e('div', { className: 'bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden' },
+                        e('div', { className: `bg-${borderColor}-50 px-6 py-4 border-b border-${borderColor}-200 flex justify-between items-center` },
+                            e('div', null,
+                                e('h3', { className: `font-black text-${borderColor}-800 text-lg` }, isSup ? '분석수수료 (비용지원)' : '분석수수료 (일반)'),
+                                e('p', { className: `text-xs text-${borderColor}-600 font-bold mt-0.5` }, '항목/측정방법/분석법별 단가. 항목 추가·삭제 가능.')
+                            ),
+                            e('button', {
+                                onClick: () => openAddItem('분석수수료'),
+                                className: `px-4 py-2 bg-${borderColor}-600 text-white text-xs font-bold rounded-xl hover:bg-${borderColor}-700 transition-colors shadow-sm`
+                            }, '+ 항목 추가')
+                        ),
+                        e('div', { className: 'overflow-x-auto' },
+                            e('table', { className: 'w-full text-sm' },
+                                e('thead', null, e('tr', { className: 'bg-slate-50 text-xs text-slate-500 font-bold border-b' },
+                                    e('th', { className: 'px-4 py-3 text-left w-10' }, 'No'),
+                                    e('th', { className: 'px-4 py-3 text-left min-w-[120px]' }, '항목(유해인자)'),
+                                    e('th', { className: 'px-4 py-3 text-left min-w-[120px]' }, '측정방법'),
+                                    e('th', { className: 'px-4 py-3 text-left min-w-[140px]' }, '분석법(구분)'),
+                                    ...years.map(y => e('th', { key: y, className: 'px-4 py-3 text-right min-w-[125px]' },
+                                        e('div', { className: 'flex items-center justify-end gap-1.5' },
+                                            e('span', null, `${y}년`),
+                                            years.length > 1 && e('button', {
+                                                onClick: () => removeYear(y),
+                                                className: 'text-slate-300 hover:text-red-400 text-xs font-bold',
+                                                title: `${y}년 숨기기`
+                                            }, '✕')
+                                        )
+                                    )),
+                                    e('th', { className: 'px-4 py-3 text-center w-16' }, '삭제')
+                                )),
+                                e('tbody', { className: 'divide-y divide-slate-100' },
+                                    baseItems.length === 0
+                                        ? e('tr', null, e('td', { colSpan: 5 + years.length, className: 'px-6 py-10 text-center text-slate-400 font-bold' }, 'DB에 데이터가 없습니다.'))
+                                        : baseItems.map((it, idx) => e('tr', { key: idx, className: 'hover:bg-slate-50/50 transition-colors' },
+                                            e('td', { className: 'px-4 py-2.5 text-slate-400 font-bold text-xs' }, idx + 1),
+                                            e('td', { className: 'px-2 py-1' },
+                                                e('input', {
+                                                    type: 'text', value: it.sub_category || '',
+                                                    onChange: ev => updateItem(baseYear, '분석수수료', idx, 'sub_category', ev.target.value),
+                                                    placeholder: '항목(유해인자)',
+                                                    className: 'w-full px-2 py-1 border border-slate-200 rounded text-xs font-medium focus:ring-1 focus:ring-blue-300 outline-none'
+                                                })
+                                            ),
+                                            e('td', { className: 'px-2 py-1' },
+                                                e('input', {
+                                                    type: 'text', value: it.method_name || '',
+                                                    onChange: ev => updateItem(baseYear, '분석수수료', idx, 'method_name', ev.target.value),
+                                                    placeholder: '측정방법',
+                                                    className: 'w-full px-2 py-1 border border-slate-200 rounded text-xs font-medium focus:ring-1 focus:ring-blue-300 outline-none'
+                                                })
+                                            ),
+                                            e('td', { className: 'px-2 py-1' },
+                                                e('input', {
+                                                    type: 'text', value: it.item_name || '',
+                                                    onChange: ev => updateItem(baseYear, '분석수수료', idx, 'item_name', ev.target.value),
+                                                    className: 'w-full px-2 py-1 border border-slate-200 rounded text-xs font-black focus:ring-1 focus:ring-blue-300 outline-none'
+                                                })
+                                            ),
+                                            ...years.map(y => {
+                                                const yItem = data[y]?.['분석수수료']?.[idx];
+                                                return e('td', { key: y, className: 'px-3 py-2 text-right' },
+                                                    e('input', {
+                                                        type: 'text',
+                                                        value: fmt(yItem?.unit_price),
+                                                        onChange: ev => updateItem(y, '분석수수료', idx, 'unit_price', ev.target.value),
+                                                        className: 'w-28 px-3 py-1.5 border border-slate-200 rounded-lg text-right text-xs font-black outline-none focus:ring-2 focus:ring-blue-300 bg-white'
+                                                    })
+                                                );
+                                            }),
+                                            e('td', { className: 'px-4 py-2.5 text-center' },
+                                                !it.is_fixed && e('button', {
+                                                    onClick: () => deleteItem(it),
+                                                    className: 'px-2 py-1 text-xs bg-red-50 text-red-400 rounded-lg hover:bg-red-100 hover:text-red-600 transition-colors font-bold'
+                                                }, '삭제')
+                                            )
+                                        ))
+                                )
+                            )
+                        )
+                    )
+                );
+            };
+
+            // ─── 렌더: 엔지니어링 노임 ─────────────────────────────────────
+            const renderEngineering = () => {
+                // sub_category 기준으로 섹션 분리: '엔지니어링 기타부문 노임단가', '인당 단가', '장비대여'
+                const SECTIONS = [
+                    { key: '엔지니어링 기타부문 노임단가', label: '엔지니어링 기타부문 노임단가', cat: '엔지니어링노임', color: 'amber' },
+                    { key: '인당 단가', label: '인당 단가', cat: '인당단가', color: 'orange' },
+                    { key: '장비대여', label: '장비대여', cat: '장비대여', color: 'sky' },
+                ];
+                const baseYear = years.includes(2025) ? 2025 : (years[0] || null);
+                return e('div', { className: 'space-y-6' },
+                    SECTIONS.map(sec => {
+                        // Collect items whose sub_category matches or category matches
+                        const baseItems = baseYear
+                            ? ((data[baseYear]?.[sec.cat] || []).length > 0
+                                ? data[baseYear][sec.cat]
+                                : (data[baseYear]?.['엔지니어링노임'] || []).filter(it => it.sub_category === sec.key))
+                            : [];
+                        // Fallback: group by sub_category if category is same for all (엔지니어링노임)
+                        const allBySubCat = baseYear
+                            ? Object.values(data[baseYear] || {}).flat().filter(it => it.sub_category === sec.key)
+                            : [];
+                        const displayItems = baseItems.length > 0 ? baseItems : allBySubCat;
+
+                        return e('div', { key: sec.key, className: `bg-white rounded-2xl border border-${sec.color}-200 shadow-sm overflow-hidden` },
+                            e('div', { className: `bg-${sec.color}-50 px-6 py-4 border-b border-${sec.color}-200 flex justify-between items-center` },
+                                e('div', null,
+                                    e('h3', { className: `font-black text-${sec.color}-800 text-base` }, sec.label),
+                                    e('p', { className: `text-xs text-${sec.color}-600 font-bold mt-0.5` }, '고정 항목 또는 사용자 추가 항목')
+                                ),
+                                e('button', {
+                                    onClick: () => openAddItem(sec.cat, { sub_category: sec.key }),
+                                    className: `px-3 py-1.5 bg-${sec.color}-600 text-white text-[10px] font-bold rounded-lg hover:bg-${sec.color}-700 transition-colors shadow-sm`
+                                }, '+ 항목 추가')
+                            ),
+                            e('div', { className: 'overflow-x-auto' },
+                                e('table', { className: 'w-full text-sm' },
+                                    e('thead', null, e('tr', { className: 'bg-slate-50 text-xs text-slate-500 font-bold border-b' },
+                                        e('th', { className: 'px-5 py-3 text-left w-10' }, 'No'),
+                                        e('th', { className: 'px-5 py-3 text-left' }, '비고/설명'),
+                                        e('th', { className: 'px-5 py-3 text-left' }, '구분(등급/장비명)'),
+                                        ...years.map(y => e('th', { key: y, className: 'px-4 py-3 text-right min-w-[130px]' },
+                                            e('div', { className: 'flex items-center justify-end gap-1.5' },
+                                                e('span', null, `${y}년`),
+                                                years.length > 1 && e('button', {
+                                                    onClick: () => removeYear(y),
+                                                    className: 'text-slate-300 hover:text-red-400 text-xs font-bold',
+                                                    title: `${y}년 숨기기`
+                                                }, '✕')
+                                            )
+                                        ))
+                                    )),
+                                    e('tbody', { className: 'divide-y divide-slate-100' },
+                                        displayItems.length === 0
+                                            ? e('tr', null, e('td', { colSpan: 3 + years.length, className: 'px-6 py-8 text-center text-slate-300 font-bold text-sm' }, `${sec.label} 데이터 없음`))
+                                            : displayItems.map((it, idx) => {
+                                                // Find corresponding items per year by item_name
+                                                return e('tr', { key: idx, className: `hover:bg-${sec.color}-50/30 transition-colors` },
+                                                    e('td', { className: 'px-5 py-3 text-slate-400 font-bold text-xs' }, idx + 1),
+                                                    e('td', { className: 'px-5 py-3 text-xs text-slate-500 font-medium' }, it.method_name || it.sub_category || '-'),
+                                                    e('td', { className: 'px-5 py-3 font-bold text-slate-700' }, it.item_name),
+                                                    ...years.map(y => {
+                                                        // Find item in this year by item_name
+                                                        const allYearItems = Object.values(data[y] || {}).flat();
+                                                        const yItem = allYearItems.find(i => i.item_name === it.item_name && (i.sub_category === it.sub_category || i.category === it.category));
+                                                        // Find its actual index in the category array
+                                                        const cat = yItem?.category || sec.cat;
+                                                        const catArr = data[y]?.[cat] || [];
+                                                        const catIdx = catArr.findIndex(i => i.item_name === it.item_name);
+                                                        return e('td', { key: y, className: 'px-3 py-2 text-right' },
+                                                            e('input', {
+                                                                type: 'text',
+                                                                value: fmt(yItem?.unit_price),
+                                                                onChange: ev => {
+                                                                    if (catIdx >= 0) updateItem(y, cat, catIdx, 'unit_price', ev.target.value);
+                                                                },
+                                                                className: 'w-32 px-3 py-1.5 border border-slate-200 rounded-lg text-right text-sm font-black outline-none focus:ring-2 focus:ring-amber-300 bg-white'
+                                                            })
+                                                        );
+                                                    })
+                                                );
+                                            })
+                                    )
+                                )
+                            )
+                        );
+                    })
+                );
+            };
+
+            const TAB_COLOR = { mgmt: 'emerald', ana_gen: 'blue', ana_sup: 'violet', eng: 'amber', contract: 'rose' };
+            const activeColor = TAB_COLOR[subTab];
+
+            return e('div', { className: 'max-w-7xl mx-auto space-y-5' },
+                // ── 헤더 ──
+                e('div', { className: 'flex justify-between items-start gap-4 px-1' },
+                    e('div', { className: 'space-y-1' },
+                        e('h2', { className: 'text-2xl font-black text-slate-800' }, '단가 설정'),
+                        e('p', { className: 'text-slate-500 font-medium' }, '5개 영역별로 연도별 단가를 체계적으로 관리합니다.')
+                    ),
+                    subTab !== 'contract' && e('div', { className: 'flex items-center gap-2' },
+                        e('button', {
+                            onClick: openAddYear,
+                            className: 'px-4 py-2 bg-slate-700 text-white font-bold rounded-xl hover:bg-slate-800 text-sm shadow transition-all'
+                        }, '+ 연도 추가'),
+                        e('button', {
+                            onClick: saveAll, disabled: saving || !dirty,
+                            className: `px-6 py-2 font-bold rounded-xl shadow transition-all text-sm ${dirty ? `bg-${activeColor}-600 text-white hover:bg-${activeColor}-700` : 'bg-slate-100 text-slate-400 cursor-not-allowed'}`
+                        }, saving ? '저장 중...' : (dirty ? '💾 저장하기' : '변경사항 없음'))
+                    )
+                ),
+
+                // ── 서브탭 ──
+                e('div', { className: 'bg-white rounded-2xl border border-slate-200 shadow-sm p-1.5 flex gap-1' },
+                    SUB_TABS.map(st => e('button', {
+                        key: st.id,
+                        onClick: () => { if (dirty && !confirm('변경사항이 저장되지 않았습니다. 이동할까요?')) return; setSubTab(st.id); },
+                        className: `flex-1 py-3 rounded-xl text-sm font-black transition-all ${subTab === st.id ? `bg-${st.color}-600 text-white shadow-md` : 'text-slate-500 hover:bg-slate-50'}`
+                    }, st.label))
+                ),
+
+                // ── 컨텐츠 ──
+                loading && subTab !== 'contract' && subTab !== 'discount'
+                    ? e('div', { className: 'py-20 text-center text-slate-400 font-bold' }, '데이터를 불러오는 중...')
+                    : e('div', null,
+                        subTab === 'mgmt' && renderMgmt(),
+                        (subTab === 'ana_gen') && renderAnalysis('일반', 'blue'),
+                        (subTab === 'ana_sup') && renderAnalysis('비용지원', 'violet'),
+                        subTab === 'eng' && renderEngineering(),
+                        subTab === 'contract' && e(ContractPriceTab, null),
+                        subTab === 'discount' && e(DiscountPriceTab, null)
+                    ),
+
+                // ── 연도 추가 모달 ──
+                addYearModal && e('div', { className: 'fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-6' },
+                    e('div', { className: 'bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden' },
+                        e('div', { className: 'px-8 py-6 border-b bg-slate-50' },
+                            e('h3', { className: 'text-xl font-black text-slate-800' }, '연도 추가'),
+                            e('p', { className: 'text-slate-500 text-sm mt-1' }, '최근 연도 데이터를 복사하여 새 연도를 생성합니다.')
+                        ),
+                        e('div', { className: 'p-8 space-y-5' },
+                            e('div', { className: 'space-y-2' },
+                                e('label', { className: 'text-sm font-bold text-slate-500' }, '추가할 연도'),
+                                e('input', {
+                                    type: 'number', value: newYear, min: 2020, max: 2040,
+                                    onChange: ev => setNewYear(ev.target.value),
+                                    className: 'w-full p-4 border-2 border-slate-200 rounded-xl text-xl font-black text-center outline-none focus:border-slate-500'
+                                })
+                            ),
+                            e('div', { className: 'flex gap-3' },
+                                e('button', { onClick: () => setAddYearModal(false), className: 'flex-1 py-3.5 bg-slate-100 text-slate-600 font-bold rounded-xl hover:bg-slate-200' }, '취소'),
+                                e('button', { onClick: doAddYear, className: 'flex-[2] py-3.5 bg-slate-700 text-white font-bold rounded-xl shadow-lg hover:bg-slate-800' }, `${newYear}년 추가`)
+                            )
+                        )
+                    )
+                ),
+
+                // ── 항목 추가 모달 (분석수수료/엔지니어링 전용) ──
+                addItemModal && (subTab === 'ana_gen' || subTab === 'ana_sup' || subTab === 'eng') &&
+                e('div', { className: 'fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-6' },
+                    e('div', { className: 'bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden' },
+                        e('div', { className: 'px-8 py-6 border-b bg-slate-50 flex justify-between items-center' },
+                            e('div', null,
+                                e('h3', { className: 'text-xl font-black text-slate-800' }, '항목 추가'),
+                                e('p', { className: 'text-slate-500 text-sm mt-0.5' }, '모든 연도에 동일하게 추가됩니다. 단가는 이후 수정하세요.')
+                            ),
+                            e('button', { onClick: () => setAddItemModal(false), className: 'text-slate-400 hover:text-slate-600 text-xl font-bold' }, '✕')
+                        ),
+                        e('div', { className: 'p-8 space-y-5' },
+                            e('div', { className: 'space-y-2' },
+                                e('label', { className: 'text-sm font-bold text-slate-500' }, subTab === 'eng' ? '대분류 (sub_category)' : '항목 (유해인자 대분류)'),
+                                e('input', {
+                                    type: 'text', value: newItem.sub_category,
+                                    onChange: ev => setNewItem(p => ({ ...p, sub_category: ev.target.value })),
+                                    placeholder: subTab === 'eng' ? '예: 엔지니어링 기타부문 노임단가' : '예: 유기화합물, 금속류, 분진 등',
+                                    className: 'w-full p-4 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-300 font-bold'
+                                })
+                            ),
+                            e('div', { className: 'space-y-2' },
+                                e('label', { className: 'text-sm font-bold text-slate-500' }, subTab === 'eng' ? '중분류 (method_name)' : '측정방법명'),
+                                e('input', {
+                                    type: 'text', value: newItem.method_name,
+                                    onChange: ev => setNewItem(p => ({ ...p, method_name: ev.target.value })),
+                                    placeholder: subTab === 'eng' ? '예: 고유량펌프, 소음노출량계' : '예: 여과채취법, 직독식 등',
+                                    className: 'w-full p-4 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-300 font-bold'
+                                })
+                            ),
+                            e('div', { className: 'space-y-2' },
+                                e('label', { className: 'text-sm font-bold text-slate-600' }, subTab === 'eng' ? '소분류/장비명 (item_name) *' : '분석법(구분) *'),
+                                e('input', {
+                                    type: 'text', value: newItem.item_name,
+                                    onChange: ev => setNewItem(p => ({ ...p, item_name: ev.target.value })),
+                                    placeholder: subTab === 'eng' ? '예: 특급기술자, ME20 등' : '예: ICP법, GC법(다성분) 등',
+                                    className: 'w-full p-4 border-2 border-blue-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-400 font-bold text-slate-800'
+                                })
+                            ),
+                            e('div', { className: 'flex gap-3 pt-2' },
+                                e('button', { onClick: () => setAddItemModal(false), className: 'flex-1 py-3.5 bg-slate-100 text-slate-600 font-bold rounded-xl hover:bg-slate-200' }, '취소'),
+                                e('button', { onClick: doAddItem, className: 'flex-[2] py-3.5 bg-blue-600 text-white font-bold rounded-xl shadow-lg hover:bg-blue-700' }, '항목 추가')
+                            )
+                        )
+                    )
+                )
+            );
+        }
+
+        // ==== 계약단가 (사업장별) 탭 ====
+        function ContractPriceTab() {
+            const [clients, setClients] = useState([]);
+            const [selectedClient, setSelectedClient] = useState(null);
+            const [searchText, setSearchText] = useState('');
+            const [showDrop, setShowDrop] = useState(false);
+            const [contractData, setContractData] = useState(null);
+            // contractData = { mgmt: [{item_name, unit_price, id}], prelim: [{item_name, unit_price, id}], ana: [{item_name, unit_price, id, sub_category, method_name}] }
+            const [saving, setSaving] = useState(false);
+            const [dirty, setDirty] = useState(false);
+            const [newAnaItem, setNewAnaItem] = useState({ sub_category: '', method_name: '', item_name: '' });
+            const [showAddAna, setShowAddAna] = useState(false);
+
+            // 기본관리비 표준 규격 목록 (일반 단가에서 가져옴)
+            const [stdMgmtItems, setStdMgmtItems] = useState([]);
+
+            useEffect(() => {
+                loadClients();
+                loadStdMgmt();
+            }, []);
+
+            const loadClients = async () => {
+                const { data } = await supabase.from('kiwe_quotation_clients').select('id, client_name').order('client_name');
+                setClients(data || []);
+            };
+
+            const loadStdMgmt = async () => {
+                const yr = new Date().getFullYear();
+                const { data } = await supabase.from('kiwe_price_settings')
+                    .select('item_name').eq('price_type', '일반').eq('category', '기본관리비').eq('year', yr).order('sort_order');
+                if (data && data.length > 0) {
+                    setStdMgmtItems(data.map(d => d.item_name));
+                } else {
+                    setStdMgmtItems(['1~49인','50~99인','100~299인','300~499인','500~999인','1000~1999인','2000~2999인','3000인 이상']);
+                }
+            };
+
+            const selectClient = async (c) => {
+                setSelectedClient(c);
+                setSearchText(c.client_name);
+                setShowDrop(false);
+                await loadContractData(c.id);
+            };
+
+            const loadContractData = async (clientId) => {
+                const pt = `계약_${clientId}`;
+                const { data } = await supabase.from('kiwe_price_settings')
+                    .select('*').eq('price_type', pt).order('sort_order');
+
+                const rows = data || [];
+                const mgmtRows = rows.filter(r => r.category === '기본관리비');
+                const prelimRows = rows.filter(r => r.category === '예비조사');
+                const anaRows = rows.filter(r => r.category === '분석수수료');
+
+                // 기본관리비: 표준 규격 기준, DB에 없는 항목은 단가 0으로 채움
+                const mgmt = stdMgmtItems.length > 0
+                    ? stdMgmtItems.map(name => {
+                        const found = mgmtRows.find(r => r.item_name === name);
+                        return { item_name: name, unit_price: found ? found.unit_price : 0, id: found ? found.id : null };
+                    })
+                    : mgmtRows.map(r => ({ item_name: r.item_name, unit_price: r.unit_price, id: r.id }));
+
+                // 예비조사: DB에 없으면 기본 1행 생성
+                const prelim = prelimRows.length > 0
+                    ? [{ item_name: '예비조사', unit_price: prelimRows[0].unit_price, id: prelimRows[0].id }]
+                    : [{ item_name: '예비조사', unit_price: 0, id: null }];
+
+                const ana = anaRows.map(r => ({ item_name: r.item_name, unit_price: r.unit_price, id: r.id, sub_category: r.sub_category || '', method_name: r.method_name || '' }));
+
+                setContractData({ mgmt, prelim, ana });
+                setDirty(false);
+            };
+
+            const updateMgmt = (idx, val) => {
+                setContractData(p => {
+                    const next = { ...p, mgmt: [...p.mgmt] };
+                    next.mgmt[idx] = { ...next.mgmt[idx], unit_price: Number(String(val).replace(/,/g,'')) || 0 };
+                    return next;
+                });
+                setDirty(true);
+            };
+
+            const updatePrelim = (val) => {
+                setContractData(p => ({ ...p, prelim: [{ ...p.prelim[0], unit_price: Number(String(val).replace(/,/g,'')) || 0 }] }));
+                setDirty(true);
+            };
+
+            const updateAna = (idx, field, val) => {
+                setContractData(p => {
+                    const next = { ...p, ana: [...p.ana] };
+                    next.ana[idx] = { ...next.ana[idx], [field]: field === 'unit_price' ? (Number(String(val).replace(/,/g,'')) || 0) : val };
+                    return next;
+                });
+                setDirty(true);
+            };
+
+            const addAnaItem = () => {
+                if (!newAnaItem.item_name.trim()) { alert('분석법(구분)을 입력하세요.'); return; }
+                setContractData(p => ({
+                    ...p,
+                    ana: [...p.ana, { item_name: newAnaItem.item_name.trim(), unit_price: 0, id: null, sub_category: newAnaItem.sub_category.trim(), method_name: newAnaItem.method_name.trim() }]
+                }));
+                setNewAnaItem({ sub_category: '', method_name: '', item_name: '' });
+                setShowAddAna(false);
+                setDirty(true);
+            };
+
+            const deleteAnaItem = async (idx) => {
+                const it = contractData.ana[idx];
+                if (!confirm(`'${it.item_name}' 항목을 삭제하시겠습니까?`)) return;
+                if (it.id) {
+                    const { error } = await supabase.from('kiwe_price_settings').delete().eq('id', it.id);
+                    if (error) { alert('삭제 오류: ' + error.message); return; }
+                }
+                setContractData(p => ({ ...p, ana: p.ana.filter((_, i) => i !== idx) }));
+                setDirty(true);
+            };
+
+            const saveContract = async () => {
+                if (!selectedClient) return;
+                setSaving(true);
+                try {
+                    const pt = `계약_${selectedClient.id}`;
+                    const rows = [];
+                    contractData.mgmt.forEach((it, i) => rows.push({ price_type: pt, category: '기본관리비', item_name: it.item_name, unit_price: it.unit_price, sort_order: i+1, is_fixed: true, year: 0, sub_category: null, method_name: null }));
+                    contractData.prelim.forEach((it, i) => rows.push({ price_type: pt, category: '예비조사', item_name: it.item_name, unit_price: it.unit_price, sort_order: i+1, is_fixed: true, year: 0, sub_category: null, method_name: null }));
+                    contractData.ana.forEach((it, i) => rows.push({ price_type: pt, category: '분석수수료', item_name: it.item_name, unit_price: it.unit_price, sort_order: i+1, is_fixed: false, year: 0, sub_category: it.sub_category || null, method_name: it.method_name || null }));
+
+                    const { error } = await supabase.from('kiwe_price_settings')
+                        .upsert(rows, { onConflict: 'year,price_type,category,item_name' });
+                    if (error) throw error;
+                    alert(`[${selectedClient.client_name}] 계약단가가 저장되었습니다.`);
+                    setDirty(false);
+                    await loadContractData(selectedClient.id);
+                } catch(err) { alert('저장 실패: ' + err.message); }
+                setSaving(false);
+            };
+
+            const fClients = clients.filter(c => c.client_name.includes(searchText));
+            const fmt = n => Number(n || 0).toLocaleString('ko-KR');
+
+            return e('div', { className: 'max-w-5xl mx-auto space-y-6' },
+                // ── 헤더 ──
+                e('div', { className: 'bg-rose-50 border border-rose-200 rounded-2xl p-5' },
+                    e('h3', { className: 'text-lg font-black text-rose-800 mb-1' }, '계약단가 (사업장별)'),
+                    e('p', { className: 'text-sm text-rose-600 font-medium' }, '특정 사업장과 별도 계약한 단가를 등록합니다. 예비조사 → 기본관리비 → 분석수수료 순으로 견적서에 적용됩니다.')
+                ),
+
+                // ── 거래처 선택 ──
+                e('div', { className: 'bg-white rounded-2xl border border-slate-200 shadow-sm p-6' },
+                    e('label', { className: 'block text-sm font-black text-slate-600 mb-2' }, '사업장(거래처) 선택'),
+                    e('div', { className: 'relative max-w-md' },
+                        e('input', {
+                            type: 'text', value: searchText,
+                            onChange: ev => { setSearchText(ev.target.value); setShowDrop(true); },
+                            onFocus: () => setShowDrop(true),
+                            onBlur: () => setTimeout(() => setShowDrop(false), 200),
+                            placeholder: '거래처명 검색...',
+                            className: 'w-full px-4 py-3 border-2 border-rose-200 rounded-xl outline-none focus:border-rose-500 font-bold text-slate-800'
+                        }),
+                        showDrop && fClients.length > 0 && e('div', { className: 'absolute z-20 w-full bg-white border border-slate-200 rounded-xl shadow-xl max-h-48 overflow-y-auto mt-1' },
+                            fClients.map(c => e('div', {
+                                key: c.id, onClick: () => selectClient(c),
+                                className: 'px-4 py-2.5 hover:bg-rose-50 cursor-pointer text-sm font-bold border-b border-slate-50'
+                            }, c.client_name))
+                        )
+                    ),
+                    selectedClient && e('div', { className: 'mt-3 flex items-center gap-2' },
+                        e('span', { className: 'px-3 py-1 bg-rose-100 text-rose-700 rounded-lg text-sm font-black' }, `✅ ${selectedClient.client_name}`),
+                        e('span', { className: 'text-xs text-slate-400 font-bold' }, `price_type: 계약_${selectedClient.id}`)
+                    )
+                ),
+
+                // ── 단가 입력 (거래처 선택 후) ──
+                selectedClient && contractData && e('div', { className: 'space-y-5' },
+
+                    // ① 예비조사
+                    e('div', { className: 'bg-white rounded-2xl border border-rose-200 shadow-sm overflow-hidden' },
+                        e('div', { className: 'bg-rose-50 px-6 py-4 border-b border-rose-200' },
+                            e('h3', { className: 'font-black text-rose-800 text-base' }, '① 예비조사 단가'),
+                            e('p', { className: 'text-xs text-rose-600 font-bold mt-0.5' }, '예비조사 방문당(1회) 단가를 입력합니다.')
+                        ),
+                        e('div', { className: 'p-5' },
+                            e('div', { className: 'flex items-center gap-4 max-w-xs' },
+                                e('label', { className: 'text-sm font-bold text-slate-600 w-24 shrink-0' }, '예비조사 단가'),
+                                e('input', {
+                                    type: 'text', value: fmt(contractData.prelim[0]?.unit_price),
+                                    onChange: ev => updatePrelim(ev.target.value),
+                                    className: 'flex-1 px-3 py-2 border-2 border-rose-200 rounded-lg text-right font-black text-sm outline-none focus:border-rose-500'
+                                }),
+                                e('span', { className: 'text-sm text-slate-400 font-bold' }, '원 / 회')
+                            )
+                        )
+                    ),
+
+                    // ② 기본관리비
+                    e('div', { className: 'bg-white rounded-2xl border border-emerald-200 shadow-sm overflow-hidden' },
+                        e('div', { className: 'bg-emerald-50 px-6 py-4 border-b border-emerald-200' },
+                            e('h3', { className: 'font-black text-emerald-800 text-base' }, '② 기본관리비 단가 (사업장 규모별)'),
+                            e('p', { className: 'text-xs text-emerald-600 font-bold mt-0.5' }, '규격별 계약 단가를 입력합니다. (0 = 미사용)')
+                        ),
+                        e('div', { className: 'overflow-x-auto' },
+                            e('table', { className: 'w-full text-sm' },
+                                e('thead', null, e('tr', { className: 'bg-slate-50 text-xs text-slate-500 font-bold border-b' },
+                                    e('th', { className: 'px-5 py-3 text-left w-8' }, 'No'),
+                                    e('th', { className: 'px-5 py-3 text-left' }, '규격 (사업장 인원수)'),
+                                    e('th', { className: 'px-5 py-3 text-right min-w-[160px]' }, '계약 단가 (원)')
+                                )),
+                                e('tbody', { className: 'divide-y divide-slate-100' },
+                                    contractData.mgmt.map((it, idx) => e('tr', { key: idx, className: 'hover:bg-emerald-50/30 transition-colors' },
+                                        e('td', { className: 'px-5 py-2.5 text-slate-400 font-bold text-xs' }, idx + 1),
+                                        e('td', { className: 'px-5 py-2.5 font-bold text-slate-700' }, it.item_name),
+                                        e('td', { className: 'px-4 py-2 text-right' },
+                                            e('input', {
+                                                type: 'text', value: fmt(it.unit_price),
+                                                onChange: ev => updateMgmt(idx, ev.target.value),
+                                                className: 'w-36 px-3 py-1.5 border border-slate-200 rounded-lg text-right text-sm font-black outline-none focus:ring-2 focus:ring-emerald-300 bg-white'
+                                            })
+                                        )
+                                    ))
+                                )
+                            )
+                        )
+                    ),
+
+                    // ③ 분석수수료
+                    e('div', { className: 'bg-white rounded-2xl border border-blue-200 shadow-sm overflow-hidden' },
+                        e('div', { className: 'bg-blue-50 px-6 py-4 border-b border-blue-200 flex justify-between items-center' },
+                            e('div', null,
+                                e('h3', { className: 'font-black text-blue-800 text-base' }, '③ 분석수수료 단가 (분석방법별)'),
+                                e('p', { className: 'text-xs text-blue-600 font-bold mt-0.5' }, '계약한 분석방법별 단가를 입력합니다. 항목 추가/삭제 가능.')
+                            ),
+                            e('button', {
+                                onClick: () => setShowAddAna(true),
+                                className: 'px-4 py-2 bg-blue-600 text-white text-xs font-bold rounded-xl hover:bg-blue-700 shadow-sm'
+                            }, '+ 항목 추가')
+                        ),
+                        e('div', { className: 'overflow-x-auto' },
+                            e('table', { className: 'w-full text-sm' },
+                                e('thead', null, e('tr', { className: 'bg-slate-50 text-xs text-slate-500 font-bold border-b' },
+                                    e('th', { className: 'px-4 py-3 text-left w-8' }, 'No'),
+                                    e('th', { className: 'px-4 py-3 text-left min-w-[120px]' }, '항목(유해인자)'),
+                                    e('th', { className: 'px-4 py-3 text-left min-w-[110px]' }, '측정방법'),
+                                    e('th', { className: 'px-4 py-3 text-left min-w-[140px]' }, '분석법(구분)'),
+                                    e('th', { className: 'px-4 py-3 text-right min-w-[150px]' }, '계약 단가 (원)'),
+                                    e('th', { className: 'px-4 py-3 text-center w-14' }, '삭제')
+                                )),
+                                e('tbody', { className: 'divide-y divide-slate-100' },
+                                    contractData.ana.length === 0
+                                        ? e('tr', null, e('td', { colSpan: 6, className: 'px-6 py-10 text-center text-slate-300 font-bold' }, '분석수수료 계약단가 항목이 없습니다. [+ 항목 추가]를 눌러 등록하세요.'))
+                                        : contractData.ana.map((it, idx) => e('tr', { key: idx, className: 'hover:bg-blue-50/30 transition-colors' },
+                                            e('td', { className: 'px-4 py-2 text-slate-400 font-bold text-xs' }, idx + 1),
+                                            e('td', { className: 'px-2 py-1.5' },
+                                                e('input', { type: 'text', value: it.sub_category, onChange: ev => updateAna(idx, 'sub_category', ev.target.value), placeholder: '유해인자', className: 'w-full px-2 py-1 border border-slate-200 rounded text-xs font-medium focus:ring-1 focus:ring-blue-300 outline-none' })
+                                            ),
+                                            e('td', { className: 'px-2 py-1.5' },
+                                                e('input', { type: 'text', value: it.method_name, onChange: ev => updateAna(idx, 'method_name', ev.target.value), placeholder: '측정방법', className: 'w-full px-2 py-1 border border-slate-200 rounded text-xs font-medium focus:ring-1 focus:ring-blue-300 outline-none' })
+                                            ),
+                                            e('td', { className: 'px-2 py-1.5' },
+                                                e('input', { type: 'text', value: it.item_name, onChange: ev => updateAna(idx, 'item_name', ev.target.value), className: 'w-full px-2 py-1 border border-slate-200 rounded text-xs font-black focus:ring-1 focus:ring-blue-300 outline-none' })
+                                            ),
+                                            e('td', { className: 'px-3 py-1.5 text-right' },
+                                                e('input', { type: 'text', value: fmt(it.unit_price), onChange: ev => updateAna(idx, 'unit_price', ev.target.value), className: 'w-36 px-3 py-1.5 border border-slate-200 rounded-lg text-right text-xs font-black outline-none focus:ring-2 focus:ring-blue-300 bg-white' })
+                                            ),
+                                            e('td', { className: 'px-4 py-2 text-center' },
+                                                e('button', { onClick: () => deleteAnaItem(idx), className: 'px-2 py-1 text-xs bg-red-50 text-red-400 rounded-lg hover:bg-red-100 hover:text-red-600 font-bold' }, '삭제')
+                                            )
+                                        ))
+                                )
+                            )
+                        ),
+
+                        // 항목 추가 인라인 폼
+                        showAddAna && e('div', { className: 'p-5 bg-blue-50/50 border-t border-blue-100' },
+                            e('div', { className: 'flex gap-3 items-end flex-wrap' },
+                                e('div', { className: 'space-y-1' },
+                                    e('label', { className: 'text-xs font-bold text-slate-500' }, '항목(유해인자)'),
+                                    e('input', { type: 'text', value: newAnaItem.sub_category, onChange: ev => setNewAnaItem(p => ({...p, sub_category: ev.target.value })), placeholder: '예: 유기화합물', className: 'px-3 py-2 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-300 w-32' })
+                                ),
+                                e('div', { className: 'space-y-1' },
+                                    e('label', { className: 'text-xs font-bold text-slate-500' }, '측정방법'),
+                                    e('input', { type: 'text', value: newAnaItem.method_name, onChange: ev => setNewAnaItem(p => ({...p, method_name: ev.target.value })), placeholder: '예: 여과채취법', className: 'px-3 py-2 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-300 w-36' })
+                                ),
+                                e('div', { className: 'space-y-1' },
+                                    e('label', { className: 'text-xs font-bold text-blue-600' }, '분석법(구분) *'),
+                                    e('input', { type: 'text', value: newAnaItem.item_name, onChange: ev => setNewAnaItem(p => ({...p, item_name: ev.target.value })), placeholder: '예: GC법(다성분)', className: 'px-3 py-2 border-2 border-blue-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-400 font-bold w-40' })
+                                ),
+                                e('div', { className: 'flex gap-2' },
+                                    e('button', { onClick: () => setShowAddAna(false), className: 'px-4 py-2 bg-slate-100 text-slate-600 font-bold rounded-lg text-sm' }, '취소'),
+                                    e('button', { onClick: addAnaItem, className: 'px-4 py-2 bg-blue-600 text-white font-bold rounded-lg text-sm shadow' }, '추가')
+                                )
+                            )
+                        )
+                    ),
+
+                    // ── 저장 버튼 ──
+                    e('div', { className: 'flex justify-end' },
+                        e('button', {
+                            onClick: saveContract, disabled: saving || !dirty,
+                            className: `px-8 py-3 font-bold rounded-xl shadow transition-all text-sm ${dirty ? 'bg-rose-600 text-white hover:bg-rose-700' : 'bg-slate-100 text-slate-400 cursor-not-allowed'}`
+                        }, saving ? '저장 중...' : (dirty ? `💾 [${selectedClient.client_name}] 계약단가 저장` : '변경사항 없음'))
+                    )
+                ),
+
+                // 거래처 미선택 안내
+                !selectedClient && e('div', { className: 'bg-white rounded-2xl border border-dashed border-rose-200 py-16 text-center' },
+                    e('div', { className: 'text-4xl mb-3' }, '🏭'),
+                    e('p', { className: 'font-bold text-slate-500' }, '위에서 사업장(거래처)을 선택하면'),
+                    e('p', { className: 'text-slate-400 text-sm mt-1' }, '해당 사업장의 계약단가를 등록/수정할 수 있습니다.')
+                )
+            );
+        }
+
+        // ==== 할인단가 (정액할인) 탭 ====
+        function DiscountPriceTab() {
+            const [discountData, setDiscountData] = useState(null);
+            const [saving, setSaving] = useState(false);
+            const [dirty, setDirty] = useState(false);
+            const [newAnaItem, setNewAnaItem] = useState({ sub_category: '', method_name: '', item_name: '' });
+            const [showAddAna, setShowAddAna] = useState(false);
+
+            useEffect(() => { loadData(); }, []);
+
+            const loadData = async () => {
+                // 1. 표준 기본관리비 규격
+                const yr = new Date().getFullYear();
+                const { data: stdData } = await supabase.from('kiwe_price_settings')
+                    .select('item_name').eq('price_type', '일반').eq('category', '기본관리비').eq('year', yr).order('sort_order');
+                let mgmtKeys = stdData && stdData.length > 0 ? stdData.map(d => d.item_name) : ['1~49인','50~99인','100~299인','300~499인','500~999인','1000~1999인','2000~2999인','3000인 이상'];
+
+                // 2. 할인단가 가져오기
+                const { data } = await supabase.from('kiwe_price_settings')
+                    .select('*').eq('price_type', '할인단가').order('sort_order');
+                const rows = data || [];
+                const mgmtRows = rows.filter(r => r.category === '기본관리비');
+                const anaRows = rows.filter(r => r.category === '분석수수료');
+
+                const mgmt = mgmtKeys.map(name => {
+                    const found = mgmtRows.find(r => r.item_name === name);
+                    return { item_name: name, unit_price: found ? found.unit_price : 0, id: found ? found.id : null };
+                });
+                const ana = anaRows.map(r => ({ item_name: r.item_name, unit_price: r.unit_price, id: r.id, sub_category: r.sub_category || '', method_name: r.method_name || '' }));
+
+                setDiscountData({ mgmt, ana });
+                setDirty(false);
+            };
+
+            const updateMgmt = (idx, val) => {
+                setDiscountData(p => {
+                    const next = { ...p, mgmt: [...p.mgmt] };
+                    next.mgmt[idx] = { ...next.mgmt[idx], unit_price: Number(String(val).replace(/,/g,'')) || 0 };
+                    return next;
+                });
+                setDirty(true);
+            };
+
+            const updateAna = (idx, field, val) => {
+                setDiscountData(p => {
+                    const next = { ...p, ana: [...p.ana] };
+                    next.ana[idx] = { ...next.ana[idx], [field]: field === 'unit_price' ? (Number(String(val).replace(/,/g,'')) || 0) : val };
+                    return next;
+                });
+                setDirty(true);
+            };
+
+            const addAnaItem = () => {
+                if (!newAnaItem.item_name.trim()) { alert('분석법(구분)을 입력하세요.'); return; }
+                setDiscountData(p => ({
+                    ...p,
+                    ana: [...p.ana, { item_name: newAnaItem.item_name.trim(), unit_price: 0, id: null, sub_category: newAnaItem.sub_category.trim(), method_name: newAnaItem.method_name.trim() }]
+                }));
+                setNewAnaItem({ sub_category: '', method_name: '', item_name: '' });
+                setShowAddAna(false);
+                setDirty(true);
+            };
+
+            const deleteAnaItem = async (idx) => {
+                const it = discountData.ana[idx];
+                if (!confirm(`'${it.item_name}' 항목을 삭제하시겠습니까?`)) return;
+                if (it.id) {
+                    const { error } = await supabase.from('kiwe_price_settings').delete().eq('id', it.id);
+                    if (error) { alert('삭제 오류: ' + error.message); return; }
+                }
+                setDiscountData(p => ({ ...p, ana: p.ana.filter((_, i) => i !== idx) }));
+                setDirty(true);
+            };
+
+            const saveDiscount = async () => {
+                setSaving(true);
+                try {
+                    const rows = [];
+                    discountData.mgmt.forEach((it, i) => rows.push({ price_type: '할인단가', category: '기본관리비', item_name: it.item_name, unit_price: it.unit_price, sort_order: i+1, is_fixed: true, year: 0, sub_category: null, method_name: null }));
+                    discountData.ana.forEach((it, i) => rows.push({ price_type: '할인단가', category: '분석수수료', item_name: it.item_name, unit_price: it.unit_price, sort_order: i+1, is_fixed: false, year: 0, sub_category: it.sub_category || null, method_name: it.method_name || null }));
+
+                    const { error } = await supabase.from('kiwe_price_settings')
+                        .upsert(rows, { onConflict: 'year,price_type,category,item_name' });
+                    if (error) throw error;
+                    alert(`할인단가(정액할인)가 저장되었습니다.`);
+                    setDirty(false);
+                    await loadData();
+                } catch(err) { alert('저장 실패: ' + err.message); }
+                setSaving(false);
+            };
+
+            const fmt = n => Number(n || 0).toLocaleString('ko-KR');
+
+            return e('div', { className: 'max-w-5xl mx-auto space-y-6' },
+                e('div', { className: 'bg-teal-50 border border-teal-200 rounded-2xl p-5' },
+                    e('h3', { className: 'text-lg font-black text-teal-800 mb-1' }, '할인단가 (정액할인)'),
+                    e('p', { className: 'text-sm text-teal-600 font-medium' }, '견적서에 할인율을 크게 표시하는 대신, 애초에 낮게 책정된 기본 단가를 별도로 설정합니다.')
+                ),
+                discountData && e('div', { className: 'space-y-5' },
+                    // ① 기본관리비
+                    e('div', { className: 'bg-white rounded-2xl border border-teal-200 shadow-sm overflow-hidden' },
+                        e('div', { className: 'bg-teal-50 px-6 py-4 border-b border-teal-200' },
+                            e('h3', { className: 'font-black text-teal-800 text-base' }, '① 기존관리비 할인단가'),
+                            e('p', { className: 'text-xs text-teal-600 font-bold mt-0.5' }, '사업장 규모별 할인된 단가를 입력하세요. (0원 입력 시 일반 단가 적용)')
+                        ),
+                        e('div', { className: 'overflow-x-auto' },
+                            e('table', { className: 'w-full text-sm' },
+                                e('thead', null, e('tr', { className: 'bg-slate-50 text-xs text-slate-500 font-bold border-b' },
+                                    e('th', { className: 'px-5 py-3 text-left w-8' }, 'No'),
+                                    e('th', { className: 'px-5 py-3 text-left' }, '규격 (사업장 인원수)'),
+                                    e('th', { className: 'px-5 py-3 text-right min-w-[160px]' }, '할인 단가 (원)')
+                                )),
+                                e('tbody', { className: 'divide-y divide-slate-100' },
+                                    discountData.mgmt.map((it, idx) => e('tr', { key: idx, className: 'hover:bg-teal-50/30 transition-colors' },
+                                        e('td', { className: 'px-5 py-2.5 text-slate-400 font-bold text-xs' }, idx + 1),
+                                        e('td', { className: 'px-5 py-2.5 font-bold text-slate-700' }, it.item_name),
+                                        e('td', { className: 'px-4 py-2 text-right' },
+                                            e('input', {
+                                                type: 'text', value: fmt(it.unit_price),
+                                                onChange: ev => updateMgmt(idx, ev.target.value),
+                                                className: 'w-36 px-3 py-1.5 border border-slate-200 rounded-lg text-right text-sm font-black outline-none focus:ring-2 focus:ring-teal-300 bg-white'
+                                            })
+                                        )
+                                    ))
+                                )
+                            )
+                        )
+                    ),
+                    // ② 분석수수료
+                    e('div', { className: 'bg-white rounded-2xl border border-teal-200 shadow-sm overflow-hidden' },
+                        e('div', { className: 'bg-teal-50 px-6 py-4 border-b border-teal-200 flex justify-between items-center' },
+                            e('div', null,
+                                e('h3', { className: 'font-black text-teal-800 text-base' }, '② 분석수수료 할인단가'),
+                                e('p', { className: 'text-xs text-teal-600 font-bold mt-0.5' }, '할인이 적용된 분석방법별 단가를 입력합니다. 항목이 없으면 일반 단가가 적용됩니다.')
+                            ),
+                            e('button', {
+                                onClick: () => setShowAddAna(true),
+                                className: 'px-4 py-2 bg-teal-600 text-white text-xs font-bold rounded-xl hover:bg-teal-700 shadow-sm'
+                            }, '+ 항목 추가')
+                        ),
+                        e('div', { className: 'overflow-x-auto' },
+                            e('table', { className: 'w-full text-sm' },
+                                e('thead', null, e('tr', { className: 'bg-slate-50 text-xs text-slate-500 font-bold border-b' },
+                                    e('th', { className: 'px-4 py-3 text-left w-8' }, 'No'),
+                                    e('th', { className: 'px-4 py-3 text-left min-w-[120px]' }, '항목(유해인자)'),
+                                    e('th', { className: 'px-4 py-3 text-left min-w-[110px]' }, '측정방법'),
+                                    e('th', { className: 'px-4 py-3 text-left min-w-[140px]' }, '분석법(구분)'),
+                                    e('th', { className: 'px-4 py-3 text-right min-w-[150px]' }, '할인 단가 (원)'),
+                                    e('th', { className: 'px-4 py-3 text-center w-14' }, '삭제')
+                                )),
+                                e('tbody', { className: 'divide-y divide-slate-100' },
+                                    discountData.ana.length === 0
+                                        ? e('tr', null, e('td', { colSpan: 6, className: 'px-6 py-10 text-center text-slate-300 font-bold' }, '할인단가 항목이 없습니다. [+ 항목 추가]를 눌러 등록하세요.'))
+                                        : discountData.ana.map((it, idx) => e('tr', { key: idx, className: 'hover:bg-teal-50/30 transition-colors' },
+                                            e('td', { className: 'px-4 py-2 text-slate-400 font-bold text-xs' }, idx + 1),
+                                            e('td', { className: 'px-2 py-1.5' },
+                                                e('input', { type: 'text', value: it.sub_category, onChange: ev => updateAna(idx, 'sub_category', ev.target.value), placeholder: '유해인자', className: 'w-full px-2 py-1 border border-slate-200 rounded text-xs font-medium focus:ring-1 focus:ring-teal-300 outline-none' })
+                                            ),
+                                            e('td', { className: 'px-2 py-1.5' },
+                                                e('input', { type: 'text', value: it.method_name, onChange: ev => updateAna(idx, 'method_name', ev.target.value), placeholder: '측정방법', className: 'w-full px-2 py-1 border border-slate-200 rounded text-xs font-medium focus:ring-1 focus:ring-teal-300 outline-none' })
+                                            ),
+                                            e('td', { className: 'px-2 py-1.5' },
+                                                e('input', { type: 'text', value: it.item_name, onChange: ev => updateAna(idx, 'item_name', ev.target.value), className: 'w-full px-2 py-1 border border-slate-200 rounded text-xs font-black focus:ring-1 focus:ring-teal-300 outline-none' })
+                                            ),
+                                            e('td', { className: 'px-3 py-1.5 text-right' },
+                                                e('input', { type: 'text', value: fmt(it.unit_price), onChange: ev => updateAna(idx, 'unit_price', ev.target.value), className: 'w-36 px-3 py-1.5 border border-slate-200 rounded-lg text-right text-xs font-black outline-none focus:ring-2 focus:ring-teal-300 bg-white' })
+                                            ),
+                                            e('td', { className: 'px-4 py-2 text-center' },
+                                                e('button', { onClick: () => deleteAnaItem(idx), className: 'px-2 py-1 text-xs bg-red-50 text-red-400 rounded-lg hover:bg-red-100 hover:text-red-600 font-bold' }, '삭제')
+                                            )
+                                        ))
+                                )
+                            )
+                        ),
+                        // 항목 추가 인라인 폼
+                        showAddAna && e('div', { className: 'p-5 bg-teal-50/50 border-t border-teal-100' },
+                            e('div', { className: 'flex gap-3 items-end flex-wrap' },
+                                e('div', { className: 'space-y-1' },
+                                    e('label', { className: 'text-xs font-bold text-slate-500' }, '항목(유해인자)'),
+                                    e('input', { type: 'text', value: newAnaItem.sub_category, onChange: ev => setNewAnaItem(p => ({...p, sub_category: ev.target.value })), placeholder: '예: 유기화합물', className: 'px-3 py-2 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-teal-300 w-32' })
+                                ),
+                                e('div', { className: 'space-y-1' },
+                                    e('label', { className: 'text-xs font-bold text-slate-500' }, '측정방법'),
+                                    e('input', { type: 'text', value: newAnaItem.method_name, onChange: ev => setNewAnaItem(p => ({...p, method_name: ev.target.value })), placeholder: '예: 여과채취법', className: 'px-3 py-2 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-teal-300 w-36' })
+                                ),
+                                e('div', { className: 'space-y-1' },
+                                    e('label', { className: 'text-xs font-bold text-teal-600' }, '분석법(구분) *'),
+                                    e('input', { type: 'text', value: newAnaItem.item_name, onChange: ev => setNewAnaItem(p => ({...p, item_name: ev.target.value })), placeholder: '예: GC법(다성분)', className: 'px-3 py-2 border-2 border-teal-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-teal-400 font-bold w-40' })
+                                ),
+                                e('div', { className: 'flex gap-2' },
+                                    e('button', { onClick: () => setShowAddAna(false), className: 'px-4 py-2 bg-slate-100 text-slate-600 font-bold rounded-lg text-sm' }, '취소'),
+                                    e('button', { onClick: addAnaItem, className: 'px-4 py-2 bg-teal-600 text-white font-bold rounded-lg text-sm shadow' }, '추가')
+                                )
+                            )
+                        )
+                    ),
+                    // ── 저장 버튼 ──
+                    e('div', { className: 'flex justify-end' },
+                        e('button', {
+                            onClick: saveDiscount, disabled: saving || !dirty,
+                            className: `px-8 py-3 font-bold rounded-xl shadow transition-all text-sm ${dirty ? 'bg-teal-600 text-white hover:bg-teal-700' : 'bg-slate-100 text-slate-400 cursor-not-allowed'}`
+                        }, saving ? '저장 중...' : (dirty ? `💾 할인단가 저장` : '변경사항 없음'))
+                    )
+                )
+            );
+        }
+
+        // (PriceExcelImporter removed - inline Excel upload deprecated in favor of clean manual entry)
+        // Legacy stub kept to avoid reference errors
+        function PriceExcelImporter({ onClose }) {
+            return e('div', { className: 'fixed inset-0 z-50 bg-slate-900/60 flex items-center justify-center p-6' },
+                e('div', { className: 'bg-white rounded-2xl p-8 max-w-sm w-full shadow-2xl' },
+                    e('p', { className: 'font-bold text-slate-700 mb-6' }, 'Excel 가져오기는 현재 비활성화되었습니다.'),
+                    e('button', { onClick: onClose, className: 'w-full py-3 bg-slate-100 rounded-xl font-bold' }, '닫기')
+                )
+            );
+        }
+
+        // ==== TAB 5: 거래처 관리 ====
+        function PartnersTab() {
+            const [partners, setPartners] = useState([]);
+            const [filteredPartners, setFilteredPartners] = useState([]);
+            const [activeCategory, setActiveCategory] = useState('전체');
+            const [isModalOpen, setIsModalOpen] = useState(false);
+            const [isEdit, setIsEdit] = useState(false);
+            const [formData, setFormData] = useState({
+                partner_id: null,
+                category: '분석기관',
+                partner_name: '',
+                contact: '',
+                manager: '',
+                address: '',
+                is_default_lab: false
+            });
+
+            const categories = ['전체', '분석기관', '측정장비업체', '분석장비업체', '시약업체', '소모품업체'];
+
+            useEffect(() => { fetchPartners(); }, []);
+
+            useEffect(() => {
+                if (activeCategory === '전체') {
+                    setFilteredPartners(partners);
+                } else {
+                    setFilteredPartners(partners.filter(p => p.category === activeCategory));
+                }
+            }, [activeCategory, partners]);
+
+            const fetchPartners = async () => {
+                const { data } = await supabase.from('kiwe_partners').select('*').order('is_default_lab', { ascending: false }).order('partner_id');
+                setPartners(data || []);
+            };
+
+            const openNew = () => {
+                setFormData({
+                    partner_id: null,
+                    category: '분석기관',
+                    partner_name: '',
+                    contact: '',
+                    manager: '',
+                    address: '',
+                    is_default_lab: false
+                });
+                setIsEdit(false);
+                setIsModalOpen(true);
+            };
+
+            const openEdit = (partner) => {
+                setFormData({ ...partner });
+                setIsEdit(true);
+                setIsModalOpen(true);
+            };
+
+            const closeModal = () => setIsModalOpen(false);
+
+            const handleSave = async (ev) => {
+                ev.preventDefault();
+                try {
+                    const payload = {
+                        category: formData.category,
+                        partner_name: formData.partner_name,
+                        contact: formData.contact,
+                        manager: formData.manager,
+                        address: formData.address,
+                        is_default_lab: formData.is_default_lab
+                    };
+
+                    if (isEdit) {
+                        const { error } = await supabase
+                            .from('kiwe_partners')
+                            .update(payload)
+                            .eq('partner_id', formData.partner_id);
+                        if (error) throw error;
+                    } else {
+                        const { error } = await supabase
+                            .from('kiwe_partners')
+                            .insert([payload]);
+                        if (error) throw error;
+                    }
+
+                    alert('저장되었습니다.');
+                    closeModal();
+                    fetchPartners();
+                } catch (err) {
+                    console.error('Save error:', err);
+                    alert('저장 중 오류: ' + err.message);
+                }
+            };
+
+            const handleDelete = async () => {
+                if (confirm('이 거래처를 삭제하시겠습니까?')) {
+                    try {
+                        const { error } = await supabase
+                            .from('kiwe_partners')
+                            .delete()
+                            .eq('partner_id', formData.partner_id);
+                        if (error) throw error;
+                        alert('삭제되었습니다.');
+                        closeModal();
+                        fetchPartners();
+                    } catch (err) {
+                        console.error('Delete error:', err);
+                        alert('삭제 중 오류: ' + err.message);
+                    }
+                }
+            };
+
+            const setDefaultLab = async (partnerId) => {
+                if (!confirm('이 업체를 기본 분석기관으로 설정하시겠습니까?\n(기존 기본 기관은 해제됩니다)')) return;
+
+                try {
+                    // 1. 모든 파트너의 is_default_lab을 false로 설정
+                    await supabase
+                        .from('kiwe_partners')
+                        .update({ is_default_lab: false })
+                        .neq('partner_id', 0);
+
+                    // 2. 선택한 파트너만 true로 설정
+                    const { error } = await supabase
+                        .from('kiwe_partners')
+                        .update({ is_default_lab: true })
+                        .eq('partner_id', partnerId);
+
+                    if (error) throw error;
+                    alert('기본 분석기관이 설정되었습니다.');
+                    fetchPartners();
+                } catch (err) {
+                    console.error('Set default error:', err);
+                    alert('설정 중 오류: ' + err.message);
+                }
+            };
+
+            return e('div', { className: "max-w-7xl mx-auto space-y-6" },
+                // Header & New Button
+                e('div', { className: "flex justify-between items-center px-2" },
+                    e('div', { className: "space-y-1" },
+                        e('h2', { className: "text-2xl font-black text-slate-800" }, "거래처 관리"),
+                        e('p', { className: "text-slate-500 font-medium" }, "분석기관, 장비업체, 시약업체 등 거래처 정보를 관리합니다.")
+                    ),
+                    e('button', {
+                        onClick: openNew,
+                        className: "bg-blue-600 text-white px-8 py-3 rounded-xl font-bold hover:bg-blue-700 shadow-lg transition-all transform hover:-translate-y-1"
+                    }, "신규 거래처 등록")
+                ),
+
+                // Category Filter
+                e('div', { className: "bg-white rounded-xl shadow-sm border border-slate-100 p-2 flex gap-2 overflow-x-auto" },
+                    categories.map(cat => e('button', {
+                        key: cat,
+                        onClick: () => setActiveCategory(cat),
+                        className: `px-6 py-2.5 rounded-lg font-bold transition-all whitespace-nowrap ${activeCategory === cat
+                            ? 'bg-blue-600 text-white shadow-md'
+                            : 'text-slate-600 hover:bg-slate-100'
+                            }`
+                    }, cat))
+                ),
+
+                // Partners Table
+                e('div', { className: "bg-white rounded-2xl shadow-lg border border-slate-100 overflow-hidden" },
+                    e('table', { className: "w-full text-left table-fixed" },
+                        e('thead', { className: "bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider text-xs" },
+                            e('tr', null,
+                                e('th', { className: "px-6 py-3", style: { width: '12%' } }, "구분"),
+                                e('th', { className: "px-6 py-3", style: { width: '20%' } }, "거래처명"),
+                                e('th', { className: "px-6 py-3", style: { width: '10%' } }, "담당자"),
+                                e('th', { className: "px-6 py-3", style: { width: '13%' } }, "연락처"),
+                                e('th', { className: "px-6 py-3", style: { width: '25%' } }, "주소"),
+                                e('th', { className: "px-6 py-3 text-center", style: { width: '10%' } }, "기본기관"),
+                                e('th', { className: "px-6 py-3 text-right", style: { width: '10%' } }, "관리")
+                            )
+                        ),
+                        e('tbody', { className: "divide-y divide-slate-100 text-sm" },
+                            filteredPartners.length === 0 ?
+                                e('tr', null,
+                                    e('td', { colSpan: "7", className: "px-6 py-10 text-center text-slate-400 font-medium" },
+                                        "등록된 거래처 정보가 없습니다."
+                                    )
+                                ) :
+                                filteredPartners.map((p) => e('tr', { key: p.partner_id, className: "hover:bg-blue-50/50 transition-colors" },
+                                    e('td', { className: "px-6 py-3" },
+                                        e('span', { className: "px-2 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-bold" }, p.category)
+                                    ),
+                                    e('td', { className: "px-6 py-3 font-bold text-slate-800" }, p.partner_name),
+                                    e('td', { className: "px-6 py-3 text-slate-600" }, p.manager || '-'),
+                                    e('td', { className: "px-6 py-3 font-mono text-slate-600 text-xs" }, p.contact || '-'),
+                                    e('td', { className: "px-6 py-3 text-slate-600 truncate", title: p.address || '-' }, p.address || '-'),
+                                    e('td', { className: "px-6 py-3 text-center" },
+                                        p.category === '분석기관' && (
+                                            p.is_default_lab ?
+                                                e('div', { className: "flex items-center justify-center gap-2" },
+                                                    e('i', { 'data-lucide': "star", className: "w-4 h-4 text-yellow-500 fill-yellow-500" }),
+                                                    e('span', { className: "text-xs font-bold text-yellow-600" }, "기본")
+                                                ) :
+                                                e('button', {
+                                                    onClick: () => setDefaultLab(p.partner_id),
+                                                    className: "px-2 py-1 bg-slate-100 text-slate-600 rounded-md hover:bg-yellow-100 hover:text-yellow-700 transition-colors text-xs font-bold"
+                                                }, "기본 설정")
+                                        )
+                                    ),
+                                    e('td', { className: "px-6 py-3 text-right" },
+                                        e('button', {
+                                            onClick: () => openEdit(p),
+                                            className: "bg-slate-100 text-slate-700 font-bold px-4 py-1.5 rounded-lg hover:bg-slate-200 transition-colors text-xs"
+                                        }, "수정/관리")
+                                    )
+                                ))
+                        )
+                    )
+                ),
+
+                // Modal
+                isModalOpen && e('div', {
+                    className: "fixed inset-0 bg-slate-900/70 backdrop-blur-sm flex items-center justify-center z-50 p-6",
+                    onClick: closeModal
+                },
+                    e('div', {
+                        className: "bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden animate-slideUp",
+                        onClick: (ev) => ev.stopPropagation()
+                    },
+                        e('div', { className: "p-8 border-b bg-slate-50" },
+                            e('h3', { className: "text-2xl font-black text-slate-800" },
+                                isEdit ? '거래처 정보 수정' : '신규 거래처 등록'
+                            )
+                        ),
+                        e('form', { onSubmit: handleSave, className: "p-8 space-y-6" },
+                            // Row 1
+                            e('div', { className: "grid grid-cols-2 gap-4" },
+                                e('div', { className: "space-y-2" },
+                                    e('label', { className: "text-sm font-bold text-slate-500" }, "구분 *"),
+                                    e('select', {
+                                        required: true,
+                                        value: formData.category,
+                                        onChange: (ev) => setFormData({ ...formData, category: ev.target.value }),
+                                        className: "w-full p-4 border rounded-xl outline-none focus:border-blue-500 bg-slate-50 focus:bg-white transition-colors font-bold"
+                                    },
+                                        e('option', { value: "분석기관" }, "분석기관"),
+                                        e('option', { value: "측정장비업체" }, "측정장비업체"),
+                                        e('option', { value: "분석장비업체" }, "분석장비업체"),
+                                        e('option', { value: "시약업체" }, "시약업체"),
+                                        e('option', { value: "소모품업체" }, "소모품업체")
+                                    )
+                                ),
+                                e('div', { className: "space-y-2" },
+                                    e('label', { className: "text-sm font-bold text-slate-500" }, "거래처명 *"),
+                                    e('input', {
+                                        type: "text",
+                                        required: true,
+                                        value: formData.partner_name,
+                                        onChange: (ev) => setFormData({ ...formData, partner_name: ev.target.value }),
+                                        className: "w-full p-4 border rounded-xl outline-none focus:border-blue-500 bg-slate-50 focus:bg-white transition-colors font-bold"
+                                    })
+                                )
+                            ),
+                            // Row 2
+                            e('div', { className: "grid grid-cols-2 gap-4" },
+                                e('div', { className: "space-y-2" },
+                                    e('label', { className: "text-sm font-bold text-slate-500" }, "담당자"),
+                                    e('input', {
+                                        type: "text",
+                                        value: formData.manager,
+                                        onChange: (ev) => setFormData({ ...formData, manager: ev.target.value }),
+                                        className: "w-full p-4 border rounded-xl outline-none focus:border-blue-500 bg-slate-50 focus:bg-white transition-colors font-bold"
+                                    })
+                                ),
+                                e('div', { className: "space-y-2" },
+                                    e('label', { className: "text-sm font-bold text-slate-500" }, "연락처"),
+                                    e('input', {
+                                        type: "text",
+                                        value: formData.contact,
+                                        onChange: (ev) => setFormData({ ...formData, contact: ev.target.value }),
+                                        className: "w-full p-4 border rounded-xl outline-none focus:border-blue-500 bg-slate-50 focus:bg-white transition-colors font-bold"
+                                    })
+                                )
+                            ),
+                            // Row 3
+                            e('div', { className: "space-y-2" },
+                                e('label', { className: "text-sm font-bold text-slate-500" }, "주소"),
+                                e('input', {
+                                    type: "text",
+                                    value: formData.address,
+                                    onChange: (ev) => setFormData({ ...formData, address: ev.target.value }),
+                                    className: "w-full p-4 border rounded-xl outline-none focus:border-blue-500 bg-slate-50 focus:bg-white transition-colors font-bold"
+                                })
+                            ),
+                            // Buttons
+                            e('div', { className: "pt-6 flex gap-4" },
+                                e('button', {
+                                    type: "button",
+                                    onClick: closeModal,
+                                    className: "flex-1 py-4 bg-slate-100 text-slate-600 font-bold rounded-xl hover:bg-slate-200 transition-colors"
+                                }, "취소"),
+                                isEdit && e('button', {
+                                    type: "button",
+                                    onClick: handleDelete,
+                                    className: "flex-1 py-4 bg-red-100 text-red-600 font-bold rounded-xl hover:bg-red-200 transition-colors"
+                                }, "삭제"),
+                                e('button', {
+                                    type: "submit",
+                                    className: "flex-[2] py-4 bg-blue-600 text-white font-bold rounded-xl shadow-lg hover:bg-blue-700 transition-colors"
+                                }, "저장하기")
+                            )
+                        )
+                    )
+                )
+            );
+        }
+
+        // ==== TAB 6: 차량 관리 ====
+        function VehicleTab() {
+            const [viewMode, setViewMode] = useState('list'); // 'list' or 'logs'
+            
+            // Vehicles State
+            const [vehicles, setVehicles] = useState([]);
+            const [isModalOpen, setIsModalOpen] = useState(false);
+            const [formData, setFormData] = useState({ id: '', name: '', type: 'EV', contract_period_end: '' });
+            const [isEdit, setIsEdit] = useState(false);
+
+            // Logs State
+            const [selectedVid, setSelectedVid] = useState('');
+            const [logs, setLogs] = useState([]);
+            const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
+            const [currentMonth, setCurrentMonth] = useState(new Date().getMonth() + 1);
+
+            useEffect(() => {
+                fetchVehicles();
+            }, []);
+
+            useEffect(() => {
+                if (viewMode === 'logs' && selectedVid) {
+                    VehicleAPI.fetchLogs(selectedVid, currentYear, currentMonth).then(setLogs);
+                }
+            }, [viewMode, selectedVid, currentYear, currentMonth]);
+
+            const fetchVehicles = async () => {
+                const data = await VehicleAPI.fetchVehicles();
+                setVehicles(data || []);
+                if (data && data.length > 0 && !selectedVid) {
+                    setSelectedVid(data[0].id);
+                }
+            };
+
+            // ---- Vehicle Registration Handlers ----
+            const openNewVehicle = () => {
+                setFormData({ id: '', name: '', type: 'EV', contract_period_end: '' });
+                setIsEdit(false);
+                setIsModalOpen(true);
+            };
+
+            const openEditVehicle = (v) => {
+                setFormData({ ...v });
+                setIsEdit(true);
+                setIsModalOpen(true);
+            };
+
+            const handleSaveVehicle = async (e) => {
+                e.preventDefault();
+                try {
+                    await VehicleAPI.upsertVehicle(formData);
+                    setIsModalOpen(false);
+                    fetchVehicles();
+                } catch (err) {
+                    alert('차량 저장에 실패했습니다.');
+                }
+            };
+
+            const handleDeleteVehicle = async () => {
+                if (!confirm('이 차량 정보를 삭제하시겠습니까? (운행기록도 확인 필요)')) return;
+                try {
+                    await VehicleAPI.deleteVehicle(formData.id);
+                    setIsModalOpen(false);
+                    fetchVehicles();
+                } catch (err) {
+                    alert('차량 삭제에 실패했습니다.');
+                }
+            };
+
+            // ---- Log Editing Handlers ----
+            const activeVehicle = useMemo(() => vehicles.find(v => v.id === selectedVid) || null, [vehicles, selectedVid]);
+            const stats = useMemo(() => VehicleAPI.calculateStats(logs), [logs]);
+            
+            const handleAddLog = () => {
+                const newRow = {
+                    id: '',
+                    vehicleId: selectedVid,
+                    date: `${currentYear}-${String(currentMonth).padStart(2,'0')}-${String(new Date().getDate()).padStart(2,'0')}`,
+                    driver: '',
+                    purpose: '업무용',
+                    beforeDist: logs.length > 0 ? logs[logs.length-1].afterDist : 0,
+                    afterDist: '',
+                    chargeCost: 0,
+                    chargeKwh: 0,
+                    tollFee: 0,
+                    remarks: ''
+                };
+                setLogs([...logs, newRow]);
+            };
+
+            const handleLogChange = (index, field, value) => {
+                const newLogs = [...logs];
+                newLogs[index][field] = value;
+                setLogs(newLogs);
+            };
+
+            const handleSaveLog = (index) => {
+                const log = logs[index];
+                if (!log.date) return alert('날짜를 입력하세요.');
+                VehicleAPI.upsertLog(log).then(saved => {
+                    const newLogs = [...logs];
+                    newLogs[index] = saved;
+                    setLogs(newLogs);
+                    alert('운행기록이 저장되었습니다.');
+                });
+            };
+
+            const exportExcel = () => {
+                if (!activeVehicle) return;
+                VehicleAPI.exportToExcel(logs, activeVehicle, currentYear);
+            };
+
+            const fmtNum = (n) => Number(n||0).toLocaleString();
+
+            return React.createElement('div', { className: 'max-w-7xl mx-auto space-y-6' },
+                // Header & View Toggle
+                React.createElement('div', { className: 'flex justify-between items-center px-2' },
+                    React.createElement('div', { className: 'space-y-1' },
+                        React.createElement('h2', { className: 'text-2xl font-black text-slate-800' }, '차량 관리'),
+                        React.createElement('p', { className: 'text-slate-500 font-medium' }, 
+                            viewMode === 'list' ? '법인 차량의 목록, 계약기간, 차종 등을 관리합니다.' : '법인 차량의 운행 일지 및 차계부를 관리하고 출력합니다.'
+                        )
+                    ),
+                    React.createElement('div', { className: 'flex bg-slate-100 p-1 rounded-xl shadow-inner' },
+                        React.createElement('button', { 
+                            onClick: () => setViewMode('list'), 
+                            className: `px-6 py-2 rounded-lg font-bold text-sm transition-all ${viewMode === 'list' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}` 
+                        }, '차량 등록 현황'),
+                        React.createElement('button', { 
+                            onClick: () => setViewMode('logs'), 
+                            className: `px-6 py-2 rounded-lg font-bold text-sm transition-all ${viewMode === 'logs' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}` 
+                        }, '차계부 (운행일지)')
+                    )
+                ),
+
+                // View: Vehicle List
+                viewMode === 'list' && React.createElement(React.Fragment, null,
+                    React.createElement('div', { className: 'flex justify-end px-2' },
+                        React.createElement('button', { onClick: openNewVehicle, className: 'bg-emerald-600 text-white px-8 py-3 rounded-xl font-bold hover:bg-emerald-700 shadow-lg transition-all transform hover:-translate-y-1 flex items-center gap-2' }, 
+                            React.createElement('i', { 'data-lucide': 'plus', className: 'w-5 h-5' }), '신규 차량 등록'
+                        )
+                    ),
+                    React.createElement('div', { className: 'bg-white rounded-2xl shadow-lg border border-slate-100 overflow-hidden' },
+                        React.createElement('table', { className: 'w-full text-left' },
+                            React.createElement('thead', { className: 'bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider text-sm' },
+                                React.createElement('tr', null,
+                                    React.createElement('th', { className: 'px-8 py-4' }, '차량번호'),
+                                    React.createElement('th', { className: 'px-8 py-4' }, '차량명'),
+                                    React.createElement('th', { className: 'px-8 py-4' }, '유종설정'),
+                                    React.createElement('th', { className: 'px-8 py-4' }, '계약 만료일'),
+                                    React.createElement('th', { className: 'px-8 py-4 text-right pr-12' }, '관리')
+                                )
+                            ),
+                            React.createElement('tbody', { className: 'divide-y divide-slate-100 text-base' },
+                                vehicles.map(v => React.createElement('tr', { key: v.id, className: 'hover:bg-emerald-50/50 transition-colors' },
+                                    React.createElement('td', { className: 'px-8 py-4 font-black text-emerald-800' }, v.id),
+                                    React.createElement('td', { className: 'px-8 py-4 font-bold text-slate-800' }, v.name),
+                                    React.createElement('td', { className: 'px-8 py-4' }, 
+                                        React.createElement('span', { className: `px-3 py-1 rounded-lg text-sm font-bold ${v.type === 'EV' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'}` }, v.type)
+                                    ),
+                                    React.createElement('td', { className: 'px-8 py-4 font-bold text-slate-600' }, v.contract_period_end || '미정'),
+                                    React.createElement('td', { className: 'px-8 py-4 text-right pr-8' },
+                                        React.createElement('button', { onClick: () => openEditVehicle(v), className: 'bg-slate-100 text-slate-700 font-bold px-6 py-2 rounded-lg hover:bg-slate-200 transition-colors text-sm' }, '수정/조회')
+                                    )
+                                ))
+                            )
+                        )
+                    ),
+                    isModalOpen && React.createElement('div', { className: 'fixed inset-0 bg-slate-900/70 backdrop-blur-sm flex items-center justify-center z-50 p-6' },
+                        React.createElement('div', { className: 'bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden animate-slideUp' },
+                            React.createElement('div', { className: 'p-6 border-b bg-slate-50' },
+                                React.createElement('h3', { className: 'text-xl font-black text-slate-800' }, isEdit ? '차량 정보 수정' : '신규 차량 등록')
+                            ),
+                            React.createElement('form', { onSubmit: handleSaveVehicle, className: 'p-8 space-y-6' },
+                                React.createElement('div', { className: 'space-y-1' },
+                                    React.createElement('label', { className: 'text-xs font-bold text-slate-400' }, '차량번호 *'),
+                                    React.createElement('input', { required: true, readOnly: isEdit, value: formData.id, onChange: e => setFormData({...formData, id: e.target.value}), className: `w-full p-4 border rounded-xl outline-none font-bold ${isEdit ? 'bg-slate-100 text-slate-500' : 'focus:border-emerald-500 bg-slate-50 focus:bg-white'}`, placeholder: '예: 12가3456' })
+                                ),
+                                React.createElement('div', { className: 'space-y-1' },
+                                    React.createElement('label', { className: 'text-xs font-bold text-slate-400' }, '차량명 *'),
+                                    React.createElement('input', { required: true, value: formData.name, onChange: e => setFormData({...formData, name: e.target.value}), className: 'w-full p-4 border rounded-xl outline-none focus:border-emerald-500 bg-slate-50 focus:bg-white font-bold', placeholder: '에: 아이오닉5 (업무용)' })
+                                ),
+                                React.createElement('div', { className: 'grid grid-cols-2 gap-4' },
+                                    React.createElement('div', { className: 'space-y-1' },
+                                        React.createElement('label', { className: 'text-xs font-bold text-slate-400' }, '유종 설정'),
+                                        React.createElement('select', { value: formData.type, onChange: e => setFormData({...formData, type: e.target.value}), className: 'w-full p-4 border rounded-xl outline-none font-bold' },
+                                            React.createElement('option', { value: 'EV' }, '전기차 (EV)'),
+                                            React.createElement('option', { value: 'Gasoline' }, '가솔린'),
+                                            React.createElement('option', { value: 'Diesel' }, '디젤'),
+                                            React.createElement('option', { value: 'Hybrid' }, '하이브리드')
+                                        )
+                                    ),
+                                    React.createElement('div', { className: 'space-y-1' },
+                                        React.createElement('label', { className: 'text-xs font-bold text-slate-400' }, '계약 만료일 (선택)'),
+                                        React.createElement('input', { type: 'date', value: formData.contract_period_end, onChange: e => setFormData({...formData, contract_period_end: e.target.value}), className: 'w-full p-4 border rounded-xl outline-none font-bold' })
+                                    )
+                                ),
+                                React.createElement('div', { className: 'flex gap-3 pt-4' },
+                                    React.createElement('button', { type: 'button', onClick: () => setIsModalOpen(false), className: 'flex-1 py-4 bg-slate-100 rounded-xl font-bold' }, '취소'),
+                                    isEdit && React.createElement('button', { type: 'button', onClick: handleDeleteVehicle, className: 'flex-1 py-4 bg-red-50 text-red-600 rounded-xl font-bold' }, '삭제'),
+                                    React.createElement('button', { type: 'submit', className: 'flex-[2] py-4 bg-emerald-600 text-white rounded-xl font-bold shadow-lg' }, '저장')
+                                )
+                            )
+                        )
+                    )
+                ),
+
+                // View: Vehicle Logs (DataGrid)
+                viewMode === 'logs' && React.createElement('div', { className: 'bg-white rounded-2xl shadow-lg border border-slate-200 overflow-hidden flex flex-col h-[600px]' },
+                    // Logs Header Control panel
+                    React.createElement('div', { className: 'bg-slate-50 p-4 border-b flex justify-between items-center z-10' },
+                        React.createElement('div', { className: 'flex gap-4 items-center' },
+                            React.createElement('select', { value: selectedVid, onChange: e => setSelectedVid(e.target.value), className: 'p-2 border rounded-lg font-bold outline-none ring-2 ring-transparent focus:ring-emerald-500' },
+                                vehicles.map(v => React.createElement('option', { key: v.id, value: v.id }, `[${v.type}] ${v.name} - ${v.id}`))
+                            ),
+                            React.createElement('input', { type: 'month', value: `${currentYear}-${String(currentMonth).padStart(2,'0')}`, onChange: e => {
+                                const [y, m] = e.target.value.split('-');
+                                setCurrentYear(Number(y)); setCurrentMonth(Number(m));
+                            }, className: 'p-2 border rounded-lg font-bold outline-none ring-2 ring-transparent focus:ring-emerald-500' }),
+                            React.createElement('button', { onClick: handleAddLog, className: 'flex items-center gap-1 text-emerald-600 bg-emerald-50 hover:bg-emerald-100 px-3 py-2 rounded-lg font-bold ml-2' },
+                                React.createElement('i', { 'data-lucide': 'plus', className: 'w-4 h-4' }), '새 기록 추가'
+                            )
+                        ),
+                        React.createElement('button', { onClick: exportExcel, className: 'flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-white px-4 py-2 rounded-lg font-bold transition-colors shadow-md' },
+                            React.createElement('i', { 'data-lucide': 'file-spreadsheet', className: 'w-4 h-4 text-emerald-400' }), '국세청 양식 다운로드'
+                        )
+                    ),
+                    // Grid Body
+                    React.createElement('div', { className: 'flex-1 overflow-auto' },
+                        React.createElement('table', { className: 'w-full text-sm data-grid whitespace-nowrap', style: { borderCollapse: 'collapse' } },
+                            React.createElement('thead', null, React.createElement('tr', { className: 'bg-white border-b sticky top-0 z-10 shadow-sm' },
+                                React.createElement('th', { className:'p-3 w-12 text-center text-slate-500', style: { border: '1px solid #e2e8f0'} }, 'No'),
+                                React.createElement('th', { className:'p-3 w-32', style: { border: '1px solid #e2e8f0'} }, '사용일자'),
+                                React.createElement('th', { className:'p-3 w-24', style: { border: '1px solid #e2e8f0'} }, '사용자'),
+                                React.createElement('th', { className:'p-3 w-28 text-blue-800', style: { border: '1px solid #e2e8f0'} }, '운행 전 (km)'),
+                                React.createElement('th', { className:'p-3 w-28 text-blue-800', style: { border: '1px solid #e2e8f0'} }, '운행 후 (km)'),
+                                React.createElement('th', { className:'p-3 w-24 bg-blue-50', style: { border: '1px solid #e2e8f0'} }, '주행거리'),
+                                React.createElement('th', { className:'p-3 w-32 text-emerald-800', style: { border: '1px solid #e2e8f0'} }, activeVehicle?.type === 'EV' ? '충전비 (원)' : '유류비 (원)'),
+                                activeVehicle?.type === 'EV' && React.createElement('th', { className:'p-3 w-24 text-emerald-800', style: { border: '1px solid #e2e8f0'} }, '충전량 (kWh)'),
+                                React.createElement('th', { className:'p-3 w-28', style: { border: '1px solid #e2e8f0'} }, '통행/주차'),
+                                React.createElement('th', { className:'p-3 w-40', style: { border: '1px solid #e2e8f0'} }, '목적'),
+                                React.createElement('th', { className:'p-3 w-20 bg-slate-50', style: { border: '1px solid #e2e8f0'} }, '관리')
+                            )),
+                            React.createElement('tbody', null,
+                                logs.length === 0 && React.createElement('tr', null, React.createElement('td', { colSpan: 11, className: 'text-center py-20 text-slate-400 font-bold' }, '해당 월의 운행 기록이 없습니다.')),
+                                logs.map((log, i) => {
+                                    const dist = (Number(log.afterDist) || 0) - (Number(log.beforeDist) || 0);
+                                    let isEv = activeVehicle?.type === 'EV';
+                                    const inputCls = "w-full h-full bg-transparent border-none p-2 outline-none focus:bg-blue-50 focus:ring-2 focus:ring-emerald-400 rounded-md box-border";
+                                    return React.createElement('tr', { key: log.id || i, className: 'hover:bg-slate-50 border-b' },
+                                        React.createElement('td', { className: 'text-center text-slate-400', style: { border: '1px solid #e2e8f0'} }, i+1),
+                                        React.createElement('td', { style: { border: '1px solid #e2e8f0', padding: '2px'} }, React.createElement('input', { type:'date', value:log.date, onChange: e => handleLogChange(i, 'date', e.target.value), className: inputCls })),
+                                        React.createElement('td', { style: { border: '1px solid #e2e8f0', padding: '2px'} }, React.createElement('input', { type:'text', value:log.driver, onChange: e => handleLogChange(i, 'driver', e.target.value), className: inputCls, placeholder: '성명' })),
+                                        React.createElement('td', { style: { border: '1px solid #e2e8f0', padding: '2px'} }, React.createElement('input', { type:'number', value:log.beforeDist, onChange: e => handleLogChange(i, 'beforeDist', e.target.value), className: inputCls + ' text-right font-bold' })),
+                                        React.createElement('td', { style: { border: '1px solid #e2e8f0', padding: '2px'} }, React.createElement('input', { type:'number', value:log.afterDist, onChange: e => handleLogChange(i, 'afterDist', e.target.value), className: inputCls + ' text-right font-bold text-blue-600' })),
+                                        React.createElement('td', { className: 'text-right font-black bg-slate-50 text-blue-600 p-2', style: { border: '1px solid #e2e8f0'} }, dist > 0 ? fmtNum(dist) : ''),
+                                        React.createElement('td', { style: { border: '1px solid #e2e8f0', padding: '2px'} }, React.createElement('input', { type:'number', value:log.chargeCost, onChange: e => handleLogChange(i, 'chargeCost', e.target.value), className: inputCls + ' text-right' })),
+                                        isEv && React.createElement('td', { style: { border: '1px solid #e2e8f0', padding: '2px'} }, React.createElement('input', { type:'number', value:log.chargeKwh, step: '0.1', onChange: e => handleLogChange(i, 'chargeKwh', e.target.value), className: inputCls + ' text-right' })),
+                                        React.createElement('td', { style: { border: '1px solid #e2e8f0', padding: '2px'} }, React.createElement('input', { type:'number', value:log.tollFee, onChange: e => handleLogChange(i, 'tollFee', e.target.value), className: inputCls + ' text-right' })),
+                                        React.createElement('td', { style: { border: '1px solid #e2e8f0', padding: '2px'} }, 
+                                            (() => {
+                                                const presets = ['측정', '예비조사', '거래처방문', '교육/훈련참석', '출/퇴근'];
+                                                const isOther = log.purpose && !presets.includes(log.purpose) && log.purpose !== '';
+                                                const displayPurpose = isOther ? '기타목적' : (log.purpose || '');
+
+                                                return React.createElement('div', { className: 'flex flex-col gap-1' },
+                                                    React.createElement('select', { 
+                                                        value: displayPurpose, 
+                                                        onChange: e => {
+                                                            const val = e.target.value;
+                                                            if (val === '기타목적') {
+                                                                handleLogChange(i, 'purpose', isOther ? log.purpose : ''); 
+                                                            } else {
+                                                                handleLogChange(i, 'purpose', val);
+                                                            }
+                                                        },
+                                                        className: 'w-full bg-transparent border-none outline-none text-xs font-bold'
+                                                    },
+                                                        React.createElement('option', { value: '' }, '선택'),
+                                                        presets.map(p => React.createElement('option', { key: p, value: p }, p)),
+                                                        React.createElement('option', { value: '기타목적' }, '기타')
+                                                    ),
+                                                    (displayPurpose === '기타목적') && React.createElement('input', { 
+                                                        type: 'text', 
+                                                        value: log.purpose || '', 
+                                                        onChange: e => handleLogChange(i, 'purpose', e.target.value), 
+                                                        placeholder: '직접 입력',
+                                                        className: 'w-full border-t border-slate-100 outline-none text-[11px] p-1 text-blue-600'
+                                                    })
+                                                );
+                                            })()
+                                        ),
+                                        React.createElement('td', { className: 'text-center p-2', style: { border: '1px solid #e2e8f0'} }, 
+                                            React.createElement('button', { onClick: () => handleSaveLog(i), className: 'px-3 py-1.5 bg-slate-200 text-slate-700 hover:bg-slate-800 hover:text-white rounded text-xs font-bold transition-colors w-full tracking-wide' }, '저장')
+                                        )
+                                    )
+                                })
+                            )
+                        )
+                    ),
+                    // Footer Stats Summary
+                    React.createElement('div', { className: 'bg-slate-900 text-white p-3 shrink-0 flex items-center justify-between z-10' },
+                        React.createElement('div', { className: 'flex gap-6 overflow-x-auto w-full' },
+                            React.createElement('div', { className: 'flex flex-col' }, React.createElement('span', { className: 'text-[10px] text-slate-400 font-bold' }, '당월 주행거리'), React.createElement('span', { className: 'text-lg font-black text-blue-400' }, fmtNum(stats.totalDist), React.createElement('span', { className: 'text-xs ml-1 font-normal' }, 'km'))),
+                            React.createElement('div', { className: 'flex flex-col' }, React.createElement('span', { className: 'text-[10px] text-slate-400 font-bold' }, activeVehicle?.type === 'EV' ? '충전금액' : '유류금액'), React.createElement('span', { className: 'text-lg font-black text-emerald-400' }, '₩', fmtNum(stats.totalCharge))),
+                            React.createElement('div', { className: 'flex flex-col' }, React.createElement('span', { className: 'text-[10px] text-slate-400 font-bold' }, '통행/주차'), React.createElement('span', { className: 'text-lg font-black' }, '₩', fmtNum(stats.totalToll))),
+                            activeVehicle?.type === 'EV' && React.createElement('div', { className: 'flex flex-col' }, React.createElement('span', { className: 'text-[10px] text-slate-400 font-bold' }, '전비 (km/kWh)'), React.createElement('span', { className: 'text-lg font-black text-amber-300' }, stats.efficiency))
+                        )
+                    )
+                )
+            );
+        }
+
+        function SettingsPage() {
+            const [activeTab, setActiveTab] = useState(() => {
+                const session = JSON.parse(localStorage.getItem('kiwe_user'));
+                const userName = (session?.user_name || '').trim();
+                const isAdmin = session && (
+                    session.is_admin === true ||
+                    session.role === '관리자' ||
+                    userName === '이승용' ||
+                    userName === '강경호'
+                );
+                return isAdmin ? 'user' : 'equip';
+            });
+            const [user, setUser] = useState(null);
+
+            useEffect(() => {
+                const session = JSON.parse(localStorage.getItem('kiwe_user'));
+                const userName = (session?.user_name || '').trim();
+                const isAdmin = session && (
+                    session.is_admin === true ||
+                    session.role === '관리자' ||
+                    userName === '이승용' ||
+                    userName === '강경호'
+                );
+
+                if (!session) {
+                    alert('로그인이 필요합니다.');
+                    window.location.href = 'index.html';
+                    return;
+                }
+                
+                setUser({ ...session, isAdmin });
+            }, []);
+
+            useEffect(() => {
+                if (window.lucide) window.lucide.createIcons();
+            }, [activeTab, user]);
+
+            if (!user) return null;
+
+            const tabClass = (tabName) =>
+                `px-8 py-5 text-lg font-bold transition-colors border-b-4 outline-none ${activeTab === tabName ? 'text-blue-700 border-blue-700 bg-white' : 'text-slate-400 border-transparent hover:text-blue-600'}`;
+
+            return e('div', { className: "flex flex-col min-h-screen" },
+                e('header', { className: "bg-white border-b border-slate-200 z-10 sticky top-0" },
+                    e('div', { className: "max-w-7xl mx-auto px-6 h-20 flex items-center justify-between" },
+                        e('h1', { className: "text-2xl font-black text-slate-800 flex items-center gap-3" },
+                            e('div', { className: "w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-blue-200" },
+                                e('i', { 'data-lucide': "settings", className: "w-6 h-6" })
+                            ),
+                            "평가원 관리 및 설정"
+                        ),
+                        e('a', { href: "main.html", className: "flex items-center gap-2 text-slate-500 hover:text-blue-600 font-bold transition-colors" },
+                            e('i', { 'data-lucide': "arrow-left", className: "w-5 h-5" }),
+                            " 메인으로 돌아가기"
+                        )
+                    ),
+                    e('div', { className: "border-t border-slate-100 bg-slate-50/50 backdrop-blur-sm" },
+                        e('div', { className: "max-w-7xl mx-auto px-6 flex" },
+                            user?.isAdmin && e('button', { onClick: () => setActiveTab('user'), className: tabClass('user') }, "사용자 관리"),
+                            e('button', { onClick: () => setActiveTab('equip'), className: tabClass('equip') }, "보유 장비 현황"),
+                            user?.isAdmin && e('button', { onClick: () => setActiveTab('agency'), className: tabClass('agency') }, "지정현황"),
+                            e('button', { onClick: () => setActiveTab('partner'), className: tabClass('partner') }, "거래처 관리"),
+                            e('button', { onClick: () => setActiveTab('price'), className: tabClass('price') }, "단가 설정"),
+                            e('button', { onClick: () => setActiveTab('vehicle'), className: tabClass('vehicle') }, "차량 관리"),
+                            e('button', { onClick: () => setActiveTab('hazard'), className: tabClass('hazard') }, "유해인자 관리")
+                        )
+                    )
+                ),
+                e('main', { className: "flex-1 max-w-7xl mx-auto w-full py-10 px-6" },
+                    (activeTab === 'user' && user?.isAdmin) && e(UserTab),
+                    activeTab === 'equip' && e(EquipmentTab),
+                    (activeTab === 'agency' && user?.isAdmin) && e(AgencyTab),
+                    activeTab === 'partner' && e(PartnersTab),
+                    activeTab === 'price' && e(PriceTab),
+                    activeTab === 'vehicle' && e(VehicleTab),
+                    activeTab === 'hazard' && e(HazardManagement)
+                )
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(e(SettingsPage));
+    </script>
+</body>
+
+</html>

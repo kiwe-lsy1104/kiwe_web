@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <script src="js/error_translator.js"></script>
+    <meta charset="UTF-8">
+    <base href="./">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self' https: 'unsafe-inline' 'unsafe-eval'; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://unpkg.com https://*.lucide.dev http://127.0.0.1:* http://localhost:*; img-src 'self' data: https:; font-src 'self' https: data:;">
+    <title>측정계획관리 - KiWE</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script>
+        window.onerror = function (msg, url, line, col, error) {
+            console.error("Global Error:", msg, url, line);
+            const root = document.getElementById('root');
+            if (root && (root.innerHTML.includes('로딩') || root.innerHTML === '')) {
+                root.innerHTML = `<div style="padding: 40px; text-align: center; font-family: sans-serif;">
+                    <div style="color: #e11d48; font-size: 24px; font-weight: bold; mb: 10px;">시스템 로드 오류</div>
+                    <div style="color: #64748b; margin-top: 10px;">화면을 불러오는 중 문제가 발생했습니다.<br/>잠시 후 다시 시도해주세요.</div>
+                    <button onclick="location.reload()" style="margin-top: 20px; padding: 10px 20px; background: #4f46e5; color: white; border: none; border-radius: 8px; cursor: pointer;">새로고침</button>
+                </div>`;
+            }
+            return false;
+        };
+    </script>
+    <script type="module">
+        import { checkAuth } from './js/auth.js';
+        checkAuth();
+    </script>
+</head>
+
+<body class="bg-gray-50 text-slate-800 font-sans">
+    <div id="root">
+        <div
+            style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; gap: 15px; font-family: sans-serif;">
+            <div
+                style="width: 40px; height: 40px; border: 4px solid #f3f3f3; border-top: 4px solid #4f46e5; border-radius: 50%; animation: spin 1s linear infinite;">
+            </div>
+            <div style="font-weight: bold; color: #475569;">시스템 로딩 중...</div>
+            <style>
+                @keyframes spin {
+                    0% {
+                        transform: rotate(0deg);
+                    }
+
+                    100% {
+                        transform: rotate(360deg);
+                    }
+                }
+            </style>
+        </div>
+    </div>
+
+    <script type="module" src="./js/plan.js"></script>
+</body>
+
+</html>

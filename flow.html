@@ -1,0 +1,213 @@
+﻿<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <script src="js/error_translator.js"></script>
+    <meta charset="UTF-8">
+    <base href="./">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self' https: 'unsafe-inline' 'unsafe-eval'; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://unpkg.com https://*.lucide.dev https://esm.sh https://cdn.jsdelivr.net http://127.0.0.1:* http://localhost:*; img-src 'self' data: https:; font-src 'self' https: data:;">
+    <title>유량보정대장 - KiWE</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class'
+        }
+    </script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/handsontable/dist/handsontable.full.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/handsontable/dist/handsontable.full.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=Noto+Sans+KR:wght@400;500;700;900&display=swap');
+
+        body {
+            font-family: 'Inter', 'Noto Sans KR', sans-serif;
+            background-color: #f8fafc;
+        }
+
+        .hot-container {
+            width: 100%;
+            height: calc(100vh - 120px);
+            overflow: hidden;
+            border-radius: 0.5rem;
+            border: 1px solid #e2e8f0;
+            background: white;
+        }
+
+        .input-standard {
+            padding: 0.5rem 0.75rem;
+            background-color: white;
+            border: 1px solid #e2e8f0;
+            border-radius: 0.5rem;
+            font-size: 0.875rem;
+            outline: none;
+            transition: all 0.2s;
+        }
+
+        .input-standard:focus {
+            border-color: #6366f1;
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+        }
+
+        .btn-primary {
+            background-color: #4f46e5;
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 0.5rem;
+            font-size: 0.875rem;
+            font-weight: 600;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .btn-primary:hover {
+            background-color: #4338ca;
+        }
+
+        /* Essential Handsontable Overrides */
+        .handsontable th {
+            background-color: #f1f5f9 !important;
+            font-weight: 700 !important;
+            color: #475569 !important;
+            font-size: 11px !important;
+            vertical-align: middle !important;
+            text-align: center !important;
+            white-space: normal !important; /* 줄바꿈 허용 */
+            line-height: 1.2 !important;
+            padding: 2px !important;
+        }
+
+        .handsontable td {
+            height: 34px !important;
+            vertical-align: middle !important;
+            padding: 0 4px !important;
+            text-align: center !important;
+            font-size: 12px !important;
+        }
+
+        .missing-data {
+            background-color: #fee2e2 !important;
+        }
+
+        /* Make row selection more visible */
+        .handsontable td.area,
+        .handsontable th.area {
+            background-color: rgba(79, 70, 229, 0.15) !important;
+        }
+
+        .handsontable td.area.fullyselected-highlight::after {
+            background: rgba(79, 70, 229, 0.2) !important;
+        }
+
+        /* Fix row height inconsistencies */
+        .handsontable td, .handsontable th {
+            height: 34px !important;
+            vertical-align: middle !important;
+            padding: 0 4px !important;
+        }
+
+        /* Ensure center alignment for all cells including special ones */
+        .handsontable .htCenter {
+            text-align: center !important;
+        }
+        
+        /* Adjust delete button container */
+        .handsontable button {
+            padding: 2px !important;
+            line-height: 1 !important;
+        }
+    </style>
+    <script>
+        function showError(title, msg) {
+            const root = document.getElementById('hot');
+            if (root) {
+                root.innerHTML = `<div style="padding: 40px; text-align: center; font-family: sans-serif; background: #fff1f2; border: 2px solid #fda4af; margin: 20px; border-radius: 12px;">
+                    <div style="color: #e11d48; font-size: 24px; font-weight: bold; margin-bottom: 10px;">${title}</div>
+                    <div style="color: #4b5563; margin-top: 10px; font-family: monospace; white-space: pre-wrap; font-size: 14px;">${msg}</div>
+                    <button onclick="location.reload()" style="margin-top: 20px; padding: 10px 20px; background: #4f46e5; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold;">새로고침</button>
+                    <div style="margin-top: 15px; font-size: 12px; color: #9ca3af;">파일 경로 및 서버 실행 여부를 확인해주세요.</div>
+                </div>`;
+            }
+        }
+
+        window.onerror = function (msg, url, line, col, error) {
+            console.error("Global Error:", msg, url, line);
+            showError("시스템 로드 오류", `Error: ${msg}\nUrl: ${url}\nLine: ${line}`);
+            return false;
+        };
+
+        window.addEventListener('unhandledrejection', function (event) {
+            console.error("Unhandled Rejection:", event.reason);
+            showError("비동기 처리 오류", event.reason?.message || event.reason || "알 수 없는 오류");
+        });
+    </script>
+    <script type="module">
+        import { checkAuth } from './js/auth.js';
+        checkAuth();
+    </script>
+</head>
+
+<body class="p-2 overflow-hidden h-screen bg-slate-50">
+    <div class="flex flex-col gap-2 h-full">
+        <!-- Filter Bar -->
+        <div class="flex items-center gap-4 bg-white p-3 rounded-xl shadow-sm border border-slate-200">
+            <div class="flex items-center gap-2">
+                <label class="text-xs font-bold text-slate-500">조회기간:</label>
+                <input type="date" id="startDate" class="input-standard text-xs">
+                <span>~</span>
+                <input type="date" id="endDate" class="input-standard text-xs">
+            </div>
+            <div class="flex items-center gap-2 ml-4">
+                <label class="text-xs font-bold text-slate-500">펌프번호 검색:</label>
+                <input type="text" id="pumpFilter" placeholder="P-001..." class="input-standard text-xs w-32">
+            </div>
+            <div class="flex-1"></div>
+            <div class="flex gap-2">
+                <button id="addOneRowBtn" class="btn-primary bg-slate-500 hover:bg-slate-600">
+                    + 1줄 추가
+                </button>
+                <button id="addRowsBtn" class="btn-primary bg-slate-600 hover:bg-slate-700">
+                    + 5줄 추가
+                </button>
+                <button id="saveBtn" class="btn-primary shadow-lg shadow-indigo-200">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+                        <polyline points="17 21 17 13 7 13 7 21" />
+                        <polyline points="7 3 7 8 15 8" />
+                    </svg>
+                    대장 저장 (Upsert)
+                </button>
+            </div>
+        </div>
+
+        <!-- Grid -->
+        <div id="hot" class="hot-container">
+            <div
+                style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; gap: 15px; font-family: sans-serif;">
+                <div
+                    style="width: 40px; height: 40px; border: 4px solid #f3f3f3; border-top: 4px solid #4f46e5; border-radius: 50%; animation: spin 1s linear infinite;">
+                </div>
+                <div style="font-weight: bold; color: #475569;">시스템 로딩 중...</div>
+                <style>
+                    @keyframes spin {
+                        0% {
+                            transform: rotate(0deg);
+                        }
+
+                        100% {
+                            transform: rotate(360deg);
+                        }
+                    }
+                </style>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="./js/flow.js"></script>
+</body>
+
+</html>

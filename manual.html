@@ -1,0 +1,918 @@
+﻿<!DOCTYPE html>
+<html lang="ko" data-theme="light">
+
+<head>
+    <script src="js/error_translator.js"></script>
+  <meta charset="UTF-8">
+  <base href="./">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy"
+    content="default-src 'self' https: 'unsafe-inline' 'unsafe-eval'; script-src 'self' https://cdn.jsdelivr.net https://unpkg.com https://cdnjs.cloudflare.com https://fonts.googleapis.com 'unsafe-inline' 'unsafe-eval'; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://unpkg.com https://cdn.jsdelivr.net http://127.0.0.1:* http://localhost:*; img-src 'self' data: https:; font-src 'self' https: data:;">
+  <title>KiWE 사용 매뉴얼</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <!-- Fuse.js (퍼지 검색) -->
+  <script src="https://cdn.jsdelivr.net/npm/fuse.js@7.0.0/dist/fuse.min.js"></script>
+  <!-- Supabase -->
+  <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+  <!-- manual data -->
+  <script src="./js/manual_data.js"></script>
+
+  <style>
+    /* ─────────────────────────────────────
+       CSS Custom Properties & Theme
+    ───────────────────────────────────── */
+    :root {
+      --bg: #f1f5f9;
+      --surface: #ffffff;
+      --surface2: #f8fafc;
+      --border: #e2e8f0;
+      --text: #1e293b;
+      --text-muted: #64748b;
+      --accent: #4f46e5;
+      --accent-light: #eef2ff;
+      --accent-hover: #4338ca;
+      --success: #059669;
+      --success-light: #d1fae5;
+      --warn: #d97706;
+      --warn-light: #fef3c7;
+      --tip: #0ea5e9;
+      --tip-light: #e0f2fe;
+      --sidebar-w: 260px;
+      --header-h: 64px;
+      --radius: 12px;
+      --shadow: 0 1px 3px rgba(0,0,0,.08), 0 4px 12px rgba(0,0,0,.06);
+      --shadow-lg: 0 8px 32px rgba(0,0,0,.10);
+      --transition: 0.2s ease;
+      --font: 'Pretendard', 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
+    }
+
+    [data-theme="dark"] {
+      --bg: #0f172a;
+      --surface: #1e293b;
+      --surface2: #263348;
+      --border: #334155;
+      --text: #f1f5f9;
+      --text-muted: #94a3b8;
+      --accent: #818cf8;
+      --accent-light: #1e1b4b;
+      --accent-hover: #6366f1;
+      --success-light: #064e3b;
+      --warn-light: #451a03;
+      --tip-light: #0c2a35;
+    }
+
+    /* ─────────────────────────────────────
+       Reset & Base
+    ───────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      transition: background var(--transition), color var(--transition);
+      line-height: 1.7;
+    }
+
+    /* ─────────────────────────────────────
+       Layout Shell
+    ───────────────────────────────────── */
+    #app-header {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      height: var(--header-h);
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding: 0 24px;
+      gap: 16px;
+      z-index: 100;
+      box-shadow: 0 1px 8px rgba(0,0,0,.06);
+      transition: background var(--transition), border-color var(--transition);
+    }
+    .header-logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+      color: var(--text);
+    }
+    .header-logo-icon {
+      width: 36px;
+      height: 36px;
+      background: linear-gradient(135deg, #4f46e5, #7c3aed);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      flex-shrink: 0;
+    }
+    .header-logo-text {
+      font-size: 17px;
+      font-weight: 800;
+      color: var(--text);
+    }
+    .header-logo-sub {
+      font-size: 11px;
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+
+    #search-wrap {
+      flex: 1;
+      max-width: 420px;
+      position: relative;
+    }
+    #search-input {
+      width: 100%;
+      padding: 9px 40px 9px 40px;
+      border-radius: 999px;
+      border: 1.5px solid var(--border);
+      background: var(--surface2);
+      color: var(--text);
+      font-size: 14px;
+      font-family: var(--font);
+      outline: none;
+      transition: border-color var(--transition), box-shadow var(--transition);
+    }
+    #search-input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 15%, transparent);
+    }
+    #search-input::placeholder { color: var(--text-muted); }
+    .search-icon {
+      position: absolute;
+      left: 13px; top: 50%;
+      transform: translateY(-50%);
+      color: var(--text-muted);
+      font-size: 16px;
+      pointer-events: none;
+    }
+    #search-clear {
+      position: absolute;
+      right: 12px; top: 50%;
+      transform: translateY(-50%);
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 16px;
+      display: none;
+      line-height: 1;
+      padding: 2px;
+    }
+    #search-clear:hover { color: var(--text); }
+
+    /* notice pill */
+    #notice-pill {
+      display: none;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 12px;
+      background: var(--accent-light);
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--accent);
+      max-width: 280px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      flex-shrink: 0;
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-left: auto;
+    }
+    .icon-btn {
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--surface2);
+      color: var(--text-muted);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 17px;
+      transition: color var(--transition), background var(--transition), border-color var(--transition);
+      position: relative;
+    }
+    .icon-btn:hover {
+      background: var(--accent-light);
+      color: var(--accent);
+      border-color: var(--accent);
+    }
+    .icon-btn[data-tooltip]::after {
+      content: attr(data-tooltip);
+      position: absolute;
+      bottom: -34px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #1e293b;
+      color: #f8fafc;
+      font-size: 11px;
+      font-weight: 600;
+      white-space: nowrap;
+      padding: 4px 8px;
+      border-radius: 6px;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.15s;
+      z-index: 999;
+    }
+    .icon-btn[data-tooltip]:hover::after { opacity: 1; }
+
+    .btn-home {
+      padding: 7px 16px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: var(--surface2);
+      color: var(--text-muted);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all var(--transition);
+      white-space: nowrap;
+    }
+    .btn-home:hover { background: var(--accent-light); color: var(--accent); border-color: var(--accent); }
+
+    /* version badge */
+    #version-badge {
+      flex-shrink: 0;
+      font-size: 11px;
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+
+    /* ─────────────────────────────────────
+       Main content area
+    ───────────────────────────────────── */
+    #layout {
+      display: flex;
+      padding-top: var(--header-h);
+      min-height: 100vh;
+    }
+
+    /* ─────────────────────────────────────
+       Sidebar
+    ───────────────────────────────────── */
+    #sidebar {
+      position: fixed;
+      top: var(--header-h);
+      left: 0;
+      width: var(--sidebar-w);
+      height: calc(100vh - var(--header-h));
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      overflow-y: auto;
+      padding: 20px 12px;
+      transition: background var(--transition), border-color var(--transition);
+    }
+    #sidebar::-webkit-scrollbar { width: 4px; }
+    #sidebar::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+    .sidebar-label {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      padding: 0 8px 8px;
+    }
+
+    .sidebar-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--text-muted);
+      text-decoration: none;
+      transition: all var(--transition);
+      border: 1px solid transparent;
+      margin-bottom: 2px;
+    }
+    .sidebar-item:hover {
+      background: var(--surface2);
+      color: var(--text);
+    }
+    .sidebar-item.active {
+      background: var(--accent-light);
+      color: var(--accent);
+      border-color: color-mix(in srgb, var(--accent) 20%, transparent);
+      font-weight: 700;
+    }
+    .sidebar-item .nav-icon {
+      font-size: 17px;
+      flex-shrink: 0;
+      width: 22px;
+      text-align: center;
+    }
+    .sidebar-item .nav-text { flex: 1; }
+    .sidebar-item.hidden { display: none; }
+
+    /* no results in sidebar */
+    .sidebar-empty {
+      font-size: 13px;
+      color: var(--text-muted);
+      padding: 12px 8px;
+      text-align: center;
+      display: none;
+    }
+
+    /* ─────────────────────────────────────
+       Content Panel
+    ───────────────────────────────────── */
+    #content {
+      margin-left: var(--sidebar-w);
+      flex: 1;
+      padding: 32px 40px 60px;
+      max-width: 900px;
+    }
+
+    /* search results header */
+    #search-status {
+      display: none;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 16px;
+      background: var(--accent-light);
+      border-radius: 10px;
+      margin-bottom: 24px;
+      font-size: 13px;
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    /* section card */
+    .section-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 32px 36px;
+      margin-bottom: 24px;
+      box-shadow: var(--shadow);
+      scroll-margin-top: calc(var(--header-h) + 20px);
+      transition: background var(--transition), border-color var(--transition), opacity 0.25s;
+    }
+    .section-card.hidden {
+      display: none;
+    }
+    .section-card.dim {
+      opacity: 0.35;
+    }
+
+    .card-header {
+      display: flex;
+      align-items: flex-start;
+      gap: 14px;
+      margin-bottom: 22px;
+    }
+    .card-icon {
+      font-size: 28px;
+      line-height: 1;
+      flex-shrink: 0;
+    }
+    .card-title-wrap { flex: 1; }
+    .card-title {
+      font-size: 20px;
+      font-weight: 800;
+      color: var(--text);
+      line-height: 1.2;
+    }
+    .card-id-badge {
+      font-size: 11px;
+      color: var(--text-muted);
+      font-weight: 500;
+      margin-top: 3px;
+    }
+    .card-actions {
+      display: flex;
+      gap: 6px;
+    }
+    .card-btn {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--surface2);
+      color: var(--text-muted);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 15px;
+      transition: all var(--transition);
+      position: relative;
+    }
+    .card-btn:hover { background: var(--accent-light); color: var(--accent); border-color: var(--accent); }
+    .card-btn[data-tooltip]::after {
+      content: attr(data-tooltip);
+      position: absolute;
+      top: -32px; left: 50%;
+      transform: translateX(-50%);
+      background: #1e293b;
+      color: #f8fafc;
+      font-size: 11px;
+      font-weight: 600;
+      white-space: nowrap;
+      padding: 4px 8px;
+      border-radius: 6px;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.15s;
+      z-index: 999;
+    }
+    .card-btn[data-tooltip]:hover::after { opacity: 1; }
+
+    /* content typography */
+    .card-body { color: var(--text); }
+    .card-body p { margin-bottom: 12px; font-size: 14.5px; }
+    .card-body h4 {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--text);
+      margin: 20px 0 8px;
+      padding-bottom: 6px;
+      border-bottom: 2px solid var(--border);
+    }
+    .card-body ol, .card-body ul {
+      padding-left: 20px;
+      margin-bottom: 12px;
+    }
+    .card-body li {
+      font-size: 14.5px;
+      margin-bottom: 6px;
+    }
+    .card-body code {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 1px 6px;
+      font-size: 13px;
+      font-family: 'Courier New', monospace;
+    }
+    .card-body strong { color: var(--accent); }
+
+    .tip-box {
+      background: var(--tip-light);
+      border-left: 4px solid var(--tip);
+      border-radius: 6px;
+      padding: 12px 16px;
+      font-size: 13.5px;
+      color: var(--text);
+      margin-top: 16px;
+    }
+    .warn-box {
+      background: var(--warn-light);
+      border-left: 4px solid var(--warn);
+      border-radius: 6px;
+      padding: 12px 16px;
+      font-size: 13.5px;
+      color: var(--text);
+      margin-top: 16px;
+    }
+    .faq-item {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px 20px;
+      margin-bottom: 12px;
+      background: var(--surface2);
+      transition: background var(--transition);
+    }
+    .faq-item h4 {
+      font-size: 14px;
+      font-weight: 700;
+      margin-bottom: 8px;
+      border-bottom: none !important;
+      padding-bottom: 0 !important;
+      color: var(--accent) !important;
+    }
+    .faq-item p { margin-bottom: 0 !important; }
+
+    /* tags */
+    .card-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 16px;
+    }
+    .tag-chip {
+      padding: 3px 10px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      font-size: 11px;
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+
+    /* highlight match */
+    .search-hl { background: #fef08a; border-radius: 2px; padding: 0 2px; color: #1e293b; }
+
+    /* no results */
+    #no-results {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      padding: 80px 20px;
+      color: var(--text-muted);
+      gap: 12px;
+    }
+    #no-results .nr-icon { font-size: 48px; }
+    #no-results .nr-text { font-size: 16px; font-weight: 700; }
+    #no-results .nr-sub { font-size: 13px; }
+
+    /* ─────────────────────────────────────
+       Print Media Query
+    ───────────────────────────────────── */
+    @media print {
+      #app-header, #sidebar, .card-actions, .card-btn, .icon-btn, 
+      #search-status, .card-tags, #notice-pill { display: none !important; }
+      #layout { padding-top: 0; }
+      #content { margin-left: 0; padding: 20px; max-width: 100%; }
+      .section-card { break-inside: avoid; box-shadow: none; border: 1px solid #ccc; }
+      body { background: white; color: black; }
+      .tip-box, .warn-box { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    }
+
+    /* ─────────────────────────────────────
+       Responsive
+    ───────────────────────────────────── */
+    @media (max-width: 768px) {
+      :root { --sidebar-w: 0px; }
+      #sidebar { display: none; }
+      #content { margin-left: 0; padding: 20px 16px 40px; }
+      #search-wrap { max-width: none; }
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- ─── HEADER ─── -->
+  <header id="app-header">
+    <a class="header-logo" href="main.html">
+      <div class="header-logo-icon">📋</div>
+      <div>
+        <div class="header-logo-text">KiWE 매뉴얼</div>
+        <div class="header-logo-sub">측정관리 시스템 사용 가이드</div>
+      </div>
+    </a>
+
+    <div id="search-wrap">
+      <span class="search-icon">🔍</span>
+      <input id="search-input" type="search" placeholder="기능명, 키워드로 검색... (예: 견적, 차량, 시료)" autocomplete="off">
+      <button id="search-clear" onclick="clearSearch()" title="검색 초기화">✕</button>
+    </div>
+
+    <div id="notice-pill">📢 <span id="notice-text"></span></div>
+
+    <div class="header-actions">
+      <span id="version-badge"></span>
+      <button class="icon-btn" id="theme-toggle" data-tooltip="다크/라이트 모드 전환" onclick="toggleTheme()">🌙</button>
+      <button class="icon-btn" data-tooltip="인쇄 (본문만 출력)" onclick="window.print()">🖨️</button>
+      <a class="btn-home" href="main.html">🏠 메인으로</a>
+    </div>
+  </header>
+
+  <!-- ─── LAYOUT ─── -->
+  <div id="layout">
+    <!-- SIDEBAR -->
+    <nav id="sidebar">
+      <div class="sidebar-label">목차</div>
+      <div id="sidebar-nav"></div>
+      <div class="sidebar-empty" id="sidebar-empty">검색 결과가 없습니다.</div>
+    </nav>
+
+    <!-- CONTENT -->
+    <main id="content">
+      <div id="search-status">
+        <span>🔍</span>
+        <span id="search-status-text"></span>
+      </div>
+      <div id="sections-container"></div>
+      <div id="no-results">
+        <div class="nr-icon">🔎</div>
+        <div class="nr-text">검색 결과가 없습니다</div>
+        <div class="nr-sub">다른 키워드로 검색해 보세요.</div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+  // ─── Theme ───────────────────────────────────────────────────────────
+  (function() {
+    // Auto-detect system theme
+    const stored = localStorage.getItem('kiwe_manual_theme');
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const theme = stored || (prefersDark ? 'dark' : 'light');
+    document.documentElement.dataset.theme = theme;
+  })();
+
+  function toggleTheme() {
+    const html = document.documentElement;
+    const isDark = html.dataset.theme === 'dark';
+    html.dataset.theme = isDark ? 'light' : 'dark';
+    localStorage.setItem('kiwe_manual_theme', html.dataset.theme);
+    document.getElementById('theme-toggle').textContent = isDark ? '🌙' : '☀️';
+  }
+
+  function initThemeIcon() {
+    const isDark = document.documentElement.dataset.theme === 'dark';
+    document.getElementById('theme-toggle').textContent = isDark ? '☀️' : '🌙';
+  }
+
+  // ─── Render sections ─────────────────────────────────────────────────
+  function renderSections() {
+    const container = document.getElementById('sections-container');
+    const nav = document.getElementById('sidebar-nav');
+    container.innerHTML = '';
+    nav.innerHTML = '';
+
+    MANUAL_SECTIONS.forEach(sec => {
+      // Card
+      const card = document.createElement('section');
+      card.className = 'section-card';
+      card.id = sec.id;
+      card.innerHTML = `
+        <div class="card-header">
+          <div class="card-icon">${sec.icon}</div>
+          <div class="card-title-wrap">
+            <div class="card-title">${sec.title}</div>
+            <div class="card-id-badge">#${sec.id}</div>
+          </div>
+          <div class="card-actions">
+            <button class="card-btn" data-tooltip="링크 복사" onclick="copyLink('${sec.id}')">🔗</button>
+            <button class="card-btn" data-tooltip="이 섹션 인쇄" onclick="printSection('${sec.id}')">🖨️</button>
+          </div>
+        </div>
+        <div class="card-body">${sec.content}</div>
+        <div class="card-tags">${sec.tags.map(t => `<span class="tag-chip">${t}</span>`).join('')}</div>
+      `;
+      container.appendChild(card);
+
+      // Sidebar item
+      const item = document.createElement('a');
+      item.className = 'sidebar-item';
+      item.href = 'javascript:void(0)';   // <base href="./"> 충돌 방지
+      item.dataset.target = sec.id;
+      item.innerHTML = `<span class="nav-icon">${sec.icon}</span><span class="nav-text">${sec.title}</span>`;
+      item.addEventListener('click', e => {
+        e.preventDefault();
+        document.querySelectorAll('.sidebar-item').forEach(i => i.classList.remove('active'));
+        item.classList.add('active');
+        const target = document.getElementById(sec.id);
+        if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+      nav.appendChild(item);
+    });
+  }
+
+  // ─── Scroll spy ──────────────────────────────────────────────────────
+  function initScrollSpy() {
+    const observer = new IntersectionObserver(entries => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          const id = entry.target.id;
+          document.querySelectorAll('.sidebar-item').forEach(item => {
+            item.classList.toggle('active', item.dataset.target === id);
+          });
+        }
+      });
+    }, { rootMargin: `-${parseInt(getComputedStyle(document.documentElement).getPropertyValue('--header-h'))}px 0px -60% 0px` });
+
+    document.querySelectorAll('.section-card').forEach(card => observer.observe(card));
+  }
+
+  // ─── Anchor deep link ────────────────────────────────────────────────
+  function handleAnchor() {
+    const hash = location.hash;
+    if (hash) {
+      const target = document.querySelector(hash);
+      if (target) setTimeout(() => target.scrollIntoView({ behavior: 'smooth', block: 'start' }), 200);
+    }
+  }
+
+  // ─── Copy link ───────────────────────────────────────────────────────
+  function copyLink(id) {
+    const url = `${location.origin}${location.pathname}#${id}`;
+    navigator.clipboard.writeText(url).then(() => {
+      showToast('링크가 복사되었습니다!');
+    }).catch(() => {
+      prompt('이 링크를 복사하세요:', url);
+    });
+  }
+
+  // ─── Print single section ────────────────────────────────────────────
+  function printSection(id) {
+    const card = document.getElementById(id);
+    if (!card) return;
+    const title = card.querySelector('.card-title').textContent;
+    const icon  = card.querySelector('.card-icon').textContent;
+    const body  = card.querySelector('.card-body').innerHTML;
+    const date  = new Date().toLocaleDateString('ko-KR');
+    // NOTE: closing tags split to prevent HTML parser from ending the <script> block prematurely
+    const css = [
+      'body{font-family:"Apple SD Gothic Neo","Malgun Gothic",sans-serif;padding:40px;color:#1e293b;}',
+      'h2{font-size:22px;margin-bottom:24px;}',
+      'h4{font-size:15px;font-weight:700;margin:16px 0 8px;border-bottom:2px solid #e2e8f0;padding-bottom:6px;}',
+      'p,li{font-size:14px;line-height:1.7;}',
+      'ul,ol{padding-left:20px;margin-bottom:12px;}',
+      '.tip-box{background:#e0f2fe;border-left:4px solid #0ea5e9;padding:12px 16px;border-radius:6px;margin-top:16px;font-size:13px;}',
+      '.warn-box{background:#fef3c7;border-left:4px solid #d97706;padding:12px 16px;border-radius:6px;margin-top:16px;font-size:13px;}',
+      '.faq-item{border:1px solid #e2e8f0;border-radius:8px;padding:14px 18px;margin-bottom:10px;}',
+      '.faq-item h4{border-bottom:none;color:#4f46e5;}',
+      'code{background:#f1f5f9;border:1px solid #e2e8f0;border-radius:4px;padding:1px 5px;font-size:12px;}',
+      'strong{color:#4f46e5;}'
+    ].join('');
+    const win = window.open('', '_blank', 'width=700,height=900');
+    win.document.write(
+      '<!DOCTYPE html><html lang="ko"><head>
+    <script src="js/error_translator.js"></script>' +
+      '<meta charset="UTF-8">' +
+      '<title>KiWE 매뉴얼 - ' + title + '<\/title>' +
+      '<style>' + css + '<\/style>' +
+      '<\/head><body>' +
+      '<h2>' + icon + ' ' + title + '<\/h2>' +
+      body +
+      '<p style="margin-top:40px;color:#94a3b8;font-size:12px;">' +
+      '\u00a9 2026 KiWE 측정관리 시스템 | 출력일: ' + date +
+      '<\/p><\/body><\/html>'
+    );
+    win.document.close();
+    win.focus();
+    win.print();
+  }
+
+  // ─── Toast notification ──────────────────────────────────────────────
+  function showToast(msg) {
+    let t = document.getElementById('toast');
+    if (!t) {
+      t = document.createElement('div');
+      t.id = 'toast';
+      t.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1e293b;color:#f8fafc;padding:10px 20px;border-radius:999px;font-size:13px;font-weight:600;z-index:9999;transition:opacity 0.3s;box-shadow:0 4px 16px rgba(0,0,0,.2);';
+      document.body.appendChild(t);
+    }
+    t.textContent = msg;
+    t.style.opacity = '1';
+    clearTimeout(t._timeout);
+    t._timeout = setTimeout(() => { t.style.opacity = '0'; }, 2000);
+  }
+
+  // ─── Fuse.js Search ──────────────────────────────────────────────────
+  let fuse = null;
+
+  function initSearch() {
+    // Fuse.js 퍼지 검색 (CDN 로드 성공 시)
+    if (typeof Fuse !== 'undefined' && typeof MANUAL_SECTIONS !== 'undefined') {
+      fuse = new Fuse(MANUAL_SECTIONS, {
+        keys: [
+          { name: 'title', weight: 0.5 },
+          { name: 'tags', weight: 0.3 },
+          { name: 'content', weight: 0.2 }
+        ],
+        includeScore: true,
+        threshold: 0.45,
+        minMatchCharLength: 1,
+        ignoreLocation: true,
+      });
+    }
+
+    const input = document.getElementById('search-input');
+    const clearBtn = document.getElementById('search-clear');
+    let debounce;
+    input.addEventListener('input', () => {
+      clearTimeout(debounce);
+      debounce = setTimeout(() => performSearch(input.value.trim()), 180);
+      clearBtn.style.display = input.value ? 'block' : 'none';
+    });
+  }
+
+  // 내장 Fallback 검색 (Fuse.js 없을 때)
+  function fallbackSearch(query) {
+    const q = query.toLowerCase();
+    return (MANUAL_SECTIONS || []).filter(sec =>
+      sec.title.toLowerCase().includes(q) ||
+      (sec.tags || []).some(t => t.toLowerCase().includes(q)) ||
+      sec.content.toLowerCase().includes(q)
+    ).map(sec => ({ item: sec }));
+  }
+
+  function performSearch(query) {
+    const cards = document.querySelectorAll('.section-card');
+    const sideItems = document.querySelectorAll('.sidebar-item');
+    const statusEl = document.getElementById('search-status');
+    const statusText = document.getElementById('search-status-text');
+    const noResults = document.getElementById('no-results');
+    const sideEmpty = document.getElementById('sidebar-empty');
+
+    if (!query) {
+      cards.forEach(c => { c.classList.remove('hidden', 'dim'); });
+      sideItems.forEach(i => i.classList.remove('hidden'));
+      statusEl.style.display = 'none';
+      noResults.style.display = 'none';
+      sideEmpty.style.display = 'none';
+      return;
+    }
+
+    const results = fuse ? fuse.search(query) : fallbackSearch(query);
+    const matchedIds = new Set(results.map(r => r.item.id));
+
+    let visibleCount = 0;
+    cards.forEach(card => {
+      if (matchedIds.has(card.id)) {
+        card.classList.remove('hidden', 'dim');
+        visibleCount++;
+      } else {
+        card.classList.add('hidden');
+        card.classList.remove('dim');
+      }
+    });
+
+    sideItems.forEach(item => {
+      if (matchedIds.has(item.dataset.target)) {
+        item.classList.remove('hidden');
+      } else {
+        item.classList.add('hidden');
+      }
+    });
+
+    sideEmpty.style.display = matchedIds.size === 0 ? 'block' : 'none';
+
+    if (visibleCount === 0) {
+      noResults.style.display = 'flex';
+      statusEl.style.display = 'none';
+    } else {
+      noResults.style.display = 'none';
+      statusEl.style.display = 'flex';
+      statusText.textContent = `"${query}" 검색 결과: ${visibleCount}개 섹션 매칭됨`;
+    }
+  }
+
+  function clearSearch() {
+    const input = document.getElementById('search-input');
+    input.value = '';
+    document.getElementById('search-clear').style.display = 'none';
+    performSearch('');
+    input.focus();
+  }
+
+  // ─── Supabase: version & notices ────────────────────────────────────
+  async function loadDynamicData() {
+    // Version badge
+    document.getElementById('version-badge').textContent = `v${MANUAL_VERSION} (${MANUAL_UPDATED})`;
+
+    // Try to load notices from Supabase
+    try {
+      const client = window.supabase.createClient(
+        'https://jztrnwchgxymknjvsbkl.supabase.co',
+        'sb_publishable_Z8oriOCik8fZlnAMgznUMg_IhmmFQ33'
+      );
+      const { data, error } = await client
+        .from('kiwe_notices')
+        .select('content')
+        .eq('is_active', true)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (!error && data && data.content) {
+        const pill = document.getElementById('notice-pill');
+        document.getElementById('notice-text').textContent = data.content;
+        pill.style.display = 'flex';
+      }
+    } catch(e) {
+      // notice table may not exist — silently ignore
+    }
+  }
+
+  // ─── Init ────────────────────────────────────────────────────────────
+  document.addEventListener('DOMContentLoaded', () => {
+    initThemeIcon();
+    renderSections();
+    initSearch();
+    initScrollSpy();
+    handleAnchor();
+    loadDynamicData();
+  });
+  </script>
+</body>
+</html>

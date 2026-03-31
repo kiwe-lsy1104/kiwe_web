@@ -1,0 +1,872 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <script src="js/error_translator.js"></script>
+    <meta charset="UTF-8">
+    <base href="./">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self' https: 'unsafe-inline' 'unsafe-eval'; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://unpkg.com https://*.lucide.dev http://127.0.0.1:* http://localhost:*; img-src 'self' data: https:; font-src 'self' https: data:;">
+    <title>일정 및 장비 관리 - KiWE</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script>
+        window.onerror = function (msg, url, line, col, error) {
+            console.error("Global Error:", msg, url, line);
+            const root = document.getElementById('root');
+            if (root && (root.innerHTML.includes('로딩') || root.innerHTML === '')) {
+                root.innerHTML = `<div style="padding: 40px; text-align: center; font-family: sans-serif;">
+                    <div style="color: #e11d48; font-size: 24px; font-weight: bold; mb: 10px;">시스템 로드 오류</div>
+                    <div style="color: #64748b; margin-top: 10px;">화면을 불러오는 중 문제가 발생했습니다.<br/>잠시 후 다시 시도해주세요.</div>
+                    <button onclick="location.reload()" style="margin-top: 20px; padding: 10px 20px; background: #4f46e5; color: white; border: none; border-radius: 8px; cursor: pointer;">새로고침</button>
+                </div>`;
+            }
+            return false;
+        };
+    </script>
+    <style>
+        .calendar-grid {
+            display: grid;
+            grid-template-columns: 2fr 3fr 3fr 3fr 3fr 3fr 2fr;
+            gap: 1px;
+            background-color: #cbd5e1;
+        }
+
+        .calendar-cell {
+            background-color: white;
+            height: 240px;
+            /* Increased to 1.5x (160 * 1.5 = 240) */
+            display: flex;
+            flex-direction: column;
+        }
+
+        .month-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 0.5rem;
+        }
+
+        .scrollbar-hide::-webkit-scrollbar {
+            display: none;
+        }
+
+        .scrollbar-hide {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(-5px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .animate-fadeIn {
+            animation: fadeIn 0.15s ease-out forwards;
+        }
+
+        /* Smooth scroll for sidebar and calendar */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #f1f5f9;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 20px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+    </style>
+    <script type="module">
+        import { checkAuth } from './js/auth.js';
+        checkAuth();
+    </script>
+</head>
+
+<body class="bg-slate-50 text-slate-800 flex flex-col min-h-screen">
+    <div id="root" class="flex-1 flex flex-col">
+        <div
+            style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; gap: 15px; font-family: sans-serif;">
+            <div
+                style="width: 40px; height: 40px; border: 4px solid #f3f3f3; border-top: 4px solid #4f46e5; border-radius: 50%; animation: spin 1s linear infinite;">
+            </div>
+            <div style="font-weight: bold; color: #475569;">시스템 로딩 중...</div>
+            <style>
+                @keyframes spin {
+                    0% {
+                        transform: rotate(0deg);
+                    }
+
+                    100% {
+                        transform: rotate(360deg);
+                    }
+                }
+            </style>
+        </div>
+    </div>
+
+    <script type="module">
+        const { useState, useEffect, useMemo, useRef } = React;
+        const e = React.createElement;
+        let supabase;
+        try {
+            supabase = window.supabase.createClient('https://jztrnwchgxymknjvsbkl.supabase.co', 'sb_publishable_Z8oriOCik8fZlnAMgznUMg_IhmmFQ33');
+        } catch (err) {
+            console.error("Supabase Init Error:", err);
+        }
+
+        const formatLocalDate = (date) => {
+            if (!(date instanceof Date) || isNaN(date)) return '';
+            const y = date.getFullYear();
+            const m = String(date.getMonth() + 1).padStart(2, '0');
+            const d = String(date.getDate()).padStart(2, '0');
+            return `${y}-${m}-${d}`;
+        };
+
+        // ==========================================
+        // Sub-Components
+        // ==========================================
+
+        const MonthSelector = ({ currentMonth, onSelect }) => {
+            const months = Array.from({ length: 12 }, (_, i) => i + 1);
+            return e('div', { className: "absolute top-12 left-0 z-20 bg-white shadow-xl rounded-xl p-4 border border-slate-200 w-64 grid grid-cols-4 gap-2 animate-fadeIn" },
+                months.map(m => e('button', {
+                    key: m,
+                    onClick: () => onSelect(m),
+                    className: `p-2 rounded-lg text-sm font-bold ${currentMonth === m ? 'bg-indigo-600 text-white' : 'bg-slate-50 text-slate-600 hover:bg-slate-100'}`
+                }, `${m}월`))
+            );
+        };
+
+        const MultiUserSelect = ({ users, selected, onChange }) => {
+            const [localUsers, setLocalUsers] = useState(users);
+            const [isOpen, setIsOpen] = useState(false);
+
+            const selectedNames = selected ? selected.split(',').map(s => s.trim()).filter(Boolean) : [];
+
+            const toggleUser = (name) => {
+                let newSelected;
+                if (selectedNames.includes(name)) {
+                    newSelected = selectedNames.filter(n => n !== name);
+                } else {
+                    newSelected = [...selectedNames, name];
+                }
+                onChange(newSelected.join(', '));
+            };
+
+            return e('div', { className: "relative space-y-2" },
+                e('div', { className: "flex flex-wrap gap-2 p-2 bg-slate-50 border border-slate-200 rounded-xl min-h-[50px] items-center" },
+                    selectedNames.map(name =>
+                        e('span', { key: name, className: "bg-indigo-100 text-indigo-700 px-2 py-1 rounded-lg text-xs font-bold flex items-center gap-1" },
+                            name,
+                            e('button', { type: 'button', onClick: () => toggleUser(name), className: "hover:text-indigo-900" }, e('i', { 'data-lucide': "x", className: "w-3 h-3" }))
+                        )
+                    ),
+                    e('button', { type: 'button', onClick: () => setIsOpen(!isOpen), className: "px-2 py-1 text-xs font-bold text-slate-400 border border-dashed border-slate-300 rounded hover:bg-white hover:text-indigo-600 transition" }, "+ 추가")
+                ),
+                isOpen && e('div', { className: "absolute top-full left-0 w-full bg-white border border-slate-200 rounded-xl shadow-xl z-50 max-h-48 overflow-y-auto p-2 grid grid-cols-2 gap-1 animate-fadeIn" },
+                    localUsers.map(u =>
+                        e('button', {
+                            key: u.user_id,
+                            type: 'button',
+                            onClick: () => toggleUser(u.user_name),
+                            className: `text-left px-3 py-2 rounded-lg text-xs font-bold ${selectedNames.includes(u.user_name) ? 'bg-indigo-50 text-indigo-700' : 'hover:bg-slate-50 text-slate-600'}`
+                        }, u.user_name)
+                    )
+                ),
+                isOpen && e('div', { className: "fixed inset-0 z-40", onClick: () => setIsOpen(false) })
+            );
+        };
+
+        const EquipmentCard = ({ equip, usage }) => {
+            const limit = Number(equip.limit_count) || 0;
+            const remaining = Math.max(0, limit - usage);
+
+            // Icon Mapping
+            const getIcon = (name) => {
+                if (name.includes('소음')) return 'mic';
+                if (name.includes('WBGT')) return 'thermometer-sun';
+                if (name.includes('Air')) return 'wind';
+                if (name.includes('Low') || name.includes('유량')) return 'gauge';
+                if (name.includes('Quad')) return 'layout-grid';
+                return 'box';
+            };
+
+            const isSoldOut = equip.eq_name === 'WBGT' ? remaining === 0 : remaining <= 4;
+            const percentage = limit > 0 ? Math.min(100, Math.round((usage / limit) * 100)) : 0;
+
+            // Pastel Theme Colors (Randomly assigned or fixed based on type would be ideal, using fixed generic for now or indexed)
+            // Using a soft slate/indigo base for normal, red for alert
+
+            return e('div', { className: `relative overflow-hidden rounded-lg transition-all duration-300 group ${isSoldOut ? 'bg-red-50 border border-red-200' : 'bg-white border border-slate-100 hover:border-indigo-200 hover:shadow-md'}` },
+                // Background Pattern (Optional decoration)
+                !isSoldOut && e('div', { className: "absolute top-0 right-0 p-1.5 opacity-5" },
+                    e('i', { 'data-lucide': getIcon(equip.eq_name), className: "w-6 h-6" })
+                ),
+
+                e('div', { className: "p-2 space-y-2 relative z-10" },
+                    // Header
+                    e('div', { className: "flex justify-between items-start" },
+                        e('div', { className: "flex flex-col" },
+                            e('span', { className: "text-[8px] font-bold text-slate-400 uppercase tracking-wide mb-0.5" }, "EQUIPMENT"),
+                            e('h4', { className: `text-[11px] font-black ${isSoldOut ? 'text-red-600' : 'text-slate-700'} flex items-center gap-1` },
+                                e('i', { 'data-lucide': getIcon(equip.eq_name), className: "w-3 h-3" }),
+                                equip.eq_name
+                            )
+                        ),
+                        isSoldOut && e('div', { className: "bg-red-100 text-red-600 text-[8px] font-black px-1.5 py-0.5 rounded-full flex items-center gap-0.5" },
+                            e('i', { 'data-lucide': "alert-circle", className: "w-2.5 h-2.5" }), "품절임박"
+                        )
+                    ),
+
+                    // Grid Metrics
+                    e('div', { className: "grid grid-cols-3 gap-1 py-1.5 bg-white/50 rounded-lg border border-slate-50/50 backdrop-blur-sm" },
+                        // Total
+                        e('div', { className: "flex flex-col items-center border-r border-slate-100" },
+                            e('span', { className: "text-[9px] text-black font-bold mb-0.5" }, "보유"),
+                            e('span', { className: "text-sm font-black text-slate-600" }, limit)
+                        ),
+                        // Used
+                        e('div', { className: "flex flex-col items-center border-r border-slate-100" },
+                            e('span', { className: "text-[9px] text-black font-bold mb-0.5" }, "사용"),
+                            e('span', { className: `text-sm font-black ${usage > 0 ? (isSoldOut ? 'text-red-500' : 'text-indigo-600') : 'text-slate-300'}` }, usage)
+                        ),
+                        // Remaining
+                        e('div', { className: "flex flex-col items-center" },
+                            e('span', { className: "text-[9px] text-black font-bold mb-0.5" }, "대여"),
+                            e('span', { className: `text-sm font-black ${isSoldOut ? 'text-red-600' : 'text-emerald-500'}` }, remaining)
+                        )
+                    )
+                )
+            );
+        };
+
+        const EquipmentInputCard = ({ equip, dailyUsage, myUsage, onChange }) => {
+            const limit = Number(equip.limit_count) || 0;
+            const available = Math.max(0, limit - dailyUsage);
+            const remainingAfterMyInput = Math.max(0, available - myUsage);
+
+            // Icon Mapping (Reused)
+            const getIcon = (name) => {
+                if (name.includes('소음')) return 'mic';
+                if (name.includes('WBGT')) return 'thermometer-sun';
+                if (name.includes('Air')) return 'wind';
+                if (name.includes('Low') || name.includes('유량')) return 'gauge';
+                if (name.includes('Quad')) return 'layout-grid';
+                return 'box';
+            };
+
+            return e('div', { className: "bg-white border border-slate-200 rounded-xl p-3 shadow-sm hover:border-indigo-300 transition-colors" },
+                // Header
+                e('div', { className: "flex justify-between items-center mb-2" },
+                    e('div', { className: "flex items-center gap-1.5" },
+                        e('div', { className: "p-1.5 bg-slate-50 rounded-lg text-slate-500" },
+                            e('i', { 'data-lucide': getIcon(equip.eq_name), className: "w-4 h-4" })
+                        ),
+                        e('span', { className: "text-sm font-black text-slate-700" }, equip.eq_name)
+                    ),
+                    // Optional: Show if sold out physically?
+                    available <= 0 && e('span', { className: "text-[10px] font-bold text-red-500 bg-red-50 px-2 py-0.5 rounded-full" }, "품절")
+                ),
+
+                // Metrics Grid
+                e('div', { className: "grid grid-cols-3 gap-1" },
+                    // Total
+                    e('div', { className: "flex flex-col items-center justify-center p-1.5 bg-slate-50 rounded-lg border border-slate-100" },
+                        e('span', { className: "text-[10px] font-bold text-slate-400" }, "보유"),
+                        e('span', { className: "text-xs font-black text-slate-600" }, limit)
+                    ),
+                    // Available (Global Remaining)
+                    e('div', { className: "flex flex-col items-center justify-center p-1.5 bg-slate-50 rounded-lg border border-slate-100" },
+                        e('span', { className: "text-[10px] font-bold text-slate-400" }, "대여"),
+                        e('span', { className: `text-xs font-black ${available === 0 ? 'text-red-500' : 'text-emerald-500'}` }, available)
+                    ),
+                    // Input (My Usage)
+                    e('div', { className: "relative" },
+                        e('input', {
+                            type: "number",
+                            min: "0",
+                            max: available, // Limit max input to available? Or allow overbooking with warning? Let's limit for now to prevent errors.
+                            value: myUsage === 0 ? '' : myUsage,
+                            placeholder: "0",
+                            onChange: (e) => {
+                                const val = parseInt(e.target.value) || 0;
+                                // Prevent negative
+                                onChange(Math.max(0, val));
+                            },
+                            className: "w-full h-full text-center font-black text-indigo-600 bg-indigo-50 border-2 border-indigo-100 rounded-lg outline-none focus:border-indigo-500 focus:bg-white transition-colors p-0 text-sm"
+                        }),
+                        e('span', { className: "absolute top-0.5 right-1 pointer-events-none text-[8px] font-bold text-indigo-300" }, "신청")
+                    )
+                )
+            );
+        };
+
+        // ==========================================
+        // Main Application
+        // ==========================================
+        function CalendarApp() {
+            const [users, setUsers] = useState([]);
+            const [currentDate, setCurrentDate] = useState(new Date());
+            const [selectedDate, setSelectedDate] = useState(formatLocalDate(new Date()));
+            const [showMonthSelector, setShowMonthSelector] = useState(false);
+            const [events, setEvents] = useState([]);
+            const [equipments, setEquipments] = useState([]);
+            const [isModalOpen, setIsModalOpen] = useState(false);
+            const [modalData, setModalData] = useState({
+                id: null,
+                sche_date: '',
+                com_name: '',
+                inspector: '',
+                activity_type: '정기측정',
+                equipment_used: {}
+            });
+
+            // Color Palette for Users: Red, Yellow(Amber), Green(Emerald), Blue, Purple
+            const colorPalette = [
+                { bg: 'bg-red-50', border: 'border-red-200', text: 'text-red-700', hex: 'bg-red-500' },
+                { bg: 'bg-amber-50', border: 'border-amber-200', text: 'text-amber-700', hex: 'bg-amber-500' },
+                { bg: 'bg-emerald-50', border: 'border-emerald-200', text: 'text-emerald-700', hex: 'bg-emerald-500' },
+                { bg: 'bg-blue-50', border: 'border-blue-200', text: 'text-blue-700', hex: 'bg-blue-500' },
+                { bg: 'bg-purple-50', border: 'border-purple-200', text: 'text-purple-700', hex: 'bg-purple-500' }
+            ];
+
+            const getUserColorObj = (inspectorName) => {
+                if (!inspectorName) return { bg: 'bg-slate-50', border: 'border-slate-200', text: 'text-slate-600', hex: 'bg-slate-400' };
+                const idx = users.findIndex(u => u.user_name === inspectorName.split(',')[0].trim());
+                if (idx === -1) return { bg: 'bg-slate-50', border: 'border-slate-200', text: 'text-slate-600', hex: 'bg-slate-400' };
+                return colorPalette[idx % colorPalette.length];
+            };
+
+            const getUserColorClass = (inspectorName) => {
+                const obj = getUserColorObj(inspectorName);
+                return `${obj.bg} ${obj.border} ${obj.text}`;
+            };
+
+            useEffect(() => { fetchEquipments(); fetchUsers(); }, []);
+            useEffect(() => { fetchEvents(); }, [currentDate]);
+            useEffect(() => {
+                if (window.lucide) window.lucide.createIcons();
+            }, [selectedDate, events, equipments, isModalOpen]);
+
+            const fetchEquipments = async () => {
+                const { data } = await supabase.from('kiwe_equipments').select('id, eq_name, equipment_type, limit_count').order('equipment_type').order('eq_name');
+                setEquipments(data || []);
+            };
+
+            const fetchUsers = async () => {
+                const { data } = await supabase.from('kiwe_users').select('user_name, user_id').order('user_name');
+                setUsers(data || []);
+            };
+
+            const fetchEvents = async () => {
+                const y = currentDate.getFullYear();
+                const m = currentDate.getMonth() + 1;
+                const prefix = `${y}-${String(m).padStart(2, '0')}`;
+                const { data } = await supabase.from('kiwe_schedule').select('*').ilike('sche_date', `${prefix}%`);
+                if (data) setEvents(data);
+            };
+
+            useEffect(() => {
+                const handleEsc = (ev) => {
+                    if (ev.key === 'Escape') setIsModalOpen(false);
+                };
+                window.addEventListener('keydown', handleEsc);
+                return () => window.removeEventListener('keydown', handleEsc);
+            }, []);
+
+            const saveEvent = async (ev) => {
+                ev.preventDefault();
+                const payload = { ...modalData };
+                if (payload.com_name) {
+                    payload.com_name = payload.com_name.replace(/\(주\)/g, '주').trim();
+                }
+                // CRITICAL: Always remove id from payload to prevent UPDATE error
+                delete payload.id;
+
+                const { error } = modalData.id
+                    ? await supabase.from('kiwe_schedule').update(payload).eq('id', modalData.id)
+                    : await supabase.from('kiwe_schedule').insert([payload]);
+
+                if (error) {
+                    alert('저장 실패: ' + error.message);
+                } else {
+                    setIsModalOpen(false);
+                    fetchEvents();
+                }
+            };
+
+            const deleteEvent = async (id) => {
+                if (!confirm('일정을 삭제하시겠습니까?')) return;
+                const { error } = await supabase.from('kiwe_schedule').delete().eq('id', id);
+                if (!error) fetchEvents();
+            };
+
+            const cloneEvent = (evt) => {
+                const date = new Date(evt.sche_date);
+                date.setDate(date.getDate() + 1);
+                const nextDay = formatLocalDate(date);
+
+                setModalData({
+                    ...evt,
+                    id: null, // New entry
+                    sche_date: nextDay
+                });
+                setIsModalOpen(true);
+            };
+
+            const getDaysInMonth = () => {
+                const y = currentDate.getFullYear();
+                const m = currentDate.getMonth();
+                const firstDay = new Date(y, m, 1).getDay();
+                const daysInMonth = new Date(y, m + 1, 0).getDate();
+                const days = [];
+                for (let i = 0; i < firstDay; i++) days.push(null);
+                for (let i = 1; i <= daysInMonth; i++) days.push(new Date(y, m, i));
+                return days;
+            };
+
+            const getCurrentDayUsage = () => {
+                const dailyEvents = events.filter(e => e.sche_date === selectedDate);
+                const usageMap = {};
+                dailyEvents.forEach(evt => {
+                    const usage = typeof evt.equipment_used === 'string' ? JSON.parse(evt.equipment_used) : (evt.equipment_used || {});
+                    Object.entries(usage).forEach(([eid, count]) => {
+                        if (typeof count === 'number' && !isNaN(count)) {
+                            usageMap[eid] = (usageMap[eid] || 0) + count;
+                        }
+                    });
+                });
+                return usageMap;
+            };
+
+            // 장비를 equipment_type에 따라 그룹화하여 카드로 변환
+            const getGroupedEquipmentCards = () => {
+                const grouped = {};
+                const individualCards = []; // 기타 타입은 개별 카드
+
+                equipments.forEach(eq => {
+                    const type = eq.equipment_type || '기타';
+
+                    if (type === '유량보정기') return; // Exclude calibrators from this view
+
+                    if (type === '기타') {
+                        // 기타 타입은 각각 개별 카드로 표시
+                        individualCards.push({
+                            id: eq.id,
+                            eq_name: eq.eq_name,
+                            equipment_type: type,
+                            limit_count: eq.limit_count,
+                            isGroup: false
+                        });
+                    } else {
+                        // 저유량, 고유량, 소음기, 7L, 길에어는 타입별로 합산
+                        if (!grouped[type]) {
+                            grouped[type] = {
+                                id: type, // 그룹 ID는 타입명
+                                eq_name: type,
+                                equipment_type: type,
+                                limit_count: 0,
+                                isGroup: true,
+                                equipmentIds: [] // 포함된 장비 ID 목록
+                            };
+                        }
+                        grouped[type].limit_count += eq.limit_count;
+                        grouped[type].equipmentIds.push(eq.id);
+                    }
+                });
+
+                return { grouped, individualCards };
+            };
+
+            // 그룹 또는 개별 카드의 사용량 계산
+            const getCardUsage = (card) => {
+                if (card.isGroup) {
+                    // 그룹 카드: 해당 타입의 모든 장비 사용량 합산
+                    return card.equipmentIds.reduce((sum, eid) => sum + (currentUsage[eid] || 0), 0);
+                } else {
+                    // 개별 카드: 해당 장비의 사용량
+                    return currentUsage[card.id] || 0;
+                }
+            };
+
+            const days = getDaysInMonth();
+            const currentUsage = getCurrentDayUsage();
+            const { grouped, individualCards } = getGroupedEquipmentCards();
+
+            return e('div', { className: "flex flex-col min-h-screen bg-slate-50" },
+                e('header', { className: "bg-white border-b border-slate-200 h-16 flex items-center justify-between px-6 sticky top-0 z-20 shrink-0" },
+                    e('div', { className: "flex items-center gap-2" },
+                        e('a', { href: "main.html", className: "flex items-center gap-2 text-slate-500 hover:text-blue-600 font-bold transition-colors" },
+                            e('i', { 'data-lucide': "arrow-left", className: "w-5 h-5" }),
+                            " 메인으로 돌아가기"
+                        ),
+                        e('div', { className: "w-px h-6 bg-slate-200 mx-1" }),
+                        e('a', { href: "plan.html", className: "flex items-center gap-2 px-3 py-1.5 bg-indigo-50 text-indigo-600 border border-indigo-100 rounded-lg text-xs font-bold hover:bg-indigo-100 transition-colors" },
+                            e('i', { 'data-lucide': "calendar-clock", className: "w-4 h-4" }),
+                            "측정계획관리"
+                        )
+                    ),
+                    e('div', { className: "flex items-center gap-4 relative" },
+                        e('div', { className: "flex items-center bg-slate-100 rounded-lg p-1" },
+                            e('button', { onClick: () => setCurrentDate(new Date(currentDate.setFullYear(currentDate.getFullYear() - 1))), className: "p-1 hover:bg-slate-200 rounded" }, e('i', { 'data-lucide': "chevron-left", className: "w-4 h-4" })),
+                            e('span', { className: "px-4 font-black text-lg" }, `${currentDate.getFullYear()}년`),
+                            e('button', { onClick: () => setCurrentDate(new Date(currentDate.setFullYear(currentDate.getFullYear() + 1))), className: "p-1 hover:bg-slate-200 rounded" }, e('i', { 'data-lucide': "chevron-right", className: "w-4 h-4" }))
+                        ),
+                        e('div', { className: "relative flex items-center bg-indigo-600 rounded-lg shadow-md" },
+                            e('button', { onClick: () => setCurrentDate(new Date(currentDate.setMonth(currentDate.getMonth() - 1))), className: "p-2 text-indigo-200 hover:text-white hover:bg-indigo-700 rounded-l-lg transition" }, e('i', { 'data-lucide': "chevron-left", className: "w-5 h-5" })),
+                            e('button', { onClick: () => setShowMonthSelector(!showMonthSelector), className: "flex items-center justify-center gap-1 text-white px-2 py-2 font-bold hover:bg-indigo-700 transition min-w-[60px]" },
+                                `${currentDate.getMonth() + 1}월`
+                            ),
+                            e('button', { onClick: () => setCurrentDate(new Date(currentDate.setMonth(currentDate.getMonth() + 1))), className: "p-2 text-indigo-200 hover:text-white hover:bg-indigo-700 rounded-r-lg transition" }, e('i', { 'data-lucide': "chevron-right", className: "w-5 h-5" })),
+                            showMonthSelector && e(MonthSelector, { currentMonth: currentDate.getMonth() + 1, onSelect: (m) => { setCurrentDate(new Date(currentDate.setMonth(m - 1))); setShowMonthSelector(false); } })
+                        )
+                    ),
+                    e('div', { className: "flex justify-end gap-3 min-w-[240px]" },
+                        e('button', {
+                            onClick: () => {
+                                setModalData({ id: null, sche_date: selectedDate, com_name: '', inspector: '', activity_type: '정기측정', equipment_used: {} });
+                                setIsModalOpen(true);
+                            },
+                            className: "flex items-center gap-2 bg-indigo-600 text-white px-5 py-3 rounded-xl font-black hover:bg-indigo-700 transition shadow-lg text-base"
+                        },
+                            e('i', { 'data-lucide': "calendar-plus", className: "w-5 h-5" }), "일정등록"
+                        ),
+                        e('button', {
+                            onClick: () => {
+                                setModalData({ id: null, sche_date: selectedDate, com_name: '휴무', inspector: '', activity_type: '공휴일', equipment_used: {} });
+                                setIsModalOpen(true);
+                            },
+                            className: "flex items-center gap-2 bg-red-50 text-red-600 border border-red-100 px-3 py-2 rounded-lg font-bold hover:bg-red-100 transition shadow-sm text-xs"
+                        },
+                            e('i', { 'data-lucide': "calendar-off", className: "w-4 h-4" }), "공휴일 등록"
+                        )
+                    )
+                ),
+                e('div', { className: "flex flex-1" },
+                    // Calendar Section (Left: 70%)
+                    e('div', { className: "flex-1 bg-white flex flex-col border-r border-slate-200 relative w-[70%]" },
+                        e('div', {
+                            style: { display: 'grid', gridTemplateColumns: '2fr 3fr 3fr 3fr 3fr 3fr 2fr' },
+                            className: "border-b border-slate-200 text-center py-2 bg-slate-50 sticky top-16 z-10 text-xs font-bold shadow-sm"
+                        },
+                            e('span', { className: "text-red-500" }, "일"), e('span', null, "월"), e('span', null, "화"), e('span', null, "수"), e('span', null, "목"), e('span', null, "금"), e('span', { className: "text-blue-500" }, "토")
+                        ),
+                        e('div', { className: "flex-1 p-1 bg-slate-50" },
+                            e('div', { className: "calendar-grid border border-slate-200 rounded-lg overflow-hidden shadow-sm" },
+                                days.map((d, i) => {
+                                    if (!d) return e('div', { key: i, className: "bg-slate-50/30 calendar-cell" });
+                                    const dateStr = formatLocalDate(d);
+                                    const dayEvents = events.filter(ev => ev.sche_date === dateStr);
+                                    const isSelected = selectedDate === dateStr;
+
+                                    // Holiday Logic
+                                    const isHoliday = dayEvents.some(ev => ev.activity_type === '공휴일');
+                                    const isSunday = d.getDay() === 0;
+                                    const isSaturday = d.getDay() === 6;
+
+                                    // Dynamic Styling for Cell
+                                    const cellBg = isHoliday ? 'bg-red-50/50' : (isSelected ? 'bg-white' : (isSunday ? 'bg-red-50/10' : (isSaturday ? 'bg-blue-50/10' : 'bg-white')));
+                                    const dateColor = isHoliday ? 'text-red-500' : (isSunday ? 'text-red-500' : (isSaturday ? 'text-blue-500' : 'text-slate-700'));
+
+                                    return e('div', {
+                                        key: i,
+                                        onClick: () => setSelectedDate(dateStr),
+                                        className: `calendar-cell border-r border-b border-slate-200 transition-all cursor-pointer overflow-hidden ${isSelected ? 'ring-2 ring-inset ring-indigo-600 z-10' : 'hover:bg-slate-50'} ${cellBg}`
+                                    },
+                                        e('div', { className: "p-3 flex justify-between items-start" },
+                                            e('div', { className: "flex items-center gap-1" },
+                                                e('span', { className: `text-base font-black ${dateColor}` }, d.getDate()),
+                                                isHoliday && e('span', { className: "text-[10px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded font-bold" }, "휴무")
+                                            ),
+                                            isSelected && e('div', { className: "w-2 h-2 rounded-full bg-indigo-600 shadow-sm shadow-indigo-200" })
+                                        ),
+                                        e('div', { className: "flex-1 px-2 pb-2 flex flex-col gap-1.5 overflow-y-auto scrollbar-hide" },
+                                            dayEvents.map(evt => {
+                                                const colorClass = getUserColorClass(evt.inspector);
+                                                // Holiday Event Styling Override
+                                                const isEventHoliday = evt.activity_type === '공휴일';
+                                                const eventStyle = isEventHoliday ? 'bg-red-100 border-red-200 text-red-600' : colorClass;
+
+                                                return e('div', {
+                                                    key: evt.id,
+                                                    onClick: (ev) => { ev.stopPropagation(); setModalData(evt); setIsModalOpen(true); },
+                                                    className: `text-[12px] px-2 py-1.5 rounded border leading-tight font-black break-words whitespace-normal shadow-sm transition hover:scale-[1.02] ${eventStyle}`
+                                                },
+                                                    isEventHoliday ? `[휴무] ${evt.com_name}` : `[${evt.inspector}] ${evt.activity_type}`
+                                                );
+                                            })
+                                        )
+                                    );
+                                })
+                            )
+                        )
+                    ),
+
+                    // Detail Section (Right: 30%) - Sidebar Structure Update
+                    e('div', { className: "w-[30%] bg-white border-l border-slate-200 sticky top-16 h-[calc(100vh-64px)] flex flex-col z-30 shadow-xl" },
+
+                        // 1. Sidebar Header (Fixed at top)
+                        e('div', { className: "p-6 shrink-0 bg-white z-20" },
+                            e('div', { className: "flex items-center justify-between mb-6" },
+                                e('h2', { className: "text-2xl font-black text-slate-800 flex items-center gap-2" },
+                                    e('i', { 'data-lucide': "calendar", className: "text-indigo-600 w-6 h-6" }),
+                                    `${selectedDate.split('-').slice(1).join('/')}`
+                                )
+                            ),
+                            e('h3', { className: "text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2" },
+                                e('span', { className: "w-1.5 h-1.5 rounded-full bg-indigo-400" }),
+                                "Selected Day Schedules"
+                            )
+                        ),
+
+                        // 2. Schedule List (Fluid, Scrollable Middle)
+                        e('div', { className: "flex-1 overflow-y-auto px-6 pb-4 space-y-4 scrollbar-hide bg-white hover:scrollbar-default" },
+                            events.filter(ev => ev.sche_date === selectedDate).length === 0 ?
+                                // Empty State Redesign
+                                e('div', { className: "h-full flex flex-col items-center justify-center text-slate-300 space-y-4 min-h-[200px]" },
+                                    e('div', { className: "w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center animate-pulse" },
+                                        e('i', { 'data-lucide': "coffee", className: "w-8 h-8 text-slate-300" })
+                                    ),
+                                    e('div', { className: "text-center" },
+                                        e('p', { className: "text-sm font-bold text-slate-400" }, "등록된 일정이 없습니다"),
+                                        e('p', { className: "text-xs text-slate-300 mt-1" }, "여유로운 하루되세요!")
+                                    )
+                                ) :
+                                events.filter(ev => ev.sche_date === selectedDate).map(evt => {
+                                    const colorObj = getUserColorObj(evt.inspector);
+                                    return e('div', { key: evt.id, className: `bg-white p-2 rounded-xl shadow-sm border border-slate-100 flex flex-col gap-1.5 group hover:shadow-md transition-all relative overflow-hidden` },
+                                        e('div', { className: `absolute top-0 left-0 bottom-0 w-1 ${colorObj.hex}` }),
+                                        e('div', { className: "flex justify-between items-start pl-1.5" },
+                                            e('div', { className: "flex items-center gap-1" },
+                                                e('div', { className: `w-1 h-1 rounded-full ${colorObj.hex}` }),
+                                                e('span', { className: "text-[11px] font-black text-slate-400 uppercase tracking-wide" }, evt.activity_type)
+                                            ),
+                                            e('div', { className: "flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity" },
+                                                e('button', { onClick: () => cloneEvent(evt), title: "다음날로 복제", className: "p-0.5 hover:bg-slate-50 rounded text-slate-300 hover:text-emerald-600" }, e('i', { 'data-lucide': "copy", className: "w-2.5 h-2.5" })),
+                                                e('button', { onClick: () => { 
+                                                    const payloadUsage = typeof evt.equipment_used === 'string' ? JSON.parse(evt.equipment_used) : (evt.equipment_used || {});
+                                                    setModalData({...evt, equipment_used: payloadUsage}); 
+                                                    setIsModalOpen(true); 
+                                                }, className: "p-0.5 hover:bg-slate-50 rounded text-slate-300 hover:text-indigo-600" }, e('i', { 'data-lucide': "edit-3", className: "w-2.5 h-2.5" })),
+                                                e('button', { onClick: () => deleteEvent(evt.id), className: "p-0.5 hover:bg-slate-50 rounded text-slate-300 hover:text-red-600" }, e('i', { 'data-lucide': "trash-2", className: "w-2.5 h-2.5" }))
+                                            )
+                                        ),
+                                        e('div', { className: "flex flex-col gap-0.5" },
+                                            e('h4', { className: "text-sm font-black text-slate-800 leading-tight pl-1.5 break-words" }, evt.com_name),
+                                            (() => {
+                                                const usg = typeof evt.equipment_used === 'string' ? JSON.parse(evt.equipment_used || '{}') : (evt.equipment_used || {});
+                                                return usg.memo ? e('div', { className: "text-[11px] font-bold text-slate-500 pl-1.5 pt-0.5" }, `메모: ${usg.memo}`) : null;
+                                            })()
+                                        ),
+                                        e('div', { className: "flex flex-wrap gap-1 pl-1.5 pt-1" },
+                                            (evt.inspector || '').split(',').map(name =>
+                                                e('span', { key: name, className: "flex items-center gap-1 bg-slate-50 text-slate-500 px-1.5 py-0.5 rounded text-[10px] font-bold" },
+                                                    e('i', { 'data-lucide': "user", className: "w-2 h-2 opacity-40" }), name.trim()
+                                                )
+                                            )
+                                        )
+                                    );
+                                })
+                        ),
+
+                        e('div', { className: "py-3 border-t border-slate-100 bg-slate-50/80 backdrop-blur-md shrink-0 z-20" },
+                            e('div', { className: "max-w-[90%] mx-auto" },
+                                e('div', { className: "flex items-center justify-between mb-2 px-1" },
+                                    e('h3', { className: "text-[10px] font-black text-slate-400 uppercase tracking-[0.15em] flex items-center gap-1.5" },
+                                        e('span', { className: "w-1 h-1 rounded-full bg-emerald-400" }),
+                                        "장비사용현황"
+                                    ),
+                                    e('span', { className: "text-[8px] font-bold text-slate-300 bg-white px-1.5 py-0.5 rounded-full border border-slate-100 shadow-sm" }, "Real-time")
+                                ),
+
+                                e('div', { className: "grid grid-cols-2 gap-1.5" },
+                                    (() => {
+                                        // equipment_type 순서: 고유량, 소음계, 길에어, 7L, 저유량, 기타
+                                        const typeOrder = ['고유량', '소음계', '길에어', '7L', '저유량'];
+                                        const typeDisplayNames = {
+                                            '고유량': '고유량(에어빌/카인에어)'
+                                        };
+                                        const allCards = [];
+
+                                        // 타입별 그룹 카드 추가
+                                        typeOrder.forEach(type => {
+                                            if (grouped[type]) {
+                                                const displayCard = { ...grouped[type] };
+                                                if (typeDisplayNames[type]) {
+                                                    displayCard.eq_name = typeDisplayNames[type];
+                                                }
+                                                allCards.push(displayCard);
+                                            }
+                                        });
+
+                                        // 기타 개별 카드 추가
+                                        individualCards.forEach(card => {
+                                            allCards.push(card);
+                                        });
+
+                                        return allCards.map(card =>
+                                            e(EquipmentCard, {
+                                                key: card.isGroup ? `group-${card.id}` : card.id,
+                                                equip: card,
+                                                usage: getCardUsage(card)
+                                            })
+                                        );
+                                    })()
+                                )
+                            )
+                        )
+                    )
+                ),
+                isModalOpen && e('div', { className: "fixed inset-0 z-50 flex items-center justify-center p-6" },
+                    e('div', { className: "absolute inset-0 bg-slate-900/60 backdrop-blur-sm", onClick: () => setIsModalOpen(false) }),
+                    e('div', { className: "bg-white rounded-[2rem] shadow-2xl w-full max-w-5xl z-10 p-10 animate-fadeIn border border-slate-200" },
+                        e('div', { className: "flex items-center justify-between mb-8" },
+                            e('h2', { className: "text-2xl font-black text-slate-800 flex items-center gap-2" },
+                                e('i', { 'data-lucide': "calendar-plus", className: "text-indigo-600" }),
+                                `일정 ${modalData.id ? '수정' : '등록'}`
+                            ),
+                            e('button', { onClick: () => setIsModalOpen(false), className: "p-2 hover:bg-slate-100 rounded-xl text-slate-400" },
+                                e('i', { 'data-lucide': "x", className: "w-6 h-6" })
+                            )
+                        ),
+                        e('form', { onSubmit: (ev) => { ev.preventDefault(); saveEvent(ev); }, className: "grid grid-cols-2 gap-8" },
+                            // Left Column: Basic Info
+                            e('div', { className: "space-y-6" },
+                                e('div', { className: "grid grid-cols-2 gap-4" },
+                                    e('div', { className: "space-y-1" },
+                                        e('label', { className: "text-xs font-black text-slate-400 ml-1" }, "날짜"),
+                                        e('input', { required: true, type: "date", value: modalData.sche_date, onChange: ev => setModalData({ ...modalData, sche_date: ev.target.value }), className: "w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-black outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500" })
+                                    ),
+                                    e('div', { className: "space-y-1" },
+                                        e('label', { className: "text-xs font-black text-slate-400 ml-1" }, "업무 구분"),
+                                        e('select', { value: modalData.activity_type, onChange: ev => setModalData({ ...modalData, activity_type: ev.target.value }), className: "w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-black outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500" },
+                                            e('option', { value: "정기측정" }, "정기측정"),
+                                            e('option', { value: "예비조사" }, "예비조사"),
+                                            e('option', { value: "보고서" }, "보고서"),
+                                            e('option', { value: "예측치" }, "예측치"),
+                                            e('option', { value: "회사행사" }, "회사행사"),
+                                            e('option', { value: "공휴일" }, "공휴일"),
+                                            e('option', { value: "기타" }, "기타")
+                                        )
+                                    )
+                                ),
+                                e('div', { className: "space-y-1" },
+                                    e('label', { className: "text-xs font-black text-slate-400 ml-1" }, "사업장명 / 업무내용"),
+                                    e('input', { required: true, value: modalData.com_name, onChange: ev => setModalData({ ...modalData, com_name: ev.target.value }), className: "w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-black outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500" })
+                                ),
+                                e('div', { className: "space-y-1" },
+                                    e('label', { className: "text-xs font-black text-slate-400 ml-1" }, "측정자 (다중 선택 가능)"),
+                                    e(MultiUserSelect, {
+                                        users: users,
+                                        selected: modalData.inspector,
+                                        onChange: (newVal) => setModalData({ ...modalData, inspector: newVal })
+                                    })
+                                ),
+                                e('div', { className: "space-y-1" },
+                                    e('label', { className: "text-xs font-black text-slate-400 ml-1" }, "메모 (선택)"),
+                                    e('input', { type: "text", placeholder: "특이사항 등 입력", value: modalData.equipment_used?.memo || '', onChange: ev => setModalData({ ...modalData, equipment_used: { ...modalData.equipment_used, memo: ev.target.value } }), className: "w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-black outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 text-sm" })
+                                ),
+                                e('button', { type: "submit", className: "w-full py-4 bg-indigo-600 text-white rounded-2xl font-black shadow-xl hover:bg-indigo-700 transition transform hover:scale-[1.02] flex items-center justify-center gap-2 mt-8" },
+                                    e('i', { 'data-lucide': "check-circle", className: "w-5 h-5" }),
+                                    modalData.id ? "수정 완료" : "일정 등록"
+                                )
+                            ),
+
+                            // Right Column: Equipment
+                            e('div', { className: `bg-slate-50 p-6 rounded-2xl border border-slate-200 flex flex-col h-full ${modalData.activity_type === '공휴일' ? 'opacity-50 pointer-events-none grayscale' : ''}` },
+                                e('label', { className: "block text-xs font-black text-indigo-600 mb-4 flex items-center gap-2 shrink-0" },
+                                    e('i', { 'data-lucide': "hard-drive", className: "w-4 h-4" }),
+                                    "장비 수량 입력",
+                                    modalData.activity_type === '공휴일' && e('span', { className: "text-red-500 ml-auto" }, "* 공휴일은 입력 불가")
+                                ),
+                                e('div', { className: "grid grid-cols-2 gap-3 overflow-y-auto pr-2 scrollbar-hide flex-1 content-start" },
+                                    (() => {
+                                        // Calculate usage for the modal's selected date (others' usage)
+                                        const getUsageForModalDate = () => {
+                                            if (!modalData.sche_date) return {};
+                                            const dailyEvents = events.filter(e => e.sche_date === modalData.sche_date);
+                                            const usageMap = {};
+                                            dailyEvents.forEach(evt => {
+                                                if (evt.id === modalData.id) return; // Exclude self if editing
+                                                const usage = typeof evt.equipment_used === 'string' ? JSON.parse(evt.equipment_used) : (evt.equipment_used || {});
+                                                Object.entries(usage).forEach(([eid, count]) => {
+                                                    if (typeof count === 'number' && !isNaN(count)) {
+                                                        usageMap[eid] = (usageMap[eid] || 0) + count;
+                                                    }
+                                                });
+                                            });
+                                            return usageMap;
+                                        };
+                                        const modalUsageMap = getUsageForModalDate();
+
+                                        // Use the same grouping logic as the sidebar
+                                        const typeOrder = ['고유량', '소음계', '길에어', '7L', '저유량'];
+                                        const allModalCards = [];
+                                        typeOrder.forEach(type => {
+                                            if (grouped[type]) {
+                                                const displayCard = { ...grouped[type] };
+                                                if (type === '고유량') displayCard.eq_name = '고유량(에어빌/카인에어)';
+                                                allModalCards.push(displayCard);
+                                            }
+                                        });
+                                        individualCards.forEach(card => allModalCards.push(card));
+
+                                        return allModalCards.map(card => {
+                                            const othersUsage = card.isGroup
+                                                ? card.equipmentIds.reduce((sum, eid) => sum + (modalUsageMap[eid] || 0), 0)
+                                                : (modalUsageMap[card.id] || 0);
+
+                                            const myUsage = card.isGroup
+                                                ? card.equipmentIds.reduce((sum, eid) => sum + (modalData.equipment_used[eid] || 0), 0)
+                                                : (modalData.equipment_used[card.id] || 0);
+
+                                            return e(EquipmentInputCard, {
+                                                key: card.isGroup ? `group-${card.id}` : card.id,
+                                                equip: card,
+                                                dailyUsage: othersUsage,
+                                                myUsage: myUsage,
+                                                onChange: (val) => {
+                                                    const newUsage = { ...modalData.equipment_used };
+                                                    if (card.isGroup) {
+                                                        card.equipmentIds.forEach(eid => delete newUsage[eid]);
+                                                        if (val > 0) newUsage[card.equipmentIds[0]] = val;
+                                                    } else {
+                                                        if (val === 0) delete newUsage[card.id];
+                                                        else newUsage[card.id] = val;
+                                                    }
+                                                    setModalData({ ...modalData, equipment_used: newUsage });
+                                                }
+                                            });
+                                        });
+                                    })()
+                                )
+                            )
+                        )
+                    )
+                )
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(e(CalendarApp));
+    </script>
+</body>
+
+</html>

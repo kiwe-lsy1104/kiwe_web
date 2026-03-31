@@ -1,0 +1,1388 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <script src="js/error_translator.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>시료통계관리 | KIWE 웹 시스템</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class'
+        }
+    </script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <link rel="stylesheet" href="css/styles.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Pretendard:wght@400;500;600;700;900&display=swap');
+
+        body {
+            font-family: 'Pretendard', sans-serif;
+        }
+
+        .scroll-custom::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        .scroll-custom::-webkit-scrollbar-track {
+            background: #f1f5f9;
+        }
+
+        .scroll-custom::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 10px;
+        }
+
+        .scroll-custom::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+
+        .card-custom {
+            background: white;
+            border-radius: 1rem;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+        }
+
+        /* 콜럼 리사이즈 핸들 */
+        .col-resize-handle {
+            position: absolute;
+            right: 0;
+            top: 0;
+            bottom: 0;
+            width: 6px;
+            cursor: col-resize;
+            z-index: 5;
+            background: transparent;
+            transition: background 0.15s;
+        }
+
+        .col-resize-handle:hover,
+        .col-resize-handle.active {
+            background: rgba(99, 102, 241, 0.5);
+        }
+
+        .col-resizing * {
+            user-select: none !important;
+            cursor: col-resize !important;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .animate-fade-in {
+            animation: fadeIn 0.4s ease-out forwards;
+        }
+
+        @media print {
+            .no-print {
+                display: none !important;
+            }
+
+            html,
+            body {
+                height: auto !important;
+                overflow: visible !important;
+                background: white !important;
+                padding: 0 !important;
+                margin: 0 !important;
+            }
+
+            /* Ensure all parent containers allow full height and visible overflow */
+            #root,
+            #root>div,
+            main {
+                height: auto !important;
+                min-height: auto !important;
+                max-height: none !important;
+                overflow: visible !important;
+                display: block !important;
+                position: static !important;
+                margin: 0 !important;
+                padding: 0 !important;
+            }
+
+            .card-custom {
+                box-shadow: none !important;
+                border: none !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                height: auto !important;
+                overflow: visible !important;
+            }
+
+            /* 선택된 항목만 인쇄 */
+            .print-hidden {
+                display: none !important;
+            }
+
+            /* 인쇄 전용 영역 표시 */
+            #print-area {
+                display: block !important;
+                width: 100% !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                overflow: visible !important;
+            }
+
+            @page {
+                size: A4 landscape;
+                margin: 5mm;
+            }
+
+            table {
+                width: 100% !important;
+                border-collapse: collapse !important;
+                table-layout: auto !important;
+                page-break-inside: auto;
+            }
+
+            th,
+            td {
+                border: 1px solid #cbd5e1 !important;
+                padding: 4px 2px !important;
+                font-size: 9px !important;
+                word-break: break-all !important;
+            }
+
+            tr {
+                page-break-inside: avoid;
+                page-break-after: auto;
+            }
+
+            thead {
+                display: table-header-group;
+            }
+
+            .h-screen {
+                height: auto !important;
+                overflow: visible !important;
+            }
+        }
+    </style>
+</head>
+
+<body class="bg-slate-50">
+    <div id="root"></div>
+
+    <script type="module">
+        import React, { useState, useEffect, useRef, useMemo, useCallback } from 'https://esm.sh/react@18.2.0';
+        import ReactDOM from 'https://esm.sh/react-dom@18.2.0';
+        import {
+            Search, Download, Printer, Filter, FlaskConical,
+            ArrowLeft, BarChart3, Settings2,
+            X, RotateCcw, ChevronRight, Trash2, ChevronLeft, Plus, CheckSquare,
+            SortAsc, SortDesc
+        } from 'https://esm.sh/lucide-react@0.263.1';
+        import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+        import { AnalysisExtraction } from './js/analysis_list.js';
+        import { ExternalRequestManager } from './js/request.js';
+
+        const SUPABASE_URL = 'https://jztrnwchgxymknjvsbkl.supabase.co';
+        const SUPABASE_KEY = 'sb_publishable_Z8oriOCik8fZlnAMgznUMg_IhmmFQ33';
+        const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+        const e = React.createElement;
+
+        // --- Virtual Scroll 설정 ---
+        const ROW_HEIGHT = 40; // px
+        const BUFFER = 10;     // 상하 버퍼 행 수
+
+        // --- 스토리지 키 ---
+        const STORAGE_KEY_LEDGER = 'KIWE_SAMPLING_LEDGER_CONFIG_V6_STABLE';
+        const SESSION_KEY_DATA = 'KIWE_LEDGER_SESSION_DATA_V2';
+        const DB_SETTINGS_KEY = 'sampling_ledger_column_config';
+        const DB_WIDTHS_KEY = 'sampling_ledger_width_config';
+
+        // --- 컬럼 정의 ---
+        const ALL_COLUMNS = [
+            { key: 'btn_delete', label: '삭제', width: 52, source: 'action' },
+            { key: 'status', label: '완료', width: 60, source: 'sampling' },
+            { key: 'corp_code', label: '공단코드', width: 80, source: 'sampling' },
+            { key: 'sample_id', label: '시료번호', width: 110, source: 'sampling' },
+            { key: 'blank_sample_no', label: '공시료번호', width: 100, source: 'sampling' },
+            { key: 'm_date', label: '측정일자', width: 90, source: 'sampling' },
+            { key: 'com_name', label: '사업장명', width: 160, source: 'sampling' },
+            { key: 'work_process', label: '단위작업장소', width: 130, source: 'sampling' },
+            { key: 'worker_name', label: '근로자명', width: 80, source: 'sampling' },
+            { key: 'common_name', label: '유해인자', width: 150, source: 'sampling' },
+            { key: 'pump_no', label: '펌프번호', width: 80, source: 'sampling' },
+            { key: 'start_time', label: '시작시간', width: 80, source: 'sampling' },
+            { key: 'end_time', label: '종료시간', width: 80, source: 'sampling' },
+            { key: 'collection_time', label: '포집시간(분)', width: 90, source: 'calc' },
+            { key: 'avg_flow', label: '평균유량', width: 80, source: 'calc' },
+            { key: 'air_volume', label: '채기량(L)', width: 80, source: 'calc' },
+            { key: 'shift_type', label: '근로형태', width: 80, source: 'sampling' },
+            { key: 'work_hour', label: '실근로', width: 70, source: 'sampling' },
+            { key: 'lunch_time', label: '점심시간', width: 70, source: 'sampling' },
+            { key: 'occurrence_type', label: '발생형태', width: 90, source: 'sampling' },
+            { key: 'temp', label: '온도', width: 60, source: 'sampling' },
+            { key: 'humidity', label: '습도', width: 60, source: 'sampling' },
+            { key: 'sample_state', label: '시료상태', width: 80, source: 'sampling' },
+            { key: 'measured_by', label: '측정자', width: 80, source: 'sampling' },
+            { key: 'received_by', label: '인수자/접수자', width: 100, source: 'sampling' },
+            { key: 'hazard_category', label: '유해인자분류', width: 100, source: 'hazard' },
+            { key: 'instrument_name', label: '분석방법', width: 100, source: 'hazard' },
+            { key: 'sampling', label: '채취방법', width: 120, source: 'hazard' },
+            { key: 'storage', label: '보관방법', width: 120, source: 'hazard' },
+            { key: 'sampling_media', label: '채취매체', width: 120, source: 'hazard' },
+            { key: 'is_self', label: '분석구분', width: 80, source: 'sampling' },
+            { key: 'analyzer', label: '분석자', width: 120, source: 'calc' },
+            { key: 'remarks', label: '비고', width: 150, source: 'custom' },
+            { key: 'completed_at', label: '완료날짜', width: 90, source: 'sampling' },
+            { key: 'received_date', label: '접수일자', width: 90, source: 'sampling' },
+        ];
+
+        const TABS = [
+            { id: 'handover', name: '인계인수대장', defaultCols: ['sample_id', 'm_date', 'com_name', 'work_process', 'worker_name', 'common_name', 'pump_no', 'sample_state', 'remarks'] },
+            { id: 'external', name: '외부의뢰 시료관리', defaultCols: [] },
+            { id: 'ledger', name: '시료대장', defaultCols: ['status', 'sample_id', 'm_date', 'com_name', 'work_process', 'worker_name', 'common_name', 'start_time', 'end_time', 'occurrence_type', 'measured_by', 'completed_at'] }
+        ];
+
+        // ============================================================
+        //  App Component
+        // ============================================================
+        function App() {
+            const isIframe = useMemo(() => new URLSearchParams(window.location.search).get('iframe') === 'true', []);
+            const [mainTab, setMainTab] = useState('statistics'); // 'statistics'
+            const [activeTabId, setActiveTabId] = useState('ledger');
+            const [sortOrder, setSortOrder] = useState('asc');
+            const [columnConfig, setColumnConfig] = useState(() => {
+                const saved = localStorage.getItem(STORAGE_KEY_LEDGER);
+                if (saved) {
+                    try {
+                        const parsed = JSON.parse(saved);
+                        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed;
+                    } catch (e) { }
+                }
+                const d = {};
+                TABS.forEach(t => d[t.id] = t.defaultCols);
+                return d;
+            });
+            const [data, setData] = useState([]);
+            const [loading, setLoading] = useState(false);
+            const [appendLoading, setAppendLoading] = useState(false);
+
+            const today = new Date().toISOString().split('T')[0];
+            const [startDate, setStartDate] = useState(() => {
+                const d = new Date();
+                d.setDate(d.getDate() - 14);
+                return d.toISOString().split('T')[0];
+            });
+            const [endDate, setEndDate] = useState(today);
+            const [keyword, setKeyword] = useState('');  // 조회 시 필터
+            const [listFilter, setListFilter] = useState('');  // 리스트 내 실시간 필터
+            const [methodFilter, setMethodFilter] = useState(''); // 분석방법 필터 (ICP 등)
+            const [showIncompleteOnly, setShowIncompleteOnly] = useState(false); // 미완료 시료만 보기
+            const [showSettings, setShowSettings] = useState(false);
+            const [settingsSaveStatus, setSettingsSaveStatus] = useState(''); // '' | 'saving' | 'saved' | 'error'
+            const [selectedIds, setSelectedIds] = useState(new Set());
+            const [scrollTop, setScrollTop] = useState(0);
+            const [containerHeight, setContainerHeight] = useState(500);
+
+            const scrollContainerRef = useRef(null);
+            const masterCbRef = useRef(null);
+            const resizingRef = useRef(null); // { key, startX, startW }
+
+            // 콜럼 너비 state - localStorage에서 복원
+            const STORAGE_KEY_WIDTHS = 'KIWE_COL_WIDTHS_V1';
+            const [columnWidths, setColumnWidths] = useState(() => {
+                try {
+                    const saved = localStorage.getItem(STORAGE_KEY_WIDTHS);
+                    if (saved) return JSON.parse(saved);
+                } catch { }
+                // 기본값: ALL_COLUMNS의 width 사용
+                const defaults = {};
+                ALL_COLUMNS.forEach(c => { defaults[c.key] = c.width; });
+                return defaults;
+            });
+
+            // ── DB에서 공유 컬럼 및 너비 설정 로드
+            const fetchColumnConfigFromDB = async () => {
+                try {
+                    const { data: dbData, error } = await supabase
+                        .from('kiwe_app_settings')
+                        .select('key, value')
+                        .in('key', [DB_SETTINGS_KEY, DB_WIDTHS_KEY]);
+
+                    if (error) throw error;
+                    if (!dbData) return;
+
+                    dbData.forEach(item => {
+                        if (item.key === DB_SETTINGS_KEY) {
+                            const parsed = item.value;
+                            if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+                                setColumnConfig(parsed);
+                                localStorage.setItem(STORAGE_KEY_LEDGER, JSON.stringify(parsed));
+                            }
+                        } else if (item.key === DB_WIDTHS_KEY) {
+                            const parsed = item.value;
+                            if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+                                setColumnWidths(parsed);
+                                localStorage.setItem(STORAGE_KEY_WIDTHS, JSON.stringify(parsed));
+                            }
+                        }
+                    });
+                } catch (err) {
+                    console.warn('시료대장 컬럼 설정 DB 로드 실패 (localStorage 유지):', err);
+                }
+            };
+
+            // ── DB에 공유 컬럼 및 너비 설정 저장
+            const saveColumnConfigToDB = async () => {
+                setSettingsSaveStatus('saving');
+                try {
+                    // 두 가지 설정을 병렬로 저장
+                    const results = await Promise.all([
+                        supabase.from('kiwe_app_settings').upsert({
+                            key: DB_SETTINGS_KEY,
+                            value: columnConfig,
+                            updated_at: new Date().toISOString()
+                        }, { onConflict: 'key' }),
+                        supabase.from('kiwe_app_settings').upsert({
+                            key: DB_WIDTHS_KEY,
+                            value: columnWidths,
+                            updated_at: new Date().toISOString()
+                        }, { onConflict: 'key' })
+                    ]);
+
+                    const hasError = results.some(res => res.error);
+                    if (hasError) throw new Error('데이터베이스 저장 중 오류 발생');
+
+                    setSettingsSaveStatus('saved');
+                    setTimeout(() => setSettingsSaveStatus(''), 2500);
+                } catch (err) {
+                    console.error('시료대장 컬럼 설정 저장 실패:', err);
+                    setSettingsSaveStatus('error');
+                    setTimeout(() => setSettingsSaveStatus(''), 3000);
+                }
+            };
+
+            // ── 초기화: localStorage(컬럼) + sessionStorage(데이터) 복원 ──
+            useEffect(() => {
+                fetchColumnConfigFromDB(); // ★ DB에서 공유 설정 로드
+
+                // 세션 데이터 복원
+                const savedSession = sessionStorage.getItem(SESSION_KEY_DATA);
+                if (savedSession) {
+                    try {
+                        const parsed = JSON.parse(savedSession);
+                        if (Array.isArray(parsed.data) && parsed.data.length > 0) {
+                            setData(parsed.data);
+                            if (parsed.startDate) setStartDate(parsed.startDate);
+                            if (parsed.endDate) setEndDate(parsed.endDate);
+                            console.log(`[세션 복원] ${parsed.data.length}건`);
+                            return; // 복원 성공 → 자동 fetch 하지 않음
+                        }
+                    } catch { /* 파싱 실패 시 무시 */ }
+                }
+                // 세션 없으면 초기 조회
+                fetchData(today, today, '');
+
+                const handleEsc = ev => { if (ev.key === 'Escape') setShowSettings(false); };
+                window.addEventListener('keydown', handleEsc);
+                return () => window.removeEventListener('keydown', handleEsc);
+            }, []);
+
+            // ── 데이터 변경 시 sessionStorage 저장 ──
+            useEffect(() => {
+                if (data.length === 0) return;
+                try {
+                    sessionStorage.setItem(SESSION_KEY_DATA, JSON.stringify({ data, startDate, endDate }));
+                } catch (err) {
+                    console.warn('[SessionStorage] 저장 실패 (용량 초과 가능성):', err.message);
+                }
+            }, [data]);
+
+            // ── 컬럼 설정 저장 ──
+            useEffect(() => {
+                if (Object.keys(columnConfig).length > 0)
+                    localStorage.setItem(STORAGE_KEY_LEDGER, JSON.stringify(columnConfig));
+            }, [columnConfig]);
+
+            // ── 필터/탭 변경 시 스크롤 리셋 ──
+            useEffect(() => {
+                if (scrollContainerRef.current) {
+                    scrollContainerRef.current.scrollTop = 0;
+                    setScrollTop(0);
+                }
+            }, [listFilter, methodFilter, showIncompleteOnly, activeTabId, mainTab]);
+
+            // ── 컨테이너 높이 측정 ──
+            useEffect(() => {
+                if (!scrollContainerRef.current) return;
+                const obs = new ResizeObserver(entries => {
+                    for (const entry of entries) {
+                        setContainerHeight(entry.contentRect.height);
+                    }
+                });
+                obs.observe(scrollContainerRef.current);
+                return () => obs.disconnect();
+            }, []);
+
+            // ── 마스터 체크박스 indeterminate 처리 ──
+            const filteredData = useMemo(() => {
+                let filtered = data;
+
+                // 리스트 내 키워드 필터
+                if (listFilter.trim()) {
+                    const term = listFilter.replace(/\(주\)|㈜|\s/g, '').toLowerCase();
+                    filtered = filtered.filter(row =>
+                        (row.com_name || '').replace(/\(주\)|㈜|\s/g, '').toLowerCase().includes(term) ||
+                        (row.common_name || '').toLowerCase().includes(term) ||
+                        (row.sample_id || '').toLowerCase().includes(term) ||
+                        (row.worker_name || '').toLowerCase().includes(term) ||
+                        (row.m_date || '').includes(term)
+                    );
+                }
+
+                // 분석방법 필터
+                if (methodFilter.trim()) {
+                    const mTerm = methodFilter.toLowerCase();
+                    filtered = filtered.filter(row =>
+                        (row.instrument_name || '').toLowerCase().includes(mTerm)
+                    );
+                }
+
+                // 미완료만 보기 필터
+                if (showIncompleteOnly) {
+                    filtered = filtered.filter(row => row.status !== 1 && row.status !== '1');
+                }
+
+                return filtered;
+            }, [data, listFilter, methodFilter, showIncompleteOnly]);
+
+            const allFilteredIds = useMemo(() => filteredData.map(r => r.sample_id), [filteredData]);
+            const isAllSelected = allFilteredIds.length > 0 && allFilteredIds.every(id => selectedIds.has(id));
+            const isPartial = !isAllSelected && allFilteredIds.some(id => selectedIds.has(id));
+
+            useEffect(() => {
+                if (masterCbRef.current) masterCbRef.current.indeterminate = isPartial;
+            }, [isPartial, isAllSelected]);
+
+            // ── Virtual Scroll 계산 ──
+            const totalRows = filteredData.length;
+            const visibleCnt = Math.ceil(containerHeight / ROW_HEIGHT) + BUFFER * 2;
+            const startIdx = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - BUFFER);
+            const endIdx = Math.min(totalRows, startIdx + visibleCnt);
+            const topPad = startIdx * ROW_HEIGHT;
+            const bottomPad = Math.max(0, (totalRows - endIdx) * ROW_HEIGHT);
+
+            // ── 유틸 함수 ──
+            const calculateMinutes = (start, end, lunchTime) => {
+                if (!start || !end) return 0;
+                try {
+                    const [h1, m1] = start.split(':').map(Number);
+                    const [h2, m2] = end.split(':').map(Number);
+                    let diff = (h2 * 60 + m2) - (h1 * 60 + m1);
+                    if (diff < 0) diff += 1440;
+                    return Math.max(0, diff - (parseInt(lunchTime) || 0));
+                } catch { return 0; }
+            };
+
+            const getTableName = (dateStr) => {
+                if (!dateStr) return null;
+                const d = new Date(dateStr);
+                return `kiwe_sampling_${d.getFullYear()}_${d.getMonth() + 1 <= 6 ? 1 : 2}`;
+            };
+
+            const getTableList = (start, end) => {
+                if (!start || !end) return [];
+                const tables = new Set();
+                tables.add(getTableName(start));
+                let cur = new Date(start);
+                const endD = new Date(end);
+                while (cur <= endD) {
+                    tables.add(getTableName(cur.toISOString().split('T')[0]));
+                    cur.setMonth(cur.getMonth() + 6);
+                }
+                tables.add(getTableName(end));
+                return Array.from(tables);
+            };
+
+            // ── 데이터 Enrichment 공통 로직 ──
+            const buildEnriched = async (sd, ed, kw, tabId) => {
+                const tableList = getTableList(sd, ed);
+                const rawArrays = await Promise.all(
+                    tableList.map(async tn => {
+                        try {
+                            const { data: d, error } = await supabase.from(tn).select('*').gte('m_date', sd).lte('m_date', ed);
+                            return error ? [] : (d || []);
+                        } catch { return []; }
+                    })
+                );
+                const rawData = rawArrays.flat();
+
+                const [flowRes, hazardRes, analystRes, labRes] = await Promise.all([
+                    supabase.from('kiwe_flow').select('m_date, pump_no, total_avg').gte('m_date', sd).lte('m_date', ed),
+                    supabase.from('kiwe_hazard').select('*'),
+                    supabase.from('kiwe_users').select('user_name').eq('job_title', '분석책임자').maybeSingle(),
+                    supabase.from('kiwe_partners').select('partner_name').eq('is_default_lab', true).maybeSingle()
+                ]);
+
+                const defaultAnalyst = analystRes.data?.user_name || '-';
+                const defaultLab = labRes.data?.partner_name || '-';
+
+                const hazardMap = new Map((hazardRes.data || []).map(h => [h.common_name, h]));
+                const flowMap = new Map();
+                (flowRes.data || []).forEach(f => {
+                    if (f.m_date && f.pump_no) flowMap.set(`${f.m_date}_${f.pump_no}`, f.total_avg);
+                });
+
+                const blankMap = new Map();
+                rawData.forEach(row => {
+                    const isBlank = (row.worker_name?.includes('공시료')) || (row.sample_id?.startsWith('DB') || row.sample_id?.startsWith('SB'));
+                    if (isBlank) {
+                        const gk = `${row.com_name || ''}_${row.m_date || ''}_${row.common_name || ''}`;
+                        if (!blankMap.has(gk)) blankMap.set(gk, []);
+                        blankMap.get(gk).push(row.sample_id);
+                    }
+                });
+
+                let enriched = rawData
+                    .filter(row => {
+                        // 1. 소음 필터링 (시료대장/인계인수대장 모두에서 제외)
+                        if (row.common_name && row.common_name.includes('소음')) return false;
+
+                        const isBlank = row.worker_name?.includes('공시료') || row.sample_id?.startsWith('DB') || row.sample_id?.startsWith('SB');
+                        const resolvedTab = tabId || activeTabId;
+                        
+                        // 시료대장(ledger)과 인계인수대장(handover)은 D, DB 등을 포함한 모든 분석 시료 표시
+                        if (resolvedTab === 'ledger' || resolvedTab === 'handover') return true;
+                        
+                        // 그 외 탭(외부의뢰 등)은 기존처럼 공시료 제외
+                        return !isBlank;
+                    })
+                    .map(row => {
+                        const searchKey = row.common_name ? row.common_name.split('/')[0].trim() : '';
+                        const hazardInfo = hazardMap.get(searchKey) || {};
+                        const minutes = calculateMinutes(row.start_time, row.end_time, row.lunch_time);
+                        const avgFlow = flowMap.get(`${row.m_date}_${row.pump_no}`) || 0;
+                        const gk = `${row.com_name || ''}_${row.m_date || ''}_${row.common_name || ''}`;
+                        return {
+                            ...hazardInfo, ...row,
+                            corp_code: '',
+                            collection_time: minutes > 0 ? minutes : '',
+                            avg_flow: avgFlow > 0 ? avgFlow : '-',
+                            air_volume: (minutes > 0 && avgFlow > 0) ? (minutes * avgFlow).toFixed(3) : '-',
+                            blank_sample_no: (blankMap.get(gk) || []).join('/'),
+                            analyzer: hazardInfo.is_self === '자체분석' ? defaultAnalyst : (hazardInfo.is_self === '외부의뢰' ? defaultLab : '-')
+                        };
+                    });
+
+                const resolvedTab = tabId || activeTabId;
+                if (resolvedTab === 'external') enriched = enriched.filter(r => r.is_self === '외부의뢰');
+
+                if (kw) {
+                    const term = kw.replace(/\(주\)|㈜|\s/g, '').toLowerCase();
+                    enriched = enriched.filter(r =>
+                        (r.com_name || '').replace(/\(주\)|㈜|\s/g, '').toLowerCase().includes(term) ||
+                        (r.common_name || '').toLowerCase().includes(term) ||
+                        (r.sample_id || '').toLowerCase().includes(term)
+                    );
+                }
+
+                // 공시료 판별 함수
+                const isBlankSample = (item) =>
+                    (item.worker_name || '').includes('공시료') ||
+                    (item.sample_id || '').startsWith('DB') ||
+                    (item.sample_id || '').startsWith('SB');
+
+                // 1. 사업장별 최소 시료번호(SEQ) 계산 (공시료 제외, com_name 원본 사용)
+                const companyPriority = {};
+                const getSeqNum = (id) => {
+                    if (!id) return 999999;
+                    const parts = id.split('-');
+                    if (parts.length < 2) return 999999;
+                    const seq = parseInt(parts[parts.length - 1], 10);
+                    return isNaN(seq) ? 999999 : seq;
+                };
+
+                enriched.forEach(item => {
+                    if (isBlankSample(item)) return; // 공시료는 우선순위 계산에서 제외
+                    const com = item.com_name || '';
+                    const seq = getSeqNum(item.sample_id);
+                    if (!companyPriority[com] || seq < companyPriority[com]) {
+                        companyPriority[com] = seq;
+                    }
+                });
+
+                enriched.sort((a, b) => {
+                    // 1순위: 측정일자 정렬
+                    const dateComp = (a.m_date || '').localeCompare(b.m_date || '');
+                    if (dateComp !== 0) return sortOrder === 'desc' ? -dateComp : dateComp;
+
+                    // 사업장 그룹별 우선순위 (com_name 원본 그대로 비교, (주) 제거 안 함)
+                    const comA = a.com_name || '';
+                    const comB = b.com_name || '';
+
+                    // 같은 사업장이면 공시료 여부로 정렬 (공시료는 맨 뒤)
+                    if (comA === comB) {
+                        const blankA = isBlankSample(a) ? 1 : 0;
+                        const blankB = isBlankSample(b) ? 1 : 0;
+                        if (blankA !== blankB) return blankA - blankB;
+                        return (a.sample_id || '').localeCompare(b.sample_id || '');
+                    }
+
+                    // 공시료의 사업장 우선순위: 해당 공시료가 속하는 사업장의 우선순위를 따름
+                    const prioA = companyPriority[comA] ?? 999999;
+                    const prioB = companyPriority[comB] ?? 999999;
+                    if (prioA !== prioB) return prioA - prioB;
+                    return comA.localeCompare(comB);
+                });
+                return enriched;
+            };
+
+            // ── 전체 새로 조회 ──
+            const fetchData = async (sd = startDate, ed = endDate, kw = keyword) => {
+                setLoading(true);
+                try {
+                    const enriched = await buildEnriched(sd, ed, kw);
+                    setData(enriched);
+                    setSelectedIds(new Set());
+                    setListFilter('');
+                } catch (err) { alert('데이터 조회 실패: ' + err.message); }
+                finally { setLoading(false); }
+            };
+
+            // ── 추가 조회 (Append) ──
+            const appendData = async () => {
+                setAppendLoading(true);
+                try {
+                    const newRows = await buildEnriched(startDate, endDate, keyword);
+                    setData(prev => {
+                        const existingIds = new Set(prev.map(r => r.sample_id));
+                        const toAdd = newRows.filter(r => !existingIds.has(r.sample_id));
+                        if (toAdd.length === 0) { alert('중복을 제외한 새 데이터가 없습니다.'); return prev; }
+                        alert(`${toAdd.length.toLocaleString()}건이 하단에 추가되었습니다.`);
+                        const merged = [...prev, ...toAdd];
+
+                        // 공통 정렬 로직 적용
+                        const isBlankSampleA = (item) =>
+                            (item.worker_name || '').includes('공시료') ||
+                            (item.sample_id || '').startsWith('DB') ||
+                            (item.sample_id || '').startsWith('SB');
+                        const companyPriority = {};
+                        const getSeqNum = (id) => {
+                            if (!id) return 999999;
+                            const parts = id.split('-');
+                            if (parts.length < 2) return 999999;
+                            const seq = parseInt(parts[parts.length - 1], 10);
+                            return isNaN(seq) ? 999999 : seq;
+                        };
+                        merged.forEach(item => {
+                            if (isBlankSampleA(item)) return;
+                            const com = item.com_name || '';
+                            const seq = getSeqNum(item.sample_id);
+                            if (!companyPriority[com] || seq < companyPriority[com]) companyPriority[com] = seq;
+                        });
+
+                        merged.sort((a, b) => {
+                            const dateComp = (a.m_date || '').localeCompare(b.m_date || '');
+                            if (dateComp !== 0) return sortOrder === 'desc' ? -dateComp : dateComp;
+                            const comA = a.com_name || '';
+                            const comB = b.com_name || '';
+                            if (comA === comB) {
+                                const blankA = isBlankSampleA(a) ? 1 : 0;
+                                const blankB = isBlankSampleA(b) ? 1 : 0;
+                                if (blankA !== blankB) return blankA - blankB;
+                                return (a.sample_id || '').localeCompare(b.sample_id || '');
+                            }
+                            const prioA = companyPriority[comA] ?? 999999;
+                            const prioB = companyPriority[comB] ?? 999999;
+                            if (prioA !== prioB) return prioA - prioB;
+                            return comA.localeCompare(comB);
+                        });
+                        return merged;
+                    });
+                } catch (err) { alert('추가 조회 실패: ' + err.message); }
+                finally { setAppendLoading(false); }
+            };
+
+            // ── 완료 체크박스 토글 (Local UI Update + DB 반영) ──
+            const toggleStatus = async (row) => {
+                const isCompleted = row.status === 1 || row.status === '1';
+                const newStatus = isCompleted ? null : 1;
+                const newDate = isCompleted ? null : new Date().toISOString().split('T')[0];
+                const tableName = getTableName(row.m_date);
+                if (!tableName) return alert('테이블을 찾을 수 없습니다.');
+
+                // Optimistic UI: 즉시 반영
+                setData(prev => prev.map(r =>
+                    r.sample_id === row.sample_id ? { ...r, status: newStatus, completed_at: newDate } : r
+                ));
+
+                try {
+                    const { error } = await supabase.from(tableName)
+                        .update({ status: newStatus, completed_at: newDate })
+                        .eq('sample_id', row.sample_id);
+                    if (error) throw error;
+                } catch (err) {
+                    // 롤백
+                    setData(prev => prev.map(r =>
+                        r.sample_id === row.sample_id ? { ...r, status: row.status, completed_at: row.completed_at } : r
+                    ));
+                    alert('완료 상태 저장 실패: ' + err.message);
+                }
+            };
+
+            // ── 행 삭제 ──
+            const deleteRow = async (sampleId) => {
+                if (!confirm(`시료번호 [${sampleId}]를(을) 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.`)) return;
+                setLoading(true);
+                try {
+                    const rowData = data.find(d => d.sample_id === sampleId);
+                    const tableName = rowData?.m_date ? getTableName(rowData.m_date) : getTableName(startDate);
+                    if (!tableName) return alert('테이블 찾기 실패');
+                    const { error } = await supabase.from(tableName).delete().eq('sample_id', sampleId);
+                    if (error) throw error;
+                    setData(prev => prev.filter(r => r.sample_id !== sampleId));
+                    setSelectedIds(prev => { const n = new Set(prev); n.delete(sampleId); return n; });
+                } catch (err) { alert('삭제 중 오류: ' + err.message); }
+                finally { setLoading(false); }
+            };
+
+            // ── 정렬 변경 시 데이터 재정렬 ──
+            useEffect(() => {
+                setData(prev => {
+                    const next = [...prev];
+                    const isBlankSample = (item) =>
+                        (item.worker_name || '').includes('공시료') ||
+                        (item.sample_id || '').startsWith('DB') ||
+                        (item.sample_id || '').startsWith('SB');
+                    const companyPriority = {};
+                    const getSeqNum = (id) => {
+                        if (!id) return 999999;
+                        const parts = id.split('-');
+                        if (parts.length < 2) return 999999;
+                        const seq = parseInt(parts[parts.length - 1], 10);
+                        return isNaN(seq) ? 999999 : seq;
+                    };
+                    next.forEach(item => {
+                        if (isBlankSample(item)) return;
+                        const com = item.com_name || '';
+                        const seq = getSeqNum(item.sample_id);
+                        if (!companyPriority[com] || seq < companyPriority[com]) companyPriority[com] = seq;
+                    });
+
+                    next.sort((a, b) => {
+                        const dateComp = (a.m_date || '').localeCompare(b.m_date || '');
+                        if (dateComp !== 0) return sortOrder === 'desc' ? -dateComp : dateComp;
+                        const comA = a.com_name || '';
+                        const comB = b.com_name || '';
+                        if (comA === comB) {
+                            const blankA = isBlankSample(a) ? 1 : 0;
+                            const blankB = isBlankSample(b) ? 1 : 0;
+                            if (blankA !== blankB) return blankA - blankB;
+                            return (a.sample_id || '').localeCompare(b.sample_id || '');
+                        }
+                        const prioA = companyPriority[comA] ?? 999999;
+                        const prioB = companyPriority[comB] ?? 999999;
+                        if (prioA !== prioB) return prioA - prioB;
+                        return comA.localeCompare(comB);
+                    });
+                    return next;
+                });
+            }, [sortOrder]);
+
+            // ── 컬럼 너비 저장 ──
+            useEffect(() => {
+                if (Object.keys(columnWidths).length > 0)
+                    try { localStorage.setItem(STORAGE_KEY_WIDTHS, JSON.stringify(columnWidths)); } catch { }
+            }, [columnWidths]);
+
+            // ── 컬럼 리사이즈 핸들러 ──
+            const handleColResizeStart = useCallback((key, e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const startX = e.clientX;
+                const startW = columnWidths[key] || ALL_COLUMNS.find(c => c.key === key)?.width || 120;
+                resizingRef.current = { key, startX, startW };
+                document.body.classList.add('col-resizing');
+
+                const onMove = (mv) => {
+                    const delta = mv.clientX - resizingRef.current.startX;
+                    const newW = Math.max(40, resizingRef.current.startW + delta);
+                    setColumnWidths(prev => ({ ...prev, [resizingRef.current.key]: newW }));
+                };
+                const onUp = () => {
+                    resizingRef.current = null;
+                    document.body.classList.remove('col-resizing');
+                    document.removeEventListener('mousemove', onMove);
+                    document.removeEventListener('mouseup', onUp);
+                };
+                document.addEventListener('mousemove', onMove);
+                document.addEventListener('mouseup', onUp);
+            }, [columnWidths]);
+
+            const resetColumnWidths = () => {
+                const defaults = {};
+                ALL_COLUMNS.forEach(c => { defaults[c.key] = c.width; });
+                setColumnWidths(defaults);
+            };
+
+            // ── 선택 토글 ──
+            const toggleSelectAll = () => {
+                setSelectedIds(prev => {
+                    const next = new Set(prev);
+                    if (isAllSelected) allFilteredIds.forEach(id => next.delete(id));
+                    else allFilteredIds.forEach(id => next.add(id));
+                    return next;
+                });
+            };
+
+            const toggleSelectRow = id => {
+                setSelectedIds(prev => {
+                    const next = new Set(prev);
+                    next.has(id) ? next.delete(id) : next.add(id);
+                    return next;
+                });
+            };
+
+            // ── 컬럼 관리 ──
+            const currentCols = useMemo(() =>
+                columnConfig[activeTabId] || TABS.find(t => t.id === activeTabId)?.defaultCols || []
+                , [activeTabId, columnConfig]);
+
+            const unusedCols = ALL_COLUMNS.filter(c => !currentCols.includes(c.key));
+
+            const getColSourceClass = key => {
+                const col = ALL_COLUMNS.find(c => c.key === key);
+                if (!col) return 'bg-slate-50';
+                if (col.source === 'action') return 'bg-rose-50 text-rose-600 border-rose-100';
+                if (col.source === 'sampling') return 'bg-blue-100 text-blue-700 border-blue-200';
+                if (col.source === 'hazard') return 'bg-green-100 text-green-700 border-green-200';
+                if (col.source === 'calc') return 'bg-amber-100 text-amber-700 border-amber-200';
+                if (col.source === 'custom') return 'bg-yellow-100 text-yellow-700 border-yellow-200';
+                return 'bg-slate-50';
+            };
+
+            const toggleColumn = key => {
+                setColumnConfig(prev => {
+                    const next = { ...prev };
+                    const cur = [...(next[activeTabId] || [])];
+                    next[activeTabId] = cur.includes(key) ? cur.filter(k => k !== key) : [...cur, key];
+                    return next;
+                });
+            };
+
+            const moveColumn = (idx, dir) => {
+                const cols = columnConfig[activeTabId] || [];
+                const newIdx = idx + dir;
+                if (newIdx < 0 || newIdx >= cols.length) return;
+                setColumnConfig(prev => {
+                    const next = { ...prev };
+                    const arr = [...(next[activeTabId] || [])];
+                    [arr[idx], arr[newIdx]] = [arr[newIdx], arr[idx]];
+                    next[activeTabId] = arr;
+                    return next;
+                });
+            };
+
+            const resetColumns = () => {
+                if (!confirm('현재 탭의 컬럼 구성과 너비를 초기화하시겠습니까?')) return;
+                setColumnConfig(prev => {
+                    const next = { ...prev };
+                    delete next[activeTabId];
+                    return next;
+                });
+                resetColumnWidths();
+            };
+
+            const clearSession = () => {
+                if (!confirm('조회된 데이터를 전체 초기화하시겠습니까?')) return;
+                sessionStorage.removeItem(SESSION_KEY_DATA);
+                setData([]);
+                setSelectedIds(new Set());
+                setListFilter('');
+            };
+
+            // ── 엑셀 다운로드 ──
+            const downloadExcel = () => {
+                const target = selectedIds.size > 0 ? filteredData.filter(r => selectedIds.has(r.sample_id)) : filteredData;
+                if (target.length === 0) return alert('데이터 없음');
+                const excelData = target.map(row => {
+                    const obj = {};
+                    currentCols.forEach(key => {
+                        if (key === 'btn_delete') return;
+                        const col = ALL_COLUMNS.find(c => c.key === key);
+                        const label = col ? col.label : key;
+                        obj[label] = key === 'status' ? ((row[key] === 1 || row[key] === '1') ? '완료' : '') : (row[key] ?? '');
+                    });
+                    return obj;
+                });
+                const ws = XLSX.utils.json_to_sheet(excelData);
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, '시료대장');
+
+                let filename = `시료추출_${activeTabId}_${startDate}.xlsx`;
+                if (activeTabId === 'external') {
+                    filename = `(주)SM작업환경측정센서(${startDate}).xlsx`; // 오늘날짜 대신 조회시작일 사용 (또는 new Date())
+                }
+                XLSX.writeFile(wb, filename);
+            };
+
+            // ── 셀 렌더링 ──
+            const renderCell = (key, row) => {
+                const col = ALL_COLUMNS.find(c => c.key === key);
+                const w = col?.width || 120;
+
+                if (key === 'btn_delete') return e('td', { key, className: 'px-2 py-2 text-center', style: { width: columnWidths['btn_delete'] || 52, minWidth: 40 } },
+                    e('button', { onClick: () => deleteRow(row.sample_id), className: 'p-1.5 text-slate-300 hover:text-red-500 transition-colors' },
+                        e(Trash2, { size: 15 })
+                    )
+                );
+
+                if (key === 'status') {
+                    const done = row.status === 1 || row.status === '1';
+                    const sw = columnWidths['status'] || 60;
+                    return e('td', { key, className: 'px-2 py-2 text-center', style: { width: sw, minWidth: 40 } },
+                        e('input', {
+                            type: 'checkbox',
+                            checked: done,
+                            onChange: () => toggleStatus(row),
+                            title: done ? '완료 해제' : '완료 처리',
+                            className: 'w-4 h-4 accent-indigo-600 cursor-pointer'
+                        })
+                    );
+                }
+
+                if (key === 'sample_state') return e('td', { key, className: 'px-3 py-2', style: { width: columnWidths[key] || w, minWidth: 40 } },
+                    e('span', { className: `px-2 py-0.5 rounded text-[11px] font-bold ${row[key] === '파과' ? 'bg-red-100 text-red-600' : 'bg-emerald-100 text-emerald-600'}` },
+                        row[key] || '양호'
+                    )
+                );
+
+                let content = row[key] == null ? '' : String(row[key]);
+                let cellClass = `px-3 py-0 text-slate-600 border-r border-slate-50 last:border-0 overflow-hidden text-center`;
+                if (key === 'sample_id') cellClass += ' font-mono text-indigo-600 font-black text-xs';
+                if (key === 'common_name') cellClass += ' font-semibold text-slate-800';
+
+                const cw = columnWidths[key] || w;
+                const style = { width: cw, minWidth: 40, maxWidth: cw, height: ROW_HEIGHT, whiteSpace: 'nowrap' };
+
+                // --- Shrink to fit logic ---
+                const targetShrink = ['analyzer', 'com_name', 'work_process', 'worker_name'].includes(key);
+                if (targetShrink && content) {
+                    const len = content.length;
+                    const estimatedWidth = len * 8.5; // Heuristic
+                    if (estimatedWidth > cw - 10) {
+                        const ratio = (cw - 10) / estimatedWidth;
+                        style.fontSize = Math.max(9, Math.floor(13 * ratio)) + 'px'; // Base 13px (text-sm)
+                    }
+                } else {
+                    style.textOverflow = 'ellipsis';
+                }
+
+                return e('td', { key, className: cellClass, title: content, style }, content);
+            };
+
+            // ── 총 테이블 가로폭 계산 ──
+            const tableMinWidth = useMemo(() =>
+                44 + currentCols.reduce((s, k) => s + (columnWidths[k] || ALL_COLUMNS.find(c => c.key === k)?.width || 120), 0)
+                , [currentCols, columnWidths]);
+
+            // ── Render ──
+            // ============================================================
+            return e('div', { className: 'h-screen bg-slate-50 flex flex-col font-sans overflow-hidden' },
+
+                /* ── Header ── */
+                !isIframe && e('header', { className: 'bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between no-print sticky top-0 z-30 shadow-sm' },
+                    e('div', { className: 'flex items-center gap-3 flex-wrap' },
+                        e('a', { href: 'main.html', className: 'p-2 hover:bg-slate-100 rounded-lg text-slate-500' }, e(ArrowLeft, { size: 22 })),
+                        e('h1', { className: 'text-lg font-black text-slate-800 flex items-center gap-2' },
+                            e(BarChart3, { className: 'text-indigo-600', size: 20 }), '시료통계관리'
+                        ),
+                        e('div', { className: 'flex bg-slate-100 p-1 rounded-lg ml-6 gap-1' },
+                            e('button', { onClick: () => setMainTab('statistics'), className: `px-4 py-1.5 rounded-md text-sm font-bold transition-all ${mainTab === 'statistics' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}` }, '시료대장'),
+                            e('button', { onClick: () => window.location.href = 'analysis_unified.html', className: "px-4 py-1.5 rounded-md text-sm font-bold text-slate-500 hover:text-slate-700 transition-all" }, '분석결과통보서')
+                        ),
+                        TABS.map(tab => e('button', {
+                            key: tab.id, onClick: () => setActiveTabId(tab.id),
+                            className: `px-3 py-1.5 rounded-md text-sm font-bold transition-all ${activeTabId === tab.id ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`
+                        }, tab.name))
+                    ),
+                    e('div', { className: 'flex items-center gap-2' },
+                        e('button', {
+                            onClick: clearSession,
+                            title: '화면의 모든 데이터를 초기화합니다',
+                            className: 'px-3 py-1.5 rounded-lg bg-rose-50 text-rose-500 hover:bg-rose-100 flex items-center gap-1.5 text-xs font-bold transition-all border border-rose-100 active:scale-95'
+                        },
+                            e(RotateCcw, { size: 14 }), '전체 데이터 초기화'
+                        ),
+                        e('button', {
+                            onClick: () => window.print(),
+                            className: 'p-2 bg-slate-100 text-slate-600 hover:bg-slate-200 rounded-lg transition-all active:scale-95',
+                            title: '인쇄'
+                        },
+                            e(Printer, { size: 18 })
+                        )
+                    )
+                ),
+
+                e('main', { className: 'flex-1 p-5 overflow-hidden flex flex-col gap-4' },
+                    activeTabId === 'external' ? e(ExternalRequestManager, { supabase, sessionData: null }) : e(React.Fragment, null,
+
+                        /* ── 컨트롤 패널 ── */
+                        e('div', { className: 'card-custom p-4 flex flex-wrap items-end gap-3 no-print shrink-0' },
+                            /* 날짜 */
+                            e('div', { className: 'space-y-1' },
+                                e('label', { className: 'text-xs font-bold text-slate-400 ml-1' }, '조회 기간'),
+                                e('div', { className: 'flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-2' },
+                                    e('input', { type: 'date', value: startDate, onChange: ev => setStartDate(ev.target.value), className: 'bg-transparent font-bold text-sm py-2 outline-none' }),
+                                    e('span', { className: 'text-slate-400' }, '~'),
+                                    e('input', { type: 'date', value: endDate, onChange: ev => setEndDate(ev.target.value), className: 'bg-transparent font-bold text-sm py-2 outline-none' })
+                                )
+                            ),
+                            /* 키워드 */
+                            e('div', { className: 'space-y-1 flex-1 min-w-[220px]' },
+                                e('label', { className: 'text-xs font-bold text-slate-400 ml-1' }, '조회 필터'),
+                                e('div', { className: 'relative' },
+                                    e(Search, { className: 'absolute left-3 top-1/2 -translate-y-1/2 text-slate-400', size: 16 }),
+                                    e('input', {
+                                        type: 'text', value: keyword, onChange: ev => setKeyword(ev.target.value),
+                                        placeholder: '사업장, 유해인자, 시료번호…',
+                                        className: 'w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg font-bold text-sm outline-none'
+                                    })
+                                )
+                            ),
+                            /* 조회 버튼들 */
+                            e('div', { className: 'flex gap-2 flex-wrap' },
+                                e('button', {
+                                    onClick: () => fetchData(), disabled: loading,
+                                    className: 'h-[38px] px-5 bg-indigo-600 text-white font-bold rounded-lg shadow hover:bg-indigo-700 flex items-center gap-2 disabled:opacity-60 transition-all active:scale-95'
+                                },
+                                    loading ? e('div', { className: 'w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin' }) : e(Search, { size: 16 }),
+                                    '조회'
+                                ),
+                                e('button', {
+                                    onClick: appendData, disabled: appendLoading,
+                                    title: '기존 데이터를 유지하고 새 기간 데이터를 하단에 추가합니다',
+                                    className: 'h-[38px] px-5 bg-violet-600 text-white font-bold rounded-lg shadow hover:bg-violet-700 flex items-center gap-2 disabled:opacity-60'
+                                },
+                                    appendLoading ? e('div', { className: 'w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin' }) : e(Plus, { size: 16 }),
+                                    '추가 조회'
+                                )
+                            ),
+                            /* 우측 도구들 */
+                            mainTab === 'statistics' && e('div', { className: 'flex gap-2' },
+                                e('button', {
+                                    onClick: downloadExcel,
+                                    className: 'h-[38px] px-4 bg-emerald-600 text-white font-bold rounded-lg shadow hover:bg-emerald-700 flex items-center gap-2 active:scale-95 transition-all text-sm'
+                                },
+                                    e(Download, { size: 16 }),
+                                    selectedIds.size > 0 ? `엑셀 (${selectedIds.size}건)` : '엑셀'
+                                ),
+                                e('button', {
+                                    onClick: () => window.print(),
+                                    className: 'h-[38px] px-4 bg-slate-800 text-white font-bold rounded-lg shadow hover:bg-slate-900 flex items-center gap-2 active:scale-95 transition-all text-sm'
+                                },
+                                    e(Printer, { size: 16 }),
+                                    selectedIds.size > 0 ? `인쇄 (${selectedIds.size}건)` : '인쇄'
+                                )
+                            )
+                        )
+                    ),
+
+                    /* ── 메인 콘텐츠 ── */
+                    e('div', { className: 'flex-1 flex flex-col min-h-0 gap-3' },
+
+                        /* 컬럼 설정 패널 */
+                        showSettings && e('div', { className: 'card-custom p-5 animate-fade-in no-print shrink-0 border-indigo-100 ring-4 ring-indigo-50/50' },
+                            e('div', { className: 'flex justify-between items-center mb-3' },
+                                e('h3', { className: 'font-bold text-slate-700 flex items-center gap-2' }, e(Settings2, { size: 16, className: 'text-indigo-600' }), '컬럼 구성'),
+                                e('div', { className: 'flex items-center gap-2' },
+                                    e('button', {
+                                        onClick: () => saveColumnConfigToDB(),
+                                        disabled: settingsSaveStatus === 'saving',
+                                        className: (
+                                            settingsSaveStatus === 'saved' ? 'text-xs font-bold px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-600 border border-emerald-200' :
+                                                settingsSaveStatus === 'error' ? 'text-xs font-bold px-3 py-1.5 rounded-lg bg-red-50 text-red-500 border border-red-200' :
+                                                    settingsSaveStatus === 'saving' ? 'text-xs font-bold px-3 py-1.5 rounded-lg bg-slate-100 text-slate-400' :
+                                                        'text-xs font-bold px-3 py-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition-all shadow-sm'
+                                        )
+                                    },
+                                        settingsSaveStatus === 'saved' ? '✅ 저장 완료' :
+                                            settingsSaveStatus === 'error' ? '❌ 저장 실패' :
+                                                settingsSaveStatus === 'saving' ? '저장 중...' :
+                                                    '🌐 공유 저장'
+                                    ),
+                                    e('button', { onClick: resetColumns, className: 'text-xs font-bold text-slate-400 hover:text-red-500 flex items-center gap-1 px-2' }, e(RotateCcw, { size: 12 }), '초기화')
+                                )
+                            ),
+                            e('p', { className: 'text-[11px] text-indigo-500 bg-indigo-50 rounded-lg px-3 py-2 mb-3 font-bold' },
+                                '💡 컬럼 설정 후 [🌐 공유 저장]을 누르면 다른 컴퓨터/사용자에게도 동일하게 적용됩니다.'
+                            ),
+                            e('div', { className: 'mb-4' },
+                                e('div', { className: 'flex flex-wrap gap-2 p-2 bg-slate-50/50 rounded-xl border border-dashed border-slate-200' },
+                                    currentCols.map((key, idx) => {
+                                        const col = ALL_COLUMNS.find(c => c.key === key);
+                                        if (!col) return null;
+                                        return e('div', { key, className: `group flex items-center gap-1 border rounded-lg px-2 py-1.5 shadow-sm transition-all hover:scale-105 ${getColSourceClass(key)}` },
+                                            e('button', { onClick: () => moveColumn(idx, -1), disabled: idx === 0, className: `p-0.5 rounded ${idx === 0 ? 'opacity-20' : 'hover:bg-black/5'}` }, e(ChevronLeft, { size: 13 })),
+                                            e('span', { className: 'text-xs font-bold px-1' }, col.label),
+                                            e('button', { onClick: () => moveColumn(idx, 1), disabled: idx === currentCols.length - 1, className: `p-0.5 rounded ${idx === currentCols.length - 1 ? 'opacity-20' : 'hover:bg-black/5'}` }, e(ChevronRight, { size: 13 })),
+                                            e('button', { onClick: () => toggleColumn(key), className: 'p-1 hover:bg-red-500 hover:text-white rounded-md transition-colors' }, e(X, { size: 13 }))
+                                        );
+                                    })
+                                )
+                            ),
+                            e('div', { className: 'pt-3 border-t border-slate-100' },
+                                e('div', { className: 'flex flex-wrap gap-2' },
+                                    unusedCols.map(col => e('button', {
+                                        key: col.key, onClick: () => toggleColumn(col.key),
+                                        className: `px-3 py-1.5 rounded-lg border text-xs font-bold transition-all hover:scale-105 ${getColSourceClass(col.key)}`
+                                    },
+                                        '+ ' + col.label
+                                    ))
+                                )
+                            )
+                        ),
+
+                        /* 리스트 내 실시간 검색 + 통계 바 */
+                        e('div', { className: 'flex flex-col gap-3 no-print shrink-0 mb-1' },
+                            /* 상단 컨트롤 라인 (필터 & 도구) */
+                            e('div', { className: 'flex items-start justify-between gap-4 flex-wrap' },
+                                /* 왼쪽: 필터 그룹 (카드 형태) */
+                                e('div', { className: 'flex items-center gap-3 flex-wrap p-2 bg-slate-100/50 rounded-xl border border-slate-200 shadow-sm' },
+                                    /* 키워드 필터 */
+                                    e('div', { className: 'relative' },
+                                        e(Search, { className: 'absolute left-3 top-1/2 -translate-y-1/2 text-slate-400', size: 14 }),
+                                        e('input', {
+                                            type: 'text', value: listFilter,
+                                            onChange: ev => setListFilter(ev.target.value),
+                                            placeholder: '키워드 검색...',
+                                            className: 'pl-9 pr-8 py-1.5 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-300 w-48'
+                                        }),
+                                        listFilter && e('button', { onClick: () => setListFilter(''), className: 'absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600' }, e(X, { size: 12 }))
+                                    ),
+                                    /* 분석방법 필터 */
+                                    e('div', { className: 'flex items-center gap-2' },
+                                        e('div', { className: 'relative' },
+                                            e(FlaskConical, { className: 'absolute left-3 top-1/2 -translate-y-1/2 text-violet-400', size: 14 }),
+                                            e('input', {
+                                                type: 'text', value: methodFilter,
+                                                onChange: ev => setMethodFilter(ev.target.value),
+                                                placeholder: '분석방법 (ICP…)',
+                                                className: 'pl-9 pr-8 py-1.5 bg-white border border-violet-100 rounded-lg text-sm outline-none focus:ring-2 focus:ring-violet-300 w-40'
+                                            }),
+                                            methodFilter && e('button', { onClick: () => setMethodFilter(''), className: 'absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600' }, e(X, { size: 12 }))
+                                        ),
+                                        e('button', {
+                                            onClick: () => setMethodFilter('ICP'),
+                                            className: `px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${methodFilter === 'ICP' ? 'bg-violet-600 text-white border-violet-600 shadow-md scale-105' : 'bg-violet-50 text-violet-600 border-violet-100 hover:bg-violet-100'}`
+                                        }, 'ICP 퀵필터')
+                                    ),
+                                    e('div', { className: 'h-6 w-px bg-slate-300 mx-1 hidden sm:block' }),
+                                    /* 미완료 필터 */
+                                    e('button', {
+                                        onClick: () => setShowIncompleteOnly(!showIncompleteOnly),
+                                        className: `px-3 py-1.5 rounded-lg text-xs font-bold transition-all border flex items-center gap-1.5 ${showIncompleteOnly ? 'bg-rose-600 text-white border-rose-600 shadow-md scale-105' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`
+                                    },
+                                        e(Filter, { size: 14 }),
+                                        showIncompleteOnly ? '미완료 필터 ON' : '미완료만 보기'
+                                    ),
+                                    e('div', { className: 'h-6 w-px bg-slate-300 mx-1 hidden sm:block' }),
+                                    /* 반기전체 필터 */
+                                    e('button', {
+                                        onClick: () => {
+                                            const now = new Date();
+                                            const year = now.getFullYear();
+                                            const month = now.getMonth() + 1; // 1 ~ 12
+
+                                            // 1~6월 하프
+                                            let targetStart, targetEnd;
+                                            if (month <= 6) {
+                                                targetStart = `${year}-01-01`;
+                                                targetEnd = `${year}-06-30`;
+                                            } else {
+                                                targetStart = `${year}-07-01`;
+                                                targetEnd = `${year}-12-31`;
+                                            }
+                                            setStartDate(targetStart);
+                                            setEndDate(targetEnd);
+                                            fetchData(targetStart, targetEnd, keyword);
+                                        },
+                                        className: 'px-3 py-1.5 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg text-xs font-bold hover:bg-indigo-100 transition-colors shadow-sm'
+                                    }, '반기전체')
+                                ),
+
+                                /* 오른쪽: 시스템 도구 (더 눈에 띄게 배치) */
+                                e('div', { className: 'flex items-center gap-3 p-2 bg-indigo-50/50 rounded-xl border border-indigo-100 shadow-sm' },
+                                    e('button', {
+                                        onClick: () => setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc'),
+                                        className: 'h-9 px-4 bg-white border border-indigo-200 text-indigo-700 font-black rounded-lg shadow-sm hover:bg-indigo-50 flex items-center gap-2 transition-all active:scale-95 text-xs'
+                                    },
+                                        e(sortOrder === 'desc' ? SortDesc : SortAsc, { size: 16, className: 'text-indigo-600' }),
+                                        `정렬: ${sortOrder === 'desc' ? '최신순' : '과거순'}`
+                                    ),
+                                    e('button', {
+                                        onClick: () => setShowSettings(s => !s),
+                                        className: `h-9 px-4 rounded-lg transition-all flex items-center gap-2 text-xs font-black border-2 ${showSettings ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white border-indigo-400 text-indigo-600 hover:bg-indigo-50 shadow-sm'}`
+                                    },
+                                        e(Settings2, { size: 16 }), '표시 컬럼 설정'
+                                    )
+                                )
+                            ),
+                            /* 통계 정보 */
+                            e('div', { className: 'flex items-center gap-3 text-sm border-t border-slate-100 pt-2 pb-1 bg-white/50 px-2' },
+                                e('span', { className: 'text-slate-600 font-bold' },
+                                    `전체 ${data.length.toLocaleString()}건`,
+                                    (listFilter || methodFilter || showIncompleteOnly) && e('span', { className: 'ml-2 text-indigo-600 font-black' }, `(필터링결과 ${filteredData.length.toLocaleString()}건)`)
+                                ),
+                                selectedIds.size > 0 && e('span', { className: 'px-2.5 py-1 bg-indigo-100 text-indigo-700 rounded-full text-xs font-black' },
+                                    e(CheckSquare, { size: 12, className: 'inline mr-1' }), `${selectedIds.size}건 선택됨`
+                                ),
+                                selectedIds.size > 0 && e('button', { onClick: () => setSelectedIds(new Set()), className: 'text-xs font-bold text-slate-400 hover:text-rose-500 transition-colors' }, '모두 선택 해제')
+                            )
+                        ),
+
+                        /* 가상 스크롤 테이블 */
+                        e('div', { className: 'card-custom flex-1 overflow-hidden flex flex-col min-h-0 bg-white no-print' },
+                            e('div', {
+                                ref: scrollContainerRef,
+                                className: 'overflow-auto flex-1 scroll-custom',
+                                onScroll: ev => setScrollTop(ev.currentTarget.scrollTop)
+                            },
+                                e('table', { className: 'text-left table-fixed border-collapse', style: { width: tableMinWidth, minWidth: tableMinWidth } },
+                                    /* ── thead (sticky) ── */
+                                    e('thead', { className: 'sticky top-0 z-10' },
+                                        e('tr', null,
+                                            /* 전체 선택 체크박스 */
+                                            e('th', { className: 'px-3 py-3 bg-slate-100 border-r border-slate-200 text-center', style: { width: 44, minWidth: 44 } },
+                                                e('input', {
+                                                    type: 'checkbox',
+                                                    ref: masterCbRef,
+                                                    checked: isAllSelected,
+                                                    onChange: toggleSelectAll,
+                                                    title: '전체 선택 / 해제',
+                                                    className: 'w-4 h-4 accent-indigo-600 cursor-pointer'
+                                                })
+                                            ),
+                                            currentCols.map(key => {
+                                                const col = ALL_COLUMNS.find(c => c.key === key);
+                                                const cw = columnWidths[key] || col?.width || 120;
+                                                return e('th', {
+                                                    key,
+                                                    className: `px-3 py-3 text-[11px] font-black uppercase tracking-wider border-r border-slate-100 last:border-0 group select-none relative bg-slate-100 ${getColSourceClass(key)}`,
+                                                    style: { width: cw, minWidth: 40 }
+                                                },
+                                                    e('div', { className: 'flex items-center justify-center' },
+                                                        e('span', {
+                                                            className: '', // removed truncate
+                                                            style: (() => {
+                                                                const text = col?.label || key;
+                                                                const estimatedWidth = text.length * 10;
+                                                                if (estimatedWidth > cw - 10) {
+                                                                    const ratio = (cw - 10) / estimatedWidth;
+                                                                    return { fontSize: Math.max(8, Math.floor(11 * ratio)) + 'px', lineHeight: 'normal' };
+                                                                }
+                                                                return { fontSize: '11px' };
+                                                            })()
+                                                        }, col?.label || key)
+                                                    ),
+                                                    // ★ 리사이즈 핸들
+                                                    e('div', {
+                                                        className: 'col-resize-handle no-print',
+                                                        onMouseDown: (ev) => handleColResizeStart(key, ev)
+                                                    })
+                                                );
+                                            })
+                                        )
+                                    ),
+                                    /* ── tbody ── */
+                                    e('tbody', { className: 'text-sm font-medium' },
+                                        loading
+                                            ? e('tr', null, e('td', { colSpan: currentCols.length + 1, className: 'py-20 text-center' },
+                                                e('div', { className: 'flex flex-col items-center gap-3' },
+                                                    e('div', { className: 'w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin' }),
+                                                    e('span', { className: 'text-slate-400 font-bold' }, '불러오는 중…')
+                                                )
+                                            ))
+                                            : filteredData.length === 0
+                                                ? e('tr', null, e('td', { colSpan: currentCols.length + 1, className: 'py-20 text-center text-slate-400 font-bold' }, '데이터 없음'))
+                                                : [
+                                                    /* 상단 패딩 (가상 스크롤) */
+                                                    topPad > 0 && e('tr', { key: '__top__', style: { height: topPad } },
+                                                        e('td', { colSpan: currentCols.length + 1 })
+                                                    ),
+                                                    /* 보이는 행들 */
+                                                    ...filteredData.slice(startIdx, endIdx).map((row, i) => {
+                                                        const isSelected = selectedIds.has(row.sample_id);
+                                                        const isCompleted = row.status === 'completed';
+                                                        /* 인쇄 시: 선택된 것만 인쇄 (선택된 게 있을 때만 숨김 처리) */
+                                                        const printHide = selectedIds.size > 0 && !isSelected ? 'print-hidden' : '';
+                                                        return e('tr', {
+                                                            key: row.sample_id || (startIdx + i),
+                                                            className: `border-b border-slate-100 transition-colors ${printHide} ${isSelected ? 'bg-indigo-50' : isCompleted ? 'bg-slate-50 opacity-70' : 'hover:bg-slate-50'}`,
+                                                            style: { height: ROW_HEIGHT }
+                                                        },
+                                                            /* 행 선택 체크박스 */
+                                                            e('td', { className: 'px-3 py-2 text-center', style: { width: 44, minWidth: 44 } },
+                                                                e('input', {
+                                                                    type: 'checkbox',
+                                                                    checked: isSelected,
+                                                                    onChange: () => toggleSelectRow(row.sample_id),
+                                                                    className: 'w-4 h-4 accent-indigo-600 cursor-pointer'
+                                                                })
+                                                            ),
+                                                            currentCols.map(key => renderCell(key, row))
+                                                        );
+                                                    }),
+                                                    /* 하단 패딩 (가상 스크롤) */
+                                                    bottomPad > 0 && e('tr', { key: '__bot__', style: { height: bottomPad } },
+                                                        e('td', { colSpan: currentCols.length + 1 })
+                                                    )
+                                                ]
+                                    )
+                                )
+                            )
+                        ),
+
+                        /* ── 인쇄 전용 영역 (Hidden in UI, Visible in Print) ── */
+                        e('div', { id: 'print-area', className: 'hidden' },
+                            e('table', { className: 'w-full border-collapse border border-slate-300 text-[10px]' },
+                                e('thead', null,
+                                    e('tr', null,
+                                        currentCols.filter(k => k !== 'btn_delete').map(key => {
+                                            const col = ALL_COLUMNS.find(c => c.key === key);
+                                            return e('th', { key, className: 'border border-slate-300 bg-slate-50 px-1 py-1 font-bold text-center' }, col?.label || key);
+                                        })
+                                    )
+                                ),
+                                e('tbody', null,
+                                    (selectedIds.size > 0 ? filteredData.filter(r => selectedIds.has(r.sample_id)) : filteredData).map((row, idx) =>
+                                        e('tr', { key: row.sample_id || idx },
+                                            currentCols.filter(k => k !== 'btn_delete').map(key => {
+                                                let content = row[key] == null ? '' : String(row[key]);
+                                                if (key === 'status') {
+                                                    content = (row.status === 1 || row.status === '1') ? '완료' : '-';
+                                                }
+                                                return e('td', { key, className: 'border border-slate-300 px-1 py-1 text-center' }, content);
+                                            })
+                                        )
+                                    )
+                                )
+                            )
+                        )
+                    ) // end of ternary
+                )
+            )
+                ;
+        }
+
+        ReactDOM.createRoot(document.getElementById('root')).render(e(App));
+    </script>
+</body>
+
+</html>

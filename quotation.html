@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <script src="js/error_translator.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>견적 관리 시스템 | KiWE</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="css/styles.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Pretendard:wght@400;500;600;700;900&display=swap');
+
+        body {
+            font-family: 'Pretendard', sans-serif;
+        }
+
+        @media print {
+            .no-print {
+                display: none !important;
+            }
+
+            body {
+                background: white !important;
+            }
+
+            @page {
+                size: A4;
+                margin: 0;
+            }
+
+            /* 미리보기가 열렸을 때 fixed 레이어(미리보기)만 인쇄 */
+            body>#root {
+                display: none !important;
+            }
+
+            /* print:static - tailwind print variant로 fixed 해제 */
+            .print\:static {
+                position: static !important;
+                overflow: visible !important;
+            }
+
+            /* 인쇄 영역만 표시 */
+            #print-area {
+                display: block !important;
+                margin: 0 !important;
+                padding: 15mm !important;
+                width: 100% !important;
+            }
+        }
+
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #f1f5f9;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+
+<body class="bg-slate-50 h-screen flex flex-col">
+    <div id="root" class="flex-1 flex flex-col overflow-hidden">
+        <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; gap: 15px; font-family: sans-serif;">
+            <div style="width: 40px; height: 40px; border: 4px solid #f3f3f3; border-top: 4px solid #3b82f6; border-radius: 50%; animation: spin 1s linear infinite;"></div>
+            <div style="font-weight: bold; color: #475569;">시스템 로딩 중...</div>
+            <style>
+                @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+            </style>
+        </div>
+    </div>
+    <script type="module">
+        import React, { useState, useEffect } from 'https://esm.sh/react@18.2.0';
+        import ReactDOM from 'https://esm.sh/react-dom@18.2.0';
+        import { FileText, Users, ArrowLeft, ClipboardList } from 'https://esm.sh/lucide-react@0.263.1';
+        import { ClientsTab } from './js/quotation_clients.js';
+        import { QuotationList } from './js/quotation_list.js';
+        import { QuotationEditor } from './js/quotation_editor.js';
+
+        const e = React.createElement;
+
+        function App() {
+            const [view, setView] = useState('list');
+            const [editId, setEditId] = useState(null);
+            const [showEditor, setShowEditor] = useState(false);
+
+            function goNew() { setEditId(null); setShowEditor(true); }
+            function goEdit(id) { setEditId(id); setShowEditor(true); }
+            function closeEditor() { setShowEditor(false); setEditId(null); }
+
+            const TAB_BTN = (label, icon, viewName) =>
+                e('button', {
+                    onClick: () => { setView(viewName); setShowEditor(false); },
+                    className: `flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all ${view === viewName
+                        ? 'bg-white text-blue-700 shadow-sm'
+                        : 'text-slate-500 hover:text-slate-700'}`
+                }, e(icon, { size: 16 }), label);
+
+            return e('div', { className: 'h-screen flex flex-col font-sans overflow-hidden' },
+                // 헤더
+                e('header', { className: 'bg-white border-b border-slate-200 px-6 py-3 flex items-center gap-4 shrink-0 shadow-sm no-print' },
+                    e('a', { href: 'main.html', className: 'p-2 hover:bg-slate-100 rounded-lg text-slate-400 transition-colors' },
+                        e(ArrowLeft, { size: 20 })
+                    ),
+                    e('div', { className: 'flex items-center gap-2' },
+                        e(ClipboardList, { size: 22, className: 'text-blue-600' }),
+                        e('h1', { className: 'text-lg font-black text-slate-800' }, '견적 관리 시스템')
+                    ),
+                    e('div', { className: 'flex bg-slate-100 p-1 rounded-lg gap-1 ml-4' },
+                        TAB_BTN('견적 목록', FileText, 'list'),
+                        TAB_BTN('거래처 관리', Users, 'clients'),
+                    ),
+                    e('div', { className: 'ml-auto flex items-center gap-2' },
+                        e('a', {
+                            href: 'https://supabase.com/dashboard/project/jztrnwchgxymknjvsbkl/editor',
+                            target: '_blank', rel: 'noopener',
+                            className: 'text-xs text-slate-400 hover:text-blue-600 font-bold border border-slate-200 px-3 py-1.5 rounded-lg hover:border-blue-300 transition-all'
+                        }, '최초 DB 초기화용 SQL 실행 필요시 클릭')
+                    )
+                ),
+                // 본문
+                e('main', { className: 'flex-1 overflow-hidden relative' },
+                    view === 'clients'
+                        ? e(ClientsTab, null)
+                        : e(QuotationList, {
+                            onNew: goNew,
+                            onEdit: goEdit
+                        }),
+
+                    showEditor && e(QuotationEditor, {
+                        editId,
+                        onSave: () => { closeEditor(); window.dispatchEvent(new CustomEvent('reloadQuotes')); },
+                        onCancel: closeEditor
+                    })
+                )
+            );
+        }
+
+        ReactDOM.createRoot(document.getElementById('root')).render(e(App));
+    </script>
+</body>
+
+</html>

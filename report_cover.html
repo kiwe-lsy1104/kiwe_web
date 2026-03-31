@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <script src="js/error_translator.js"></script>
+    <meta charset="UTF-8">
+    <title>작업환경측정 결과보고서 표지 - KiWE</title>
+    <!-- 고딕체(Noto Sans KR) 및 인디플라워(Indie Flower) 폰트 로드 -->
+    <link
+        href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;700;900&family=Indie+Flower&display=swap"
+        rel="stylesheet">
+    <style>
+        :root {
+            --logo-width: 167px;
+            /* 2/3로 축소 */
+            --logo-bottom: 20mm;
+            --logo-right: 20mm;
+            --deco-width: 150px;
+            --primary-gothic: 'Noto Sans KR', sans-serif;
+            --check-font: 'Indie Flower', cursive;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background: #f4f7f6;
+            font-family: var(--primary-gothic);
+            color: #1a1a1a;
+        }
+
+        /* 인쇄 안내 배너 스타일 */
+        .print-guide {
+            background: #fff3cd;
+            border-bottom: 1px solid #ffeeba;
+            color: #856404;
+            padding: 12px;
+            text-align: center;
+            font-weight: 700;
+            font-size: 11pt;
+            position: sticky;
+            top: 0;
+            z-index: 2000;
+        }
+
+        .print-guide b {
+            color: #dc3545;
+        }
+
+        .page {
+            width: 210mm;
+            height: 297mm;
+            padding: 20mm;
+            margin: 10mm auto;
+            background: white;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.05);
+            box-sizing: border-box;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        @media print {
+            body {
+                background: none;
+            }
+
+            .page {
+                margin: 0;
+                box-shadow: none;
+                padding: 20mm;
+            }
+
+            .no-print {
+                display: none !important;
+            }
+        }
+
+        /* 우측 상단 보존기간 표 - 가독성 */
+        .retention-table-container {
+            position: absolute;
+            top: 20mm;
+            right: 20mm;
+            width: 120px;
+        }
+
+        .retention-mini-table {
+            width: 100%;
+            border-collapse: collapse;
+            border: 1px solid #ddd;
+            font-size: 9pt;
+            text-align: center;
+        }
+
+        .retention-mini-table td {
+            border: 1px solid #ddd;
+            padding: 5px 3px;
+            line-height: 1.3;
+        }
+
+        .bg-gray-light {
+            background-color: #f2f4f6;
+            font-weight: 700;
+            color: #000;
+        }
+
+        .date-val {
+            font-weight: 400;
+            letter-spacing: -0.5px;
+            color: #000;
+        }
+
+        .period-val {
+            font-weight: 700;
+            color: #000;
+        }
+
+        /* 하단 중앙 요약 표 */
+        .summary-table-container {
+            width: 100%;
+            max-width: 800px;
+            margin-top: calc(10px + 30mm);
+            /* 사업장명과 총 3cm 더 벌림 (기존 1cm + 2cm 추가) */
+        }
+
+        .summary-table {
+            width: 100%;
+            border-collapse: collapse;
+            border: 1px solid #333;
+            font-size: 9.5pt;
+            color: #000;
+        }
+
+        .summary-table th,
+        .summary-table td {
+            border: 1px solid #333;
+            padding: 7px 6px;
+            text-align: center;
+            white-space: nowrap;
+        }
+
+        .summary-table th {
+            background-color: #f5f5f5;
+            font-weight: 700;
+        }
+
+        .summary-table td {
+            font-weight: 400;
+        }
+
+        .summary-checkbox-group {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+        }
+
+        .summary-check-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 11pt;
+            cursor: pointer;
+        }
+
+        .summary-box {
+            width: 16px;
+            height: 16px;
+            border: 1px solid #333;
+            display: inline-block;
+            position: relative;
+            background: #fff;
+        }
+
+        .summary-box.checked::after {
+            content: 'v';
+            position: absolute;
+            left: 50%;
+            top: 45%;
+            transform: translate(-50%, -50%);
+            font-family: var(--check-font);
+            font-size: 20pt;
+            color: #000;
+            font-weight: normal;
+        }
+
+        /* 하단 푸터 텍스트 (좌측) */
+        .footer-info-text {
+            position: absolute;
+            bottom: 20mm;
+            left: 20mm;
+            font-size: 9pt;
+            color: #000;
+            line-height: 1.6;
+            z-index: 2;
+        }
+
+        /* 메인 컨텐츠 영역 */
+        .main-content {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding-top: 0;
+            /* 패딩 제거 */
+            padding-bottom: 60mm;
+            /* 하단 여백 추가 조정 */
+        }
+
+        /* 제목 그룹 (정렬 조작) */
+        .title-group {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            /* 좌측 정렬 기반 */
+            width: fit-content;
+            margin-top: -10mm;
+            /* 추가로 10mm 올려서 총 20mm 영향 */
+            margin-bottom: 20px;
+            /* 사업장명 쪽으로 더 밀착 */
+        }
+
+        /* 연도 및 반기 - 위치와 수직 일치 */
+        .period-display {
+            font-size: 23pt;
+            /* 19pt + 4pt */
+            font-weight: 700;
+            /* 500 -> 700 (굵게) */
+            color: #000;
+            /* 검정색으로 변경 */
+            margin-bottom: 5px;
+            letter-spacing: -0.5px;
+            padding-left: 2px;
+            /* 제목의 간격과 맞추기 위한 미세 조정 */
+        }
+
+        /* 작업환경측정 결과보고서 (메인제목) */
+        .doc-main-title {
+            font-size: 34pt;
+            /* 2포인트 축소 */
+            font-weight: 700;
+            /* 300 -> 700 (굵게) */
+            letter-spacing: 12px;
+            color: #222;
+            text-align: left;
+            margin-right: -12px;
+            /* 자간(letter-spacing)으로 인한 우측 삐져나감 방지 */
+        }
+
+        /* 사업장명 (중앙 강조 - 한 줄 보장) */
+        .company-name-highlight {
+            font-size: 44pt;
+            font-weight: 900;
+            color: #000;
+            margin-top: 15px;
+            /* 간격 축소 */
+            margin-bottom: 25px;
+            /* 하단 여백 줄여서 표와 밀착 */
+            text-align: center;
+            overflow: hidden;
+            white-space: nowrap;
+            /* 줄바꿈 방지 */
+            line-height: 1.3;
+            width: 100%;
+        }
+
+        /* 측정 정보 표 */
+        .detail-info-row {
+            width: 100%;
+            max-width: 700px;
+            display: flex;
+            justify-content: center;
+            gap: 70px;
+            border-top: 1px solid #eee;
+            padding-top: 40px;
+            margin-bottom: 80px;
+            text-align: center;
+        }
+
+        .detail-item {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .item-label {
+            color: #888;
+            font-size: 12pt;
+            font-weight: 800;
+        }
+
+        .item-value {
+            color: #000;
+            font-size: 15pt;
+            font-weight: 700;
+        }
+
+        /* 체크박스 섹션 */
+        .check-table-container {
+            width: 100%;
+            max-width: 600px;
+        }
+
+        .mini-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .mini-table th {
+            text-align: left;
+            font-size: 15pt;
+            font-weight: 800;
+            color: #777;
+            padding: 20px 0;
+            border-bottom: 1px solid #f0f0f0;
+            width: 160px;
+        }
+
+        .mini-table td {
+            padding: 20px 0;
+            border-bottom: 1px solid #f0f0f0;
+            display: flex;
+            gap: 40px;
+        }
+
+        .check-item {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            font-size: 15pt;
+            font-weight: 700;
+            cursor: pointer;
+            position: relative;
+        }
+
+        .box {
+            width: 24px;
+            height: 24px;
+            border: 1.5px solid #bbb;
+            display: inline-block;
+            position: relative;
+            background: #fff;
+        }
+
+        .checked::after {
+            content: 'v';
+            position: absolute;
+            left: 50%;
+            top: 45%;
+            transform: translate(-50%, -50%);
+            font-family: var(--check-font);
+            font-size: 30pt;
+            color: #000;
+            font-weight: normal;
+        }
+
+        /* 하단 장식 및 로고 */
+        .footer-deco {
+            position: absolute;
+            right: 0;
+            bottom: 0;
+            width: var(--deco-width);
+            height: auto;
+            z-index: 1;
+        }
+
+        .footer-logo-right {
+            position: absolute;
+            bottom: var(--logo-bottom);
+            right: var(--logo-right);
+            width: var(--logo-width);
+            height: auto;
+            z-index: 2;
+        }
+
+        .print-btn {
+            position: fixed;
+            top: 70px;
+            right: 20px;
+            padding: 12px 24px;
+            background: #000;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 700;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            z-index: 1000;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="print-guide no-print">
+        알림: <b>인쇄 창 [설정 더보기] - [여백: 없음] 및 [배경 그래픽]</b>에 체크하셔야 그림이 모서리에 딱 맞게 출력됩니다.
+    </div>
+
+    <button class="no-print print-btn" onclick="window.print()">PRINT REPORT</button>
+
+    <div class="page">
+        <!-- 우측 상단 보존기간 표 -->
+        <div class="retention-table-container">
+            <table class="retention-mini-table">
+                <tr>
+                    <td class="bg-gray-light">사업장보관용</td>
+                </tr>
+                <tr>
+                    <td class="period-val" id="retention-period-cell"></td>
+                </tr>
+                <tr>
+                    <td class="date-val" id="expiration-date-cell"></td>
+                </tr>
+            </table>
+        </div>
+
+        <!-- 메인 컨텐츠 영역 -->
+        <div class="main-content">
+            <!-- 제목 그룹 (정렬 조작) -->
+            <div class="title-group">
+                <div class="period-display" id="period-text"></div>
+                <div class="doc-main-title">작업환경측정 결과보고서</div>
+            </div>
+
+            <!-- 사업장명 -->
+            <div class="company-name-highlight" id="com-name"></div>
+
+            <!-- 하단 중앙 요약 표 -->
+            <div class="summary-table-container">
+                <table class="summary-table">
+                    <tr>
+                        <th>측정일자</th>
+                        <th>노출기준</th>
+                        <th>특별관리물질</th>
+                        <th>측정주기</th>
+                        <th>다음측정예정일</th>
+                    </tr>
+                    <tr>
+                        <td id="summary-measure-date"></td>
+                        <td>
+                            <div class="summary-checkbox-group">
+                                <div class="summary-check-item" onclick="toggleSummaryCheck(this, 'exposure')">
+                                    <div class="summary-box"></div> 미만
+                                </div>
+                                <div class="summary-check-item" onclick="toggleSummaryCheck(this, 'exposure')">
+                                    <div class="summary-box"></div> 초과
+                                </div>
+                            </div>
+                        </td>
+                        <td>
+                            <div class="summary-checkbox-group">
+                                <div class="summary-check-item" style="cursor: default;">
+                                    <div class="summary-box" id="summary-cmr-no"></div> 없음
+                                </div>
+                                <div class="summary-check-item" style="cursor: default;">
+                                    <div class="summary-box" id="summary-cmr-yes"></div> 있음
+                                </div>
+                            </div>
+                        </td>
+                        <td id="summary-cycle"></td>
+                        <td id="summary-next-date"></td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+
+        <!-- 하단 좌측 주소 및 연락처 -->
+        <div class="footer-info-text">
+            15426 경기도 안산시 단원구 연단로 325, 리드스마트스퀘어 1261, 1262호<br>
+            전화: 031-365-3515
+        </div>
+
+        <!-- 하단 로고 (우측) -->
+        <img src="images/logo.png" class="footer-logo-right" alt="KIWE LOGO"
+            onerror="this.src='https://jztrnwchgxymknjvsbkl.supabase.co/storage/v1/object/public/logos/kiwe_logo_long.png'">
+    </div>
+
+    <script>
+        const rec = JSON.parse(localStorage.getItem('print_record') || '{}');
+
+        // 날짜를 "yyyy년 mm월 dd일" 형식으로 변환하는 함수
+        function formatDateKorean(dateStr) {
+            if (!dateStr) return '-';
+            const parts = dateStr.split('-');
+            if (parts.length !== 3) return dateStr;
+            const year = parts[0];
+            const month = parts[1];
+            const day = parts[2];
+            return `${year}년 ${month}월 ${day}일`;
+        }
+
+        // 텍스트 로직: 연도 반기 표시
+        const year = rec.target_year || '';
+        const half = rec.half_year || '';
+        const type = rec.is_new === '수시' ? ' 수시' : '';
+        document.getElementById('period-text').textContent = `${year}년 ${half}${type}`;
+
+        const comNameEl = document.getElementById('com-name');
+        comNameEl.textContent = rec.com_name || '-';
+
+        // 사업장명 폰트 크기 자동 조절 (한 줄에 맞춤)
+        function adjustComNameSize() {
+            let fontSize = 44; // Max font size in pt
+            comNameEl.style.fontSize = fontSize + 'pt';
+            while (comNameEl.scrollWidth > comNameEl.offsetWidth && fontSize > 10) {
+                fontSize -= 1;
+                comNameEl.style.fontSize = fontSize + 'pt';
+            }
+        }
+        adjustComNameSize();
+
+        // 측정일자 로직: 시작일과 종료일이 같으면 하나만 표시, 다르면 범위 표시
+        const startDate = rec.start_date || '';
+        const endDate = rec.end_date || '';
+        let measureDateText = '-';
+
+        if (startDate && endDate) {
+            if (startDate === endDate) {
+                // 시작일과 종료일이 같으면 하나만 표시
+                measureDateText = formatDateKorean(startDate);
+            } else {
+                // 다르면 범위로 표시
+                measureDateText = `${formatDateKorean(startDate)} ~ ${formatDateKorean(endDate)}`;
+            }
+        } else if (startDate) {
+            measureDateText = formatDateKorean(startDate);
+        } else if (endDate) {
+            measureDateText = formatDateKorean(endDate);
+        }
+
+        // 요약 표의 측정일자만 업데이트
+        document.getElementById('summary-measure-date').textContent = measureDateText;
+
+        // 보존기간 표 로직
+        // is_cmr이 'y'이거나 '있음'이면 특별관리물질로 판단
+        const isCMR = rec.is_cmr === 'y' || rec.is_cmr === '있음';
+        const retentionYears = isCMR ? 30 : 5;
+
+        // 2행: 보존기간 표시
+        document.getElementById('retention-period-cell').textContent = `보존기간 ${retentionYears}년`;
+
+        // 3행: 만료일자 계산 (document_date + retention period)
+        if (rec.document_date) {
+            const docDate = new Date(rec.document_date);
+            docDate.setFullYear(docDate.getFullYear() + retentionYears);
+            const expirationDateStr = `${docDate.getFullYear()}-${String(docDate.getMonth() + 1).padStart(2, '0')}-${String(docDate.getDate()).padStart(2, '0')}`;
+            document.getElementById('expiration-date-cell').textContent = formatDateKorean(expirationDateStr);
+        } else {
+            document.getElementById('expiration-date-cell').textContent = '-';
+        }
+
+        // CMR 체크박스 시각화 (요약 표)
+        if (isCMR) {
+            document.getElementById('summary-cmr-yes').classList.add('checked');
+            document.getElementById('summary-cmr-no').classList.remove('checked');
+        } else {
+            document.getElementById('summary-cmr-no').classList.add('checked');
+            document.getElementById('summary-cmr-yes').classList.remove('checked');
+        }
+
+        // 측정 주기
+        const cycle1 = parseInt(rec.noise_cycle) || 99;
+        const cycle2 = parseInt(rec.noise_excl_cycle) || 99;
+        const minCycle = Math.min(cycle1, cycle2);
+        const cycleText = minCycle === 99 ? '-' : minCycle + '개월';
+        document.getElementById('summary-cycle').textContent = cycleText;
+
+        // 다음 측정예정일
+        const date1 = rec.next_noise_date || '9999-99-99';
+        const date2 = rec.next_excl_date || '9999-99-99';
+        const minDate = date1 < date2 ? date1 : date2;
+        const nextDateText = minDate === '9999-99-99' ? '-' : formatDateKorean(minDate);
+        document.getElementById('summary-next-date').textContent = nextDateText;
+
+        // 요약 표 체크박스 토글 함수
+        function toggleSummaryCheck(el, group) {
+            if (group === 'exposure') {
+                const parent = el.closest('td');
+                parent.querySelectorAll('.summary-box').forEach(b => b.classList.remove('checked'));
+                el.querySelector('.summary-box').classList.add('checked');
+            }
+        }
+    </script>
+</body>
+
+</html>

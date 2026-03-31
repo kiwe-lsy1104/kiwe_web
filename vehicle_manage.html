@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <title>법인 전기차 차계부 관리 | KiWE</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Pretendard:wght@400;500;600;700;900&display=swap');
+        * { box-sizing: border-box; }
+        body { font-family: 'Pretendard', sans-serif; background-color: #f1f5f9; margin: 0; }
+        #root { display: flex; flex-direction: column; height: 100dvh; width: 100%; overflow: hidden; }
+
+        /* PC 그리드 */
+        .data-grid th, .data-grid td { border: 1px solid #cbd5e1; padding: 8px 12px; font-size: 14px; vertical-align: middle; }
+        .data-grid th { background-color: #f8fafc; font-weight: bold; text-align: center; position: sticky; top: 0; z-index: 10; }
+        .data-grid input { width: 100%; height: 100%; border: 1px solid transparent; background: transparent; padding: 4px; border-radius: 4px; }
+        .data-grid input:focus { border-color: #3b82f6; outline: none; background: white; box-shadow: inset 0 0 0 1px #3b82f6; }
+
+        /* 모바일 스크롤 영역 */
+        .mobile-scroll { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 12px; padding-bottom: 100px; }
+
+        /* 버튼 터치 피드백 */
+        .btn-tap { transition: transform 0.1s, opacity 0.1s; }
+        .btn-tap:active { transform: scale(0.97); opacity: 0.85; }
+    </style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="module">
+// v20260325-1132 (캐시 무효화용 버전 태그)
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'https://esm.sh/react@18.2.0';
+import ReactDOM from 'https://esm.sh/react-dom@18.2.0';
+import { Car, BatteryCharging, FileSpreadsheet, Plus, AlertTriangle, ArrowLeft, MonitorSmartphone } from 'https://esm.sh/lucide-react@0.263.1';
+import * as VehicleAPI from './js/vehicle.js';
+
+const h = React.createElement;
+const fmt = (n) => Number(n || 0).toLocaleString();
+
+// ============================================================
+// [모바일] 충전 전용 카드  ← MobileUI 밖에 선언이 핵심!
+// ============================================================
+function ChargeCard({ log, onchange, onsave }) {
+    return h('div', { style: { background: '#ecfdf5', border: '2px solid #6ee7b7', borderRadius: 16, padding: 16, marginBottom: 12 } },
+        // 헤더
+        h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #a7f3d0', paddingBottom: 10, marginBottom: 12 } },
+            h('div', { style: { display: 'flex', alignItems: 'center', gap: 6 } },
+                h('span', { style: { fontSize: 20 } }, '⚡'),
+                h('span', { style: { fontWeight: 900, color: '#065f46', fontSize: 15 } }, '충전 기록')
+            ),
+            h('input', {
+                type: 'date', value: log.date,
+                onChange: ev => onchange(log.id, 'date', ev.target.value),
+                style: { border: '1px solid #a7f3d0', borderRadius: 8, padding: '4px 8px', fontWeight: 700, color: '#374151', fontSize: 14 }
+            })
+        ),
+        // 충전량 (kWh) — 크게 강조
+        h('div', { style: { background: '#059669', borderRadius: 14, padding: '16px 20px', marginBottom: 12 } },
+            h('div', { style: { color: '#a7f3d0', fontSize: 11, fontWeight: 700, marginBottom: 4 } }, '⚡ 충전량 입력 (kWh)'),
+            h('div', { style: { display: 'flex', alignItems: 'baseline', gap: 8 } },
+                h('input', {
+                    type: 'number', inputMode: 'decimal', step: '0.1',
+                    value: log.chargeKwh || '',
+                    placeholder: '0.0',
+                    onChange: ev => onchange(log.id, 'chargeKwh', ev.target.value),
+                    style: { background: 'transparent', border: 'none', outline: 'none', color: 'white', fontSize: 44, fontWeight: 900, width: 150, textAlign: 'right' }
+                }),
+                h('span', { style: { color: '#a7f3d0', fontSize: 22, fontWeight: 700 } }, 'kWh')
+            )
+        ),
+        // 사용자 + 충전비 안내
+        h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 12 } },
+            h('div', { style: { background: 'white', border: '1px solid #d1fae5', borderRadius: 10, padding: 10 } },
+                h('div', { style: { fontSize: 10, color: '#9ca3af', fontWeight: 700, marginBottom: 4 } }, '사용자'),
+                h('input', {
+                    type: 'text', value: log.driver || '',
+                    onChange: ev => onchange(log.id, 'driver', ev.target.value),
+                    style: { border: 'none', outline: 'none', width: '100%', fontWeight: 700, fontSize: 15 }
+                })
+            ),
+            h('div', { style: { background: '#f0fdf4', border: '1px solid #d1fae5', borderRadius: 10, padding: 10 } },
+                h('div', { style: { fontSize: 10, color: '#9ca3af', fontWeight: 700, marginBottom: 4 } }, '충전비 (원)'),
+                h('div', { style: { fontSize: 12, color: '#9ca3af', fontStyle: 'italic', marginTop: 4 } }, '관리비 처리')
+            )
+        ),
+        h('button', {
+            onClick: () => onsave(log.id),
+            className: 'btn-tap',
+            style: { width: '100%', padding: '14px 0', background: '#065f46', color: 'white', fontWeight: 900, fontSize: 16, borderRadius: 12, border: 'none', cursor: 'pointer' }
+        }, '충전 기록 저장')
+    );
+}
+
+// ============================================================
+// [모바일] 운행 전용 카드  ← MobileUI 밖에 선언이 핵심!
+// ============================================================
+const DRIVING_PRESETS = ['업무용', '측정', '예비조사', '거래처방문', '교육/훈련참석', '출/퇴근'];
+
+function DrivingCard({ log, onchange, onsave }) {
+    const dist = (Number(log.afterDist) || 0) - (Number(log.beforeDist) || 0);
+    const isOther = log.purpose && !DRIVING_PRESETS.includes(log.purpose) && log.purpose !== '';
+
+    return h('div', { style: { background: 'white', border: '1.5px solid #e2e8f0', borderRadius: 16, padding: 16, marginBottom: 12 } },
+        // 헤더
+        h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #f1f5f9', paddingBottom: 10, marginBottom: 12 } },
+            h('input', {
+                type: 'date', value: log.date,
+                onChange: ev => onchange(log.id, 'date', ev.target.value),
+                style: { border: 'none', outline: 'none', fontWeight: 700, color: '#1e293b', fontSize: 15 }
+            }),
+            h('span', { style: { fontSize: 12, fontWeight: 700, padding: '3px 10px', borderRadius: 20, background: dist > 0 ? '#eff6ff' : '#f8fafc', color: dist > 0 ? '#2563eb' : '#94a3b8' } },
+                dist > 0 ? `${fmt(dist)} km 주행` : '입력중..'
+            )
+        ),
+        // 운행 전 / 후 km
+        h('div', { style: { display: 'flex', gap: 8, marginBottom: 8 } },
+            h('div', { style: { flex: 1, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: 12 } },
+                h('div', { style: { fontSize: 10, color: '#94a3b8', fontWeight: 700, marginBottom: 4 } }, '운행 전 (km)'),
+                h('input', {
+                    type: 'number', inputMode: 'numeric',
+                    value: log.beforeDist || '',
+                    onChange: ev => onchange(log.id, 'beforeDist', ev.target.value),
+                    style: { border: 'none', outline: 'none', width: '100%', fontWeight: 900, fontSize: 22, color: '#1e293b', background: 'transparent' }
+                })
+            ),
+            h('div', { style: { flex: 1, background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 10, padding: 12 } },
+                h('div', { style: { fontSize: 10, color: '#60a5fa', fontWeight: 700, marginBottom: 4 } }, '운행 후 (km)'),
+                h('input', {
+                    type: 'number', inputMode: 'numeric',
+                    value: log.afterDist || '',
+                    onChange: ev => onchange(log.id, 'afterDist', ev.target.value),
+                    style: { border: 'none', outline: 'none', width: '100%', fontWeight: 900, fontSize: 22, color: '#1d4ed8', background: 'transparent' }
+                })
+            )
+        ),
+        // 사용자 + 통행료
+        h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 } },
+            h('div', { style: { background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: 10 } },
+                h('div', { style: { fontSize: 10, color: '#94a3b8', fontWeight: 700, marginBottom: 4 } }, '사용자'),
+                h('input', {
+                    type: 'text', value: log.driver || '',
+                    onChange: ev => onchange(log.id, 'driver', ev.target.value),
+                    style: { border: 'none', outline: 'none', width: '100%', fontWeight: 700, fontSize: 15 }
+                })
+            ),
+            h('div', { style: { background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: 10 } },
+                h('div', { style: { fontSize: 10, color: '#94a3b8', fontWeight: 700, marginBottom: 4 } }, '통행료/주차 (원)'),
+                h('input', {
+                    type: 'number', inputMode: 'numeric',
+                    value: log.tollFee || '',
+                    onChange: ev => onchange(log.id, 'tollFee', ev.target.value),
+                    style: { border: 'none', outline: 'none', width: '100%', textAlign: 'right', fontWeight: 700, fontSize: 15 }
+                })
+            )
+        ),
+        // 운행 목적
+        h('div', { style: { background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: 10, marginBottom: 12 } },
+            h('div', { style: { fontSize: 10, color: '#94a3b8', fontWeight: 700, marginBottom: 4 } }, '운행 목적'),
+            h('select', {
+                value: isOther ? '__other__' : (log.purpose || ''),
+                onChange: ev => {
+                    if (ev.target.value === '__other__') onchange(log.id, 'purpose', '');
+                    else onchange(log.id, 'purpose', ev.target.value);
+                },
+                style: { width: '100%', border: 'none', outline: 'none', fontWeight: 700, fontSize: 15, background: 'transparent', color: '#1e293b' }
+            },
+                h('option', { value: '' }, '목적 선택'),
+                DRIVING_PRESETS.map(p => h('option', { key: p, value: p }, p)),
+                h('option', { value: '__other__' }, '기타목적')
+            ),
+            isOther && h('input', {
+                type: 'text', value: log.purpose || '',
+                onChange: ev => onchange(log.id, 'purpose', ev.target.value),
+                placeholder: '목적 직접 입력',
+                style: { marginTop: 6, borderTop: '1px solid #e2e8f0', paddingTop: 6, width: '100%', border: 'none', outline: 'none', fontSize: 14, color: '#2563eb', fontWeight: 600 }
+            })
+        ),
+        h('button', {
+            onClick: () => onsave(log.id),
+            className: 'btn-tap',
+            style: { width: '100%', padding: '14px 0', background: '#1e293b', color: 'white', fontWeight: 900, fontSize: 16, borderRadius: 12, border: 'none', cursor: 'pointer' }
+        }, '운행 기록 저장')
+    );
+}
+
+// ============================================================
+// [모바일] 스크롤 컨테이너
+// ============================================================
+function MobileUI({ logs, currentMonth, onchange, onsave, onAddDriving, onAddCharge, scrollRef }) {
+    return h('div', { className: 'mobile-scroll', ref: scrollRef },
+        // 추가 버튼 2개
+        h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 } },
+            h('button', {
+                onClick: onAddDriving,
+                className: 'btn-tap',
+                style: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '18px 0', background: '#2563eb', color: 'white', borderRadius: 18, border: 'none', cursor: 'pointer', gap: 6, boxShadow: '0 4px 12px rgba(37,99,235,0.3)' }
+            },
+                h('span', { style: { fontSize: 28 } }, '🚗'),
+                h('span', { style: { fontWeight: 900, fontSize: 14 } }, '운행기록 추가')
+            ),
+            h('button', {
+                onClick: onAddCharge,
+                className: 'btn-tap',
+                style: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '18px 0', background: '#059669', color: 'white', borderRadius: 18, border: 'none', cursor: 'pointer', gap: 6, boxShadow: '0 4px 12px rgba(5,150,105,0.3)' }
+            },
+                h('span', { style: { fontSize: 28 } }, '⚡'),
+                h('span', { style: { fontWeight: 900, fontSize: 14 } }, '충전기록 추가')
+            )
+        ),
+        h('p', { style: { fontWeight: 900, color: '#64748b', fontSize: 13, marginBottom: 8, paddingLeft: 4 } }, `${currentMonth}월 내역 (최신순)`),
+        // 카드 목록
+        logs.length === 0
+            ? h('div', { style: { textAlign: 'center', color: '#94a3b8', padding: '48px 0', fontSize: 14 } }, '운행 내역이 없습니다.')
+            : logs.map(log =>
+                log.purpose === '충전'
+                    ? h(ChargeCard, { key: log.id, log, onchange, onsave })
+                    : h(DrivingCard, { key: log.id, log, onchange, onsave })
+            )
+    );
+}
+
+// ============================================================
+// PC 그리드
+// ============================================================
+function DataGrid({ logs, onchange, onsave, onAddDriving, onAddCharge }) {
+    const presets = ['업무용', '측정', '예비조사', '거래처방문', '교육/훈련참석', '출/퇴근', '충전'];
+    return h('div', { style: { flex: 1, display: 'flex', flexDirection: 'column', gap: 12, minHeight: 0 } },
+        h('div', { style: { display: 'flex', gap: 10, flexShrink: 0 } },
+            h('button', { onClick: onAddDriving, style: { flex: 1, padding: '10px 0', background: '#2563eb', color: 'white', fontWeight: 900, borderRadius: 10, border: 'none', cursor: 'pointer', fontSize: 14 } }, '+ 새 운행기록 추가'),
+            h('button', { onClick: onAddCharge, style: { flex: 1, padding: '10px 0', background: '#059669', color: 'white', fontWeight: 900, borderRadius: 10, border: 'none', cursor: 'pointer', fontSize: 14 } }, '+ 충전 기록 추가')
+        ),
+        h('div', { style: { flex: 1, overflow: 'auto', background: 'white', borderRadius: 12, border: '1px solid #e2e8f0' } },
+            h('table', { className: 'w-full data-grid whitespace-nowrap' },
+                h('thead', null,
+                    h('tr', null,
+                        h('th', { style: { width: 40 } }, 'No'),
+                        h('th', { style: { width: 120 } }, '사용일자'),
+                        h('th', { style: { width: 90 } }, '사용자'),
+                        h('th', { style: { width: 110 } }, '운행 전 (km)'),
+                        h('th', { style: { width: 110 } }, '운행 후 (km)'),
+                        h('th', { style: { width: 90 } }, '주행거리'),
+                        h('th', { style: { width: 90 } }, '충전량(kWh)'),
+                        h('th', { style: { width: 110 } }, '충전비(원)'),
+                        h('th', { style: { width: 100 } }, '통행료/주차'),
+                        h('th', { style: { width: 150 } }, '목적'),
+                        h('th', { style: { width: 70 } }, '관리')
+                    )
+                ),
+                h('tbody', null,
+                    logs.length === 0 && h('tr', null, h('td', { colSpan: 11, style: { textAlign: 'center', padding: 32, color: '#94a3b8' } }, '데이터 없음')),
+                    logs.map((log, i) => {
+                        const dist = (Number(log.afterDist) || 0) - (Number(log.beforeDist) || 0);
+                        const isCharge = log.purpose === '충전';
+                        const isOther = log.purpose && !presets.includes(log.purpose);
+                        return h('tr', { key: log.id, style: { background: isCharge ? '#f0fdf4' : 'transparent' } },
+                            h('td', { style: { textAlign: 'center', color: '#94a3b8' } }, logs.length - i),
+                            h('td', null, h('input', { type: 'date', value: log.date, onChange: ev => onchange(log.id, 'date', ev.target.value) })),
+                            h('td', null, h('input', { type: 'text', value: log.driver || '', onChange: ev => onchange(log.id, 'driver', ev.target.value), placeholder: '성명' })),
+                            h('td', null, h('input', { type: 'number', value: log.beforeDist || '', onChange: ev => onchange(log.id, 'beforeDist', ev.target.value), style: { textAlign: 'right', fontWeight: 700 } })),
+                            h('td', null, h('input', { type: 'number', value: log.afterDist || '', onChange: ev => onchange(log.id, 'afterDist', ev.target.value), style: { textAlign: 'right', fontWeight: 700 } })),
+                            h('td', { style: { textAlign: 'right', fontWeight: 900, color: '#2563eb' } }, dist > 0 ? fmt(dist) : ''),
+                            h('td', null, h('input', { type: 'number', value: log.chargeKwh || '', onChange: ev => onchange(log.id, 'chargeKwh', ev.target.value), step: '0.1', style: { textAlign: 'right', color: '#059669', fontWeight: 700 } })),
+                            h('td', null, h('input', { type: 'number', value: log.chargeCost || '', onChange: ev => onchange(log.id, 'chargeCost', ev.target.value), style: { textAlign: 'right' } })),
+                            h('td', null, h('input', { type: 'number', value: log.tollFee || '', onChange: ev => onchange(log.id, 'tollFee', ev.target.value), style: { textAlign: 'right' } })),
+                            h('td', { style: { padding: 4 } },
+                                h('div', { style: { display: 'flex', flexDirection: 'column', gap: 2 } },
+                                    h('select', {
+                                        value: isOther ? '__other__' : (log.purpose || ''),
+                                        onChange: ev => {
+                                            if (ev.target.value === '__other__') onchange(log.id, 'purpose', '');
+                                            else onchange(log.id, 'purpose', ev.target.value);
+                                        },
+                                        style: { width: '100%', border: 'none', outline: 'none', fontSize: 12, fontWeight: 700 }
+                                    },
+                                        h('option', { value: '' }, '선택'),
+                                        presets.map(p => h('option', { key: p, value: p }, p)),
+                                        h('option', { value: '__other__' }, '기타')
+                                    ),
+                                    isOther && h('input', { type: 'text', value: log.purpose || '', onChange: ev => onchange(log.id, 'purpose', ev.target.value), style: { fontSize: 11, borderTop: '1px solid #e2e8f0', paddingTop: 2, color: '#2563eb' } })
+                                )
+                            ),
+                            h('td', { style: { textAlign: 'center' } },
+                                h('button', { onClick: () => onsave(log.id), style: { padding: '4px 10px', background: '#1e293b', color: 'white', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 700 } }, '저장')
+                            )
+                        );
+                    })
+                )
+            )
+        )
+    );
+}
+
+// ============================================================
+// 하단 통계 바
+// ============================================================
+function FooterBar({ isMobile, stats, onExcel }) {
+    return h('div', {
+        style: {
+            background: '#0f172a', color: 'white', padding: '12px 16px', flexShrink: 0,
+            position: isMobile ? 'fixed' : 'relative',
+            bottom: isMobile ? 0 : 'auto', left: 0, right: 0,
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            zIndex: 30
+        }
+    },
+        h('div', { style: { display: 'flex', gap: 20, overflowX: 'auto' } },
+            h('div', null,
+                h('div', { style: { fontSize: 10, color: '#64748b', fontWeight: 700 } }, '당월 주행'),
+                h('div', { style: { fontSize: 20, fontWeight: 900, color: '#60a5fa' } },
+                    fmt(stats.totalDist), h('span', { style: { fontSize: 11, fontWeight: 400, marginLeft: 2 } }, 'km')
+                )
+            ),
+            h('div', null,
+                h('div', { style: { fontSize: 10, color: '#64748b', fontWeight: 700 } }, '충전금액'),
+                h('div', { style: { fontSize: 20, fontWeight: 900, color: '#34d399' } }, '₩', fmt(stats.totalCharge))
+            ),
+            h('div', { style: { display: isMobile ? 'none' : 'block' } },
+                h('div', { style: { fontSize: 10, color: '#64748b', fontWeight: 700 } }, '통행료'),
+                h('div', { style: { fontSize: 20, fontWeight: 900 } }, '₩', fmt(stats.totalToll))
+            ),
+            h('div', null,
+                h('div', { style: { fontSize: 10, color: '#64748b', fontWeight: 700 } }, '전비(km/kWh)'),
+                h('div', { style: { fontSize: 20, fontWeight: 900 } }, stats.efficiency)
+            )
+        ),
+        !isMobile && h('button', { onClick: onExcel, style: { padding: '8px 16px', background: '#059669', color: 'white', borderRadius: 8, border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: 13 } }, '📊 국세청 양식 다운로드')
+    );
+}
+
+// ============================================================
+// 메인 앱
+// ============================================================
+function App() {
+    const scrollRef = useRef(null);
+    const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+    const [vehicles, setVehicles] = useState([]);
+    const [selectedVid, setSelectedVid] = useState('');
+    const [logs, setLogs] = useState([]);
+    const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
+    const [currentMonth, setCurrentMonth] = useState(new Date().getMonth() + 1);
+
+    useEffect(() => {
+        const onResize = () => setIsMobile(window.innerWidth < 768);
+        window.addEventListener('resize', onResize);
+        VehicleAPI.fetchVehicles().then(data => {
+            setVehicles(data);
+            if (data.length > 0) setSelectedVid(data[0].id);
+        });
+        return () => window.removeEventListener('resize', onResize);
+    }, []);
+
+    useEffect(() => {
+        if (selectedVid) {
+            VehicleAPI.fetchLogs(selectedVid, currentYear, currentMonth).then(setLogs);
+        }
+    }, [selectedVid, currentYear, currentMonth]);
+
+    const activeVehicle = useMemo(() => vehicles.find(v => v.id === selectedVid) || null, [vehicles, selectedVid]);
+
+    const contractWarning = useMemo(() => {
+        if (!activeVehicle?.contract_period_end) return null;
+        const days = Math.ceil((new Date(activeVehicle.contract_period_end) - new Date()) / 86400000);
+        if (days <= 0) return '계약 만료됨!';
+        if (days <= 180) return `계약 만료 ${days}일 전`;
+        return null;
+    }, [activeVehicle]);
+
+    const stats = useMemo(() => VehicleAPI.calculateStats(logs), [logs]);
+
+    // 새 카드 추가 — temp_ 제외한 실제 저장 기록의 最新 afterDist 사용
+    const addRow = useCallback((type) => {
+        const userStr = localStorage.getItem('kiwe_user');
+        const currentUser = userStr ? JSON.parse(userStr).user_name : '';
+        const saved = logs.filter(l => !String(l.id).startsWith('temp_'));
+        const prevDist = saved.length > 0 ? (Number(saved[0].afterDist) || Number(saved[0].beforeDist) || 0) : 0;
+        const today = new Date();
+        const dateStr = `${currentYear}-${String(currentMonth).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+
+        const newRow = {
+            id: 'temp_' + Date.now(),
+            vehicleId: selectedVid,
+            date: dateStr,
+            driver: currentUser,
+            purpose: type === 'charge' ? '충전' : '업무용',
+            beforeDist: prevDist,
+            afterDist: type === 'charge' ? prevDist : '',
+            chargeCost: 0,
+            chargeKwh: '',
+            tollFee: 0,
+            remarks: ''
+        };
+
+        // 맨 위(index 0)에 추가
+        setLogs(prev => [newRow, ...prev]);
+
+        // 스크롤을 맨 위로
+        setTimeout(() => {
+            if (scrollRef.current) {
+                scrollRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+            } else {
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            }
+        }, 80);
+    }, [logs, selectedVid, currentYear, currentMonth]);
+
+    const handleChange = useCallback((id, field, value) => {
+        setLogs(prev => prev.map(l => l.id === id ? { ...l, [field]: value } : l));
+    }, []);
+
+    const handleSave = useCallback((id) => {
+        const log = logs.find(l => l.id === id);
+        if (!log || !log.date) { alert('날짜를 입력하세요.'); return; }
+        VehicleAPI.upsertLog(log).then(saved => {
+            setLogs(prev => prev.map(l => l.id === id ? saved : l));
+            alert('저장되었습니다.');
+        }).catch(() => {});
+    }, [logs]);
+
+    const exportExcel = useCallback(() => {
+        if (activeVehicle) VehicleAPI.exportToExcel(logs, activeVehicle, currentYear);
+    }, [logs, activeVehicle, currentYear]);
+
+    return h('div', { id: 'app', style: { display: 'flex', flexDirection: 'column', height: '100dvh', width: '100%', overflow: 'hidden' } },
+        // 헤더
+        h('header', { style: { background: 'white', padding: '12px 16px', display: 'flex', flexDirection: 'column', borderBottom: '1px solid #e2e8f0', flexShrink: 0, gap: 10, zIndex: 20 } },
+            h('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
+                h('a', { href: 'main.html', style: { color: '#94a3b8', textDecoration: 'none', fontSize: 22 } }, '←'),
+                h('div', { style: { width: 36, height: 36, background: '#dbeafe', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 } }, '🚗'),
+                h('div', null,
+                    h('div', { style: { fontWeight: 900, fontSize: 17, color: '#1e293b' } }, '법인 전기차 운행일지 ', h('span', { style: { fontSize: 10, color: '#ef4444', backgroundColor: '#fee2e2', padding: '2px 4px', borderRadius: 4 } }, 'v3_0325')),
+                    h('div', { style: { fontSize: 11, color: '#94a3b8' } },
+                        '한국작업환경평가원',
+                        contractWarning && h('span', { style: { marginLeft: 8, color: '#dc2626', fontWeight: 700, background: '#fef2f2', padding: '2px 6px', borderRadius: 6 } }, '⚠️ ' + contractWarning)
+                    )
+                ),
+                h('button', {
+                    onClick: () => setIsMobile(m => !m),
+                    style: { marginLeft: 'auto', padding: '6px 10px', background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 8, cursor: 'pointer', fontSize: 12, color: '#64748b' }
+                }, isMobile ? '🖥 PC뷰' : '📱 모바일뷰')
+            ),
+            // 차량/월 선택
+            h('div', { style: { display: 'flex', gap: 8, overflowX: 'auto' } },
+                h('select', {
+                    value: selectedVid,
+                    onChange: ev => setSelectedVid(ev.target.value),
+                    style: { flex: 1, border: '1px solid #e2e8f0', borderRadius: 8, padding: '7px 10px', fontWeight: 700, fontSize: 13, color: '#1e293b', background: '#f8fafc' }
+                },
+                    vehicles.map(v => h('option', { key: v.id, value: v.id }, `[${v.type}] ${v.name} - ${v.id}`))
+                ),
+                h('input', {
+                    type: 'month',
+                    value: `${currentYear}-${String(currentMonth).padStart(2,'0')}`,
+                    onChange: ev => {
+                        const [y, m] = ev.target.value.split('-');
+                        setCurrentYear(Number(y));
+                        setCurrentMonth(Number(m));
+                    },
+                    style: { border: '1px solid #e2e8f0', borderRadius: 8, padding: '7px 10px', fontWeight: 700, fontSize: 13, color: '#1e293b', background: '#f8fafc' }
+                })
+            )
+        ),
+
+        // 메인 콘텐츠 영역
+        h('main', { style: { flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' } },
+            isMobile
+                ? h(MobileUI, {
+                    logs, currentMonth,
+                    onchange: handleChange,
+                    onsave: handleSave,
+                    onAddDriving: () => addRow('driving'),
+                    onAddCharge: () => addRow('charge'),
+                    scrollRef
+                  })
+                : h('div', { style: { flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', padding: 16, maxWidth: 1400, margin: '0 auto', width: '100%' } },
+                    h(DataGrid, {
+                        logs,
+                        onchange: handleChange,
+                        onsave: handleSave,
+                        onAddDriving: () => addRow('driving'),
+                        onAddCharge: () => addRow('charge')
+                    })
+                  )
+        ),
+
+        h(FooterBar, { isMobile, stats, onExcel: exportExcel })
+    );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(h(App));
+</script>
+</body>
+</html>

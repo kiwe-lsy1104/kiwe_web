@@ -1,0 +1,47 @@
+# Node dependencies
+node_modules/
+
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# System files
+.DS_Store
+Thumbs.db
+
+# OS generated files
+ehthumbs.db
+Icon?
+
+# Temp files
+temp/
+tmp/
+temp_xlsx/
+temp_xlsx_inspect/
+*.tmp
+*.bak
+*.alyac
+
+# IDE settings
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Gemini/Agent specific
+.gemini/
+.agent/
+.system_generated/
+
+# Build outputs
+dist/
+build/
+out/

@@ -1,0 +1,210 @@
+﻿<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <script src="js/error_translator.js"></script>
+    <meta charset="UTF-8">
+    <base href="./">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self' https: 'unsafe-inline' 'unsafe-eval'; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://unpkg.com https://*.lucide.dev http://127.0.0.1:* http://localhost:*; img-src 'self' data: https:; font-src 'self' https: data:;">
+    <title>KiWE 측정 관리</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script>
+        window.onerror = function (msg, url, line, col, error) {
+            console.error("Global Error:", msg, url, line);
+            const root = document.getElementById('root');
+            if (root && (root.innerHTML.includes('로딩') || root.innerHTML === '')) {
+                root.innerHTML = `<div style="padding: 40px; text-align: center; font-family: sans-serif;">
+                    <div style="color: #e11d48; font-size: 24px; font-weight: bold; mb: 10px;">시스템 로드 오류</div>
+                    <div style="color: #64748b; margin-top: 10px;">화면을 불러오는 중 문제가 발생했습니다.<br/>잠시 후 다시 시도해주세요.</div>
+                    <button onclick="location.reload()" style="margin-top: 20px; padding: 10px 20px; background: #4f46e5; color: white; border: none; border-radius: 8px; cursor: pointer;">새로고침</button>
+                </div>`;
+            }
+            return false;
+        };
+    </script>
+    <script type="module">
+        import { checkAuth } from './js/auth.js';
+        checkAuth();
+    </script>
+</head>
+
+<body class="bg-gray-100 min-h-screen">
+    <script>
+        // Force mobile users to m_schedule
+        if (/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || window.innerWidth <= 768) {
+            window.location.replace('m_schedule.html');
+        }
+    </script>
+    <div id="root">
+        <div
+            style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; gap: 15px; font-family: sans-serif;">
+            <div
+                style="width: 40px; height: 40px; border: 4px solid #f3f3f3; border-top: 4px solid #4f46e5; border-radius: 50%; animation: spin 1s linear infinite;">
+            </div>
+            <div style="font-weight: bold; color: #475569;">시스템 로딩 중...</div>
+            <style>
+                @keyframes spin {
+                    0% {
+                        transform: rotate(0deg);
+                    }
+
+                    100% {
+                        transform: rotate(360deg);
+                    }
+                }
+            </style>
+        </div>
+    </div>
+
+    <script type="module">
+        const { useState, useEffect } = React;
+        const e = React.createElement;
+
+        let supabase;
+        try {
+            // Re-init Supabase if global doesn't exist, though auth.js should handle it usually? 
+            // In main.html original code, it didn't strictly import supabase config, it used CDN script.
+            // But let's assume window.supabase exists from CDN script.
+            supabase = window.supabase.createClient('https://jztrnwchgxymknjvsbkl.supabase.co', 'sb_publishable_Z8oriOCik8fZlnAMgznUMg_IhmmFQ33');
+        } catch (e) { console.error(e); }
+
+        const MENU_ITEMS = [
+            { title: '측정기록 관리', desc: '보고서 작성 및 조회', icon: 'clipboard-list', color: 'bg-indigo-600', path: 'records.html' },
+            { title: '사업장 관리', desc: '사업장 DB 등록/수정', icon: 'building-2', color: 'bg-emerald-600', path: 'companies.html' },
+            { title: '측정계획관리', desc: '차기 측정 일정 수립', icon: 'calendar-clock', color: 'bg-blue-500', path: 'plan.html', id: 'plan' },
+            { title: '견적 관리', desc: '견적서 작성 및 발행 관리', icon: 'file-text', color: 'bg-rose-500', path: 'quotation.html' },
+            { title: '시료대장 작성', desc: '시료 채취 및 분석 기록', icon: 'flask-conical', color: 'bg-cyan-500', path: 'sampling.html' },
+            { title: '일정 및 장비 관리', desc: '스케줄 및 장비 예약', icon: 'calendar-days', color: 'bg-orange-500', path: 'schedule.html' },
+            { title: '분석결과통보서', desc: '유기화합물 및 전체 보고서', icon: 'file-spreadsheet', color: 'bg-violet-600', path: 'analysis_unified.html' },
+            { title: '시료통계관리', desc: '분석 현황 조회 및 인쇄', icon: 'bar-chart-3', color: 'bg-indigo-500', path: 'sampling_manage.html' },
+            { title: '평가원 관리 및 설정', desc: '직원 권한 및 시스템 설정', icon: 'settings', color: 'bg-slate-700', path: 'settings.html', adminOnly: true },
+        ];
+
+        function Dashboard() {
+            const [user, setUser] = useState(null);
+            const [planCount, setPlanCount] = useState(0);
+
+            useEffect(() => {
+                const session = localStorage.getItem('kiwe_user');
+                if (!session) {
+                    window.location.href = 'index.html';
+                    return;
+                }
+                setUser(JSON.parse(session));
+                fetchPlanCount();
+            }, []);
+
+            useEffect(() => {
+                try {
+                    if (window.lucide) window.lucide.createIcons();
+                } catch (err) {
+                    console.error("Lucide Error:", err);
+                }
+            }, [user]);
+
+            const fetchPlanCount = async () => {
+                if (!supabase) return;
+                const today = new Date();
+                const y = today.getFullYear();
+                const m = String(today.getMonth() + 1).padStart(2, '0');
+                const ym = `${y}-${m}`;
+
+                // Fetch minimal data to count - Using a simple approach for now
+                // Or use count() with filters if possible, but OR conditions are tricky in simple Supabase calls sometimes.
+                // Let's just select columns.
+                const { data, error } = await supabase
+                    .from('kiwe_records')
+                    .select('next_noise_date, next_excl_date');
+
+                if (!data) return;
+
+                let count = 0;
+                data.forEach(rec => {
+                    const d1 = rec.next_noise_date;
+                    const d2 = rec.next_excl_date;
+                    // Check if either date falls in current month
+                    if ((d1 && d1.startsWith(ym)) || (d2 && d2.startsWith(ym))) {
+                        count++;
+                    }
+                });
+                setPlanCount(count);
+            };
+
+            const handleLogout = () => {
+                localStorage.removeItem('kiwe_user');
+                window.location.href = 'index.html';
+            };
+
+            const handleMenuClick = (item) => {
+                if (item.action === 'checkUnpaid') {
+                    if (!user) return;
+                    const userName = (user.user_name || '').trim();
+                    const isAdmin = user.role === '관리자' || user.is_admin || userName === '이승용' || userName === '강경호';
+                    if (isAdmin) {
+                        window.location.href = 'accounts.html';
+                    } else {
+                        alert('접근 권한이 없습니다. 관리자에게 문의하세요.');
+                    }
+                } else {
+                    window.location.href = item.path;
+                }
+            };
+
+            if (!user) return null;
+
+            return e('div', { className: "max-w-6xl mx-auto p-8" },
+                e('header', { className: "flex justify-between items-center mb-12" },
+                    e('div', null,
+                        e('h1', { className: "text-3xl font-black text-slate-800 flex items-center gap-2" },
+                            e('i', { 'data-lucide': "activity", className: "text-blue-600 w-8 h-8" }),
+                            "KiWE 측정 관리"
+                        ),
+                        e('p', { className: "text-slate-500 mt-2 font-medium" }, "환영합니다, ", e('span', { className: "text-blue-600 font-bold" }, user.user_name), "님")
+                    ),
+                    e('div', { style: { display: 'flex', gap: '8px' } },
+                        e('a', { href: 'manual.html', className: "bg-white px-4 py-2 rounded-xl text-slate-500 hover:text-indigo-600 font-bold shadow-sm border border-slate-200 transition-colors flex items-center gap-2", style: { textDecoration: 'none' } },
+                            e('i', { 'data-lucide': "book-open", className: "w-4 h-4" }),
+                            " 사용매뉴얼"
+                        ),
+                        e('button', { onClick: handleLogout, className: "bg-white px-4 py-2 rounded-xl text-slate-500 hover:text-red-500 font-bold shadow-sm border border-slate-200 transition-colors flex items-center gap-2" },
+                            e('i', { 'data-lucide': "log-out", className: "w-4 h-4" }),
+                            " 로그아웃"
+                        )
+                    )
+                ),
+                e('div', { className: "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" },
+                    MENU_ITEMS.map((item, idx) =>
+                        e('div', {
+                            key: idx,
+                            onClick: () => handleMenuClick(item),
+                            className: "bg-white p-8 rounded-3xl shadow-lg shadow-slate-200/50 hover:shadow-xl hover:-translate-y-1 transition-all cursor-pointer border border-slate-100 group relative overflow-hidden"
+                        },
+                            e('div', { className: `w-14 h-14 ${item.color} rounded-2xl flex items-center justify-center text-white mb-6 shadow-md group-hover:scale-110 transition-transform` },
+                                e('i', { 'data-lucide': item.icon, className: "w-8 h-8" })
+                            ),
+                            e('h3', { className: "text-xl font-bold text-slate-800 mb-2" }, item.title),
+                            e('p', { className: "text-slate-400 font-medium" }, item.desc),
+                            item.id === 'plan' && e('div', { className: "absolute top-6 right-6 bg-blue-50 text-blue-600 px-3 py-1 rounded-full text-xs font-black border border-blue-100" },
+                                `이번 달 예정: ${planCount}건`
+                            )
+                        )
+                    )
+                ),
+                e('footer', { className: "mt-20 text-center text-slate-300 font-bold text-xs" }, "© 2026 KiWE Measurement System. Secure Workspace.")
+            );
+        }
+
+        window.onload = () => {
+            const root = ReactDOM.createRoot(document.getElementById('root'));
+            root.render(e(Dashboard));
+        };
+    </script>
+</body>
+
+</html>

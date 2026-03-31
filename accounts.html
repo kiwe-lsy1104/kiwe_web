@@ -1,0 +1,437 @@
+﻿<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <script src="js/error_translator.js"></script>
+    <meta charset="UTF-8">
+    <base href="./">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self' https: 'unsafe-inline' 'unsafe-eval'; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://unpkg.com https://*.lucide.dev http://127.0.0.1:* http://localhost:*; img-src 'self' data: https:; font-src 'self' https: data:;">
+    <title>미수금 관리 (관리자) - KiWE 측정 관리</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+    <style>
+        #print-area {
+            display: none;
+        }
+    </style>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script>
+        window.onerror = function (msg, url, line, col, error) {
+            console.error("Global Error:", msg, url, line);
+            const root = document.getElementById('root');
+            if (root && (root.innerHTML.includes('로딩') || root.innerHTML === '')) {
+                root.innerHTML = `<div style="padding: 40px; text-align: center; font-family: sans-serif;">
+                    <div style="color: #e11d48; font-size: 24px; font-weight: bold; mb: 10px;">시스템 로드 오류</div>
+                    <div style="color: #64748b; margin-top: 10px;">화면을 불러오는 중 문제가 발생했습니다.<br/>잠시 후 다시 시도해주세요.</div>
+                    <button onclick="location.reload()" style="margin-top: 20px; padding: 10px 20px; background: #4f46e5; color: white; border: none; border-radius: 8px; cursor: pointer;">새로고침</button>
+                </div>`;
+            }
+            return false;
+        };
+    </script>
+    <script type="module">
+        import { checkAuth } from './js/auth.js';
+        checkAuth();
+    </script>
+</head>
+
+<body class="bg-slate-50 min-h-screen">
+    <div id="root">
+        <div
+            style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; gap: 15px; font-family: sans-serif;">
+            <div
+                style="width: 40px; height: 40px; border: 4px solid #f3f3f3; border-top: 4px solid #4f46e5; border-radius: 50%; animation: spin 1s linear infinite;">
+            </div>
+            <div style="font-weight: bold; color: #475569;">시스템 로딩 중...</div>
+            <style>
+                @keyframes spin {
+                    0% {
+                        transform: rotate(0deg);
+                    }
+
+                    100% {
+                        transform: rotate(360deg);
+                    }
+                }
+            </style>
+        </div>
+    </div>
+
+    <div id="print-area"></div>
+
+    <script type="module">
+        const { useState, useEffect, useMemo, useRef } = React;
+        const e = React.createElement;
+
+        let supabase;
+        try {
+            supabase = window.supabase.createClient('https://jztrnwchgxymknjvsbkl.supabase.co', 'sb_publishable_Z8oriOCik8fZlnAMgznUMg_IhmmFQ33');
+        } catch (err) {
+            console.error("Supabase Init Error:", err);
+        }
+
+        const getOfficeCode = (name) => {
+            if (!name) return 'ansan';
+            const clean = name.replace(/\s+/g, '');
+            if (clean.includes('경기')) return 'gyeonggi';
+            if (clean.includes('평택')) return 'pyeongtaek';
+            if (clean.includes('서울서부')) return 'seoul_w';
+            return 'ansan';
+        };
+
+        // Modal Component
+        function DetailsModal({ isOpen, onClose, title, items }) {
+            if (!isOpen) return null;
+            return e('div', { className: "fixed inset-0 z-50 flex items-center justify-center p-4" },
+                e('div', { className: "absolute inset-0 bg-slate-900/40 backdrop-blur-sm", onClick: onClose }),
+                e('div', { className: "bg-white rounded-3xl shadow-2xl w-full max-w-6xl max-h-[85vh] flex flex-col z-10 overflow-hidden" },
+                    e('div', { className: "p-6 border-b flex items-center justify-between bg-slate-50" },
+                        e('h2', { className: "text-xl font-black text-slate-800" }, title, e('span', { className: "ml-2 text-slate-400 font-bold" }, `(${items.length}건)`)),
+                        e('button', { onClick: onClose, className: "p-2 hover:bg-slate-200 rounded-lg text-slate-400" },
+                            e('i', { 'data-lucide': "x", className: "w-6 h-6" })
+                        )
+                    ),
+                    e('div', { className: "flex-1 overflow-y-auto p-6" },
+                        e('table', { className: "w-full text-left" },
+                            e('thead', { className: "bg-slate-50 text-[10px] font-bold text-slate-400 uppercase tracking-widest" },
+                                e('tr', null,
+                                    e('th', { className: "p-3" }, "사업장명"),
+                                    e('th', { className: "p-3 text-center" }, "지청"),
+                                    e('th', { className: "p-3 text-center" }, "측정종료일"),
+                                    e('th', { className: "p-3 text-center" }, "청구발행일"),
+                                    e('th', { className: "p-3 text-right" }, "사업장 청구금"),
+                                    e('th', { className: "p-3 text-right" }, "공단지원금"),
+                                    e('th', { className: "p-3 text-center" }, "입금상태")
+                                )
+                            ),
+                            e('tbody', { className: "divide-y text-[13px]" },
+                                items.length === 0 ? e('tr', null, e('td', { colSpan: "7", className: "p-12 text-center text-slate-400" }, "해당하는 기록이 없습니다.")) :
+                                    items.map((r, idx) => {
+                                        const isBizPaid = !!r.deposit_date;
+                                        const isSubPaid = !!r.subsidy_date;
+                                        const isFunded = r.is_funded === '대상';
+
+                                        return e('tr', { key: r.id || idx, className: "hover:bg-slate-50" },
+                                            e('td', { className: "p-3" }, e('div', { className: "font-bold text-slate-800" }, r.com_name), e('div', { className: "text-[10px] text-slate-400" }, r.com_id)),
+                                            e('td', { className: "p-3 text-center" }, e('span', { className: "px-2 py-1 bg-slate-100 rounded text-[11px] font-bold" }, r.office_name)),
+                                            e('td', { className: "p-3 text-center font-mono text-slate-500" }, r.end_date || '-'),
+                                            e('td', { className: "p-3 text-center font-mono text-slate-500" }, r.billing_date || '-'),
+                                            e('td', { className: "p-3 text-right font-bold text-rose-600" }, (Number(r.billing_amt) || 0).toLocaleString(), "원"),
+                                            e('td', { className: "p-3 text-right font-bold text-blue-600" }, (Number(r.subsidy) || 0).toLocaleString(), "원"),
+                                            e('td', { className: "p-3 text-center" },
+                                                e('div', { className: "flex flex-col gap-1 items-center" },
+                                                    e('span', { className: `px-2 py-0.5 rounded-[4px] text-[10px] font-black ${isBizPaid ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}` }, isBizPaid ? '사업장:완료' : '사업장:미납'),
+                                                    isFunded && e('span', { className: `px-2 py-0.5 rounded-[4px] text-[10px] font-black ${isSubPaid ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'}` }, isSubPaid ? '공단:완료' : '공단:미납')
+                                                )
+                                            )
+                                        );
+                                    })
+                            )
+                        )
+                    )
+                )
+            );
+        }
+
+        function AccountsManagement() {
+            const [user, setUser] = useState(null);
+            const [records, setRecords] = useState([]);
+            const [companies, setCompanies] = useState([]);
+            const [loading, setLoading] = useState(true);
+
+            // Table Filters Only
+            const [search, setSearch] = useState('');
+            const [filterYear, setFilterYear] = useState(new Date().getFullYear());
+            const [filterMonth, setFilterMonth] = useState('all');
+            const [filterHalf, setFilterHalf] = useState('all');
+            const [filterOffice, setFilterOffice] = useState('all');
+
+            // Modal State
+            const [modal, setModal] = useState({ isOpen: false, title: '', items: [] });
+
+            const fetchLock = useRef(false);
+
+            useEffect(() => {
+                if (fetchLock.current) return;
+                fetchLock.current = true;
+                const sessionStr = localStorage.getItem('kiwe_user');
+                const session = sessionStr ? JSON.parse(sessionStr) : null;
+                const userName = (session?.user_name || '').trim();
+                const isAuthorized = session && (
+                    session.is_admin === true ||
+                    session.role === '관리자' ||
+                    userName === '이승용' ||
+                    userName === '강경호'
+                );
+
+                if (!isAuthorized) {
+                    alert('접근 권한이 없습니다. 관리자에게 문의하세요.');
+                    window.location.href = 'main.html';
+                    return;
+                }
+                setUser(session);
+                fetchData();
+            }, []);
+
+            useEffect(() => {
+                if (window.lucide && window.lucide.createIcons) window.lucide.createIcons();
+            }, [records, filterOffice, filterYear, filterMonth, filterHalf, search, modal]);
+
+            async function fetchData() {
+                setLoading(true);
+                try {
+                    const [resRecords, resCompanies] = await Promise.all([
+                        supabase.from('kiwe_records').select('*').order('end_date', { ascending: false }),
+                        supabase.from('kiwe_companies').select('*')
+                    ]);
+                    setRecords(resRecords.data || []);
+                    setCompanies(resCompanies.data || []);
+                } finally { setLoading(false); }
+            }
+
+            // Stats are always calculated based on current Year/Office context
+            const statsBaseData = useMemo(() => {
+                let data = records;
+                if (filterYear) data = data.filter(r => (r.end_date || '').startsWith(String(filterYear)));
+                if (filterOffice !== 'all') {
+                    const targetCode = getOfficeCode(filterOffice);
+                    data = data.filter(r => getOfficeCode(r.office_name) === targetCode);
+                }
+                return data;
+            }, [records, filterYear, filterOffice]);
+
+            const stats = useMemo(() => {
+                return statsBaseData.reduce((acc, r) => {
+                    const amt = Number(r.billing_amt) || 0;
+                    const subsidy = Number(r.subsidy) || 0;
+
+                    acc.billed += r.billing_date ? amt : 0;
+                    acc.unbilled += !r.billing_date ? amt : 0;
+                    acc.unpaid += (r.billing_date && !r.deposit_date) ? amt : 0;
+                    acc.noReport += !r.report_date ? 1 : 0;
+                    acc.totalSubsidy += r.is_funded === '대상' ? subsidy : 0;
+                    acc.unpaidSubsidy += (r.is_funded === '대상' && !r.subsidy_date) ? subsidy : 0;
+
+                    return acc;
+                }, { totalCount: statsBaseData.length, billed: 0, unbilled: 0, unpaid: 0, noReport: 0, totalSubsidy: 0, unpaidSubsidy: 0 });
+            }, [statsBaseData]);
+
+            const filteredTableData = useMemo(() => {
+                let data = statsBaseData;
+                if (search) {
+                    const normalizeForSearch = (str) => (str || '').replace(/\(주\)|㈜|\s/g, '').toLowerCase();
+                    const normTerm = normalizeForSearch(search);
+                    data = data.filter(r => normalizeForSearch(r.com_name).includes(normTerm));
+                }
+                if (filterMonth !== 'all') {
+                    data = data.filter(r => r.end_date && new Date(r.end_date).getMonth() + 1 === parseInt(filterMonth));
+                } else if (filterHalf !== 'all') {
+                    data = data.filter(r => {
+                        if (!r.end_date) return false;
+                        const m = new Date(r.end_date).getMonth() + 1;
+                        return filterHalf === '1' ? m <= 6 : m > 6;
+                    });
+                }
+                return data;
+            }, [statsBaseData, search, filterMonth, filterHalf]);
+
+            const openModal = (type) => {
+                let items = [];
+                let title = '';
+
+                const enrich = (list) => list.map(r => {
+                    const company = companies.find(c => c.com_id === r.com_id);
+                    return {
+                        ...r,
+                        ceo_name: company?.ceo_name,
+                        contact: company?.manager_contact || company?.tel
+                    };
+                });
+
+                if (type === 'all') {
+                    items = enrich(statsBaseData);
+                    title = '조회된 기록 목록';
+                } else if (type === 'unbilled') {
+                    items = enrich(statsBaseData.filter(r => !r.billing_date));
+                    title = '미청구 목록';
+                } else if (type === 'unpaid') {
+                    items = enrich(statsBaseData.filter(r => r.billing_date && !r.deposit_date));
+                    title = '사업장 미수금 목록';
+                } else if (type === 'noReport') {
+                    items = enrich(statsBaseData.filter(r => !r.report_date));
+                    title = '전산미보고 목록';
+                } else if (type === 'unpaidSubsidy') {
+                    items = enrich(statsBaseData.filter(r => r.is_funded === '대상' && !r.subsidy_date));
+                    title = '지원금 미수금액 목록';
+                }
+
+                setModal({ isOpen: true, title, items });
+            }
+
+            if (!user) return null;
+
+            return e('div', { className: "flex flex-col min-h-screen" },
+                e('header', { className: "bg-slate-900 text-white p-6 shadow-lg" },
+                    e('div', { className: "max-w-7xl mx-auto flex justify-between items-center" },
+                        e('div', { className: "flex items-center gap-4" },
+                            e('a', { href: "main.html", className: "p-2 bg-slate-800 rounded-lg hover:bg-slate-700 text-slate-400" },
+                                e('i', { 'data-lucide': "arrow-left", className: "w-5 h-5" })
+                            ),
+                            e('h1', { className: "text-2xl font-black flex items-center gap-2" },
+                                e('i', { 'data-lucide': "credit-card", className: "text-rose-500 w-8 h-8" }),
+                                "미수금 관리 (관리자)"
+                            )
+                        )
+                    )
+                ),
+
+                e('div', { className: "max-w-7xl mx-auto w-full p-6 space-y-6" },
+                    // 상단 요약 카드 그리드 (1fr 4번, !important 강제 적용)
+                    e('div', {
+                        id: "summary-grid-container",
+                        style: {
+                            display: 'grid',
+                            gridTemplateColumns: 'repeat(4, 1fr)',
+                            gap: '1.5rem',
+                            width: '100%',
+                            marginBottom: '2rem'
+                        }
+                    },
+                        // 1행
+                        e('div', { onClick: () => openModal('all'), className: "p-6 rounded-2xl shadow-sm border bg-white border-slate-100 transition-all cursor-pointer hover:-translate-y-1" },
+                            e('span', { className: "text-xs font-bold block mb-2 text-slate-400" }, "조회된 기록"),
+                            e('span', { className: "text-2xl font-black text-slate-800" }, `${stats.totalCount.toLocaleString()}건`)
+                        ),
+                        e('div', { className: "bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-center min-h-[120px] opacity-80" },
+                            e('span', { className: "text-xs font-bold text-slate-400 block mb-2" }, "총 청구"),
+                            e('span', { className: "text-2xl font-black text-slate-800" }, `${(stats.billed / 10000).toLocaleString()}만`)
+                        ),
+                        e('div', { onClick: () => openModal('unbilled'), className: "p-6 rounded-2xl shadow-sm border bg-amber-50 border-amber-100 transition-all cursor-pointer hover:-translate-y-1" },
+                            e('span', { className: "text-xs font-bold text-amber-500 block mb-2" }, "미청구"),
+                            e('span', { className: "text-2xl font-black text-amber-600" }, `${(stats.unbilled / 10000).toLocaleString()}만`)
+                        ),
+                        e('div', { onClick: () => openModal('unpaid'), className: "p-6 rounded-2xl shadow-sm border bg-rose-50 border-rose-100 transition-all cursor-pointer hover:-translate-y-1" },
+                            e('span', { className: "text-xs font-bold text-rose-400 block mb-2" }, "사업장 미수금"),
+                            e('span', { className: "text-2xl font-black text-rose-600" }, `${(stats.unpaid / 10000).toLocaleString()}만`)
+                        ),
+                        // 2행
+                        e('div', { onClick: () => openModal('noReport'), className: "p-6 rounded-2xl shadow-sm border bg-slate-50 border-slate-100 transition-all cursor-pointer hover:-translate-y-1" },
+                            e('span', { className: "text-xs font-bold text-slate-400 block mb-2" }, "전산미보고"),
+                            e('span', { className: "text-2xl font-black text-slate-600" }, `${stats.noReport.toLocaleString()}건`)
+                        ),
+                        e('div', { className: "bg-blue-50 p-6 rounded-2xl shadow-sm border border-blue-100 flex flex-col justify-center min-h-[120px] opacity-80" },
+                            e('span', { className: "text-xs font-bold text-blue-400 block mb-2" }, "총 지원금 금액"),
+                            e('span', { className: "text-2xl font-black text-blue-600" }, `${(stats.totalSubsidy / 10000).toLocaleString()}만`)
+                        ),
+                        e('div', { className: "bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-center items-center text-center min-h-[120px] opacity-50" },
+                            e('span', { className: "text-xs font-extrabold text-slate-400 px-2" }, "미수금 제로를 향하여! 🚀")
+                        ),
+                        e('div', { onClick: () => openModal('unpaidSubsidy'), className: "p-6 rounded-2xl shadow-sm border bg-purple-50 border-purple-100 transition-all cursor-pointer hover:-translate-y-1" },
+                            e('span', { className: "text-xs font-bold text-purple-400 block mb-2" }, "지원금 미수금액"),
+                            e('span', { className: "text-2xl font-black text-purple-600" }, `${(stats.unpaidSubsidy / 10000).toLocaleString()}만`)
+                        )
+                    ),
+
+                    // 신규 필터 및 검색바 (카드와 테이블 사이 배치)
+                    e('div', { className: "bg-white p-4 rounded-2xl shadow-sm border border-slate-200 flex flex-wrap gap-6 items-center mb-6" },
+                        e('div', { className: "flex bg-slate-100 p-1 rounded-xl" },
+                            e('select', {
+                                value: filterOffice,
+                                onChange: ev => setFilterOffice(ev.target.value),
+                                className: "bg-transparent font-bold p-2 text-sm outline-none cursor-pointer text-slate-700"
+                            },
+                                e('option', { value: "all" }, "전체 지청"),
+                                ['안산', '경기', '평택', '서울서부'].map(o => e('option', { key: o, value: o }, o))
+                            ),
+                            e('div', { className: "w-px bg-slate-200 my-1" }),
+                            e('select', { value: filterYear, onChange: ev => setFilterYear(ev.target.value), className: "bg-transparent font-bold p-2 text-sm outline-none cursor-pointer text-slate-700" },
+                                [2024, 2025, 2026, 2027].map(y => e('option', { key: y, value: y }, `${y}년`))
+                            ),
+                            e('div', { className: "w-px bg-slate-200 my-1" }),
+                            e('select', { value: filterHalf, onChange: ev => { setFilterHalf(ev.target.value); setFilterMonth('all'); }, className: "bg-transparent font-bold p-2 text-sm outline-none cursor-pointer text-slate-700" },
+                                e('option', { value: "all" }, "전체 반기"),
+                                e('option', { value: "1" }, "상반기"),
+                                e('option', { value: "2" }, "하반기")
+                            ),
+                            e('div', { className: "w-px bg-slate-200 my-1" }),
+                            e('select', { value: filterMonth, onChange: ev => { setFilterMonth(ev.target.value); setFilterHalf('all'); }, className: "bg-transparent font-bold p-2 text-sm outline-none cursor-pointer text-slate-700" },
+                                e('option', { value: "all" }, "전체 월"),
+                                [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(m => e('option', { key: m, value: m }, `${m}월`))
+                            )
+                        ),
+                        e('div', { className: "relative min-w-[600px] flex-1" },
+                            e('i', { 'data-lucide': "search", className: "absolute left-3 top-2.5 w-4 h-4 text-slate-400" }),
+                            e('input', { placeholder: "사업장명으로 상세 검색...", value: search, onChange: ev => setSearch(ev.target.value), className: "w-full bg-slate-50 border border-slate-200 pl-10 pr-4 py-2 rounded-xl outline-none focus:ring-2 focus:ring-rose-500 font-bold placeholder-slate-400" })
+                        )
+                    ),
+                    e('div', { className: "bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden" },
+                        e('table', { className: "w-full text-left" },
+                            e('thead', { className: "bg-slate-50 border-b text-xs font-bold text-slate-400 uppercase tracking-widest" },
+                                e('tr', null,
+                                    e('th', { className: "p-6" }, "사업장명"),
+                                    e('th', { className: "p-6" }, "종료일/발송일"),
+                                    e('th', { className: "p-6 text-right" }, "사업장 청구"),
+                                    e('th', { className: "p-6 text-right" }, "지원금 금액"),
+                                    e('th', { className: "p-6 text-center" }, "지원금 상태"),
+                                    e('th', { className: "p-6 text-center" }, "입금상태(사업장)")
+                                )
+                            ),
+                            e('tbody', { className: "divide-y text-sm" },
+                                loading ? e('tr', null, e('td', { colSpan: "6", className: "p-12 text-center text-slate-400" }, "데이터 로딩 중...")) :
+                                    filteredTableData.length === 0 ? e('tr', null, e('td', { colSpan: "6", className: "p-12 text-center text-slate-400" }, "데이터가 없습니다.")) :
+                                        filteredTableData.map(r => {
+                                            const isFunded = r.is_funded === '대상';
+                                            const isSubsidyPaid = !!r.subsidy_date;
+                                            const isPaid = !!r.deposit_date;
+
+                                            return e('tr', { key: r.id, className: "hover:bg-slate-50 transition-colors" },
+                                                e('td', { className: "p-6" },
+                                                    e('div', { className: "font-bold text-slate-800 text-lg" }, r.com_name),
+                                                    e('div', { className: "flex items-center gap-2 mt-1" },
+                                                        e('span', { className: "text-xs font-mono text-slate-400" }, r.com_id),
+                                                        e('span', { className: "px-2 py-0.5 bg-slate-100 text-slate-500 rounded text-[10px] font-bold" }, r.office_name)
+                                                    )
+                                                ),
+                                                e('td', { className: "p-6" },
+                                                    e('div', { className: "font-bold text-slate-700" }, r.end_date),
+                                                    e('div', { className: "text-xs text-slate-400" }, `발송: ${r.shipping_date || '-'}`)
+                                                ),
+                                                e('td', { className: "p-6 text-right font-bold text-slate-700" }, (Number(r.billing_amt) || 0).toLocaleString()),
+                                                e('td', { className: "p-6 text-right font-bold text-blue-600" }, (Number(r.subsidy) || 0).toLocaleString()),
+                                                e('td', { className: "p-6 text-center" },
+                                                    !isFunded ?
+                                                        e('span', { className: "text-slate-300 flex items-center justify-center gap-1 text-xs font-bold" }, e('i', { 'data-lucide': "minus", className: "w-3 h-3" }), "비대상") :
+                                                        isSubsidyPaid ?
+                                                            e('span', { className: "text-emerald-500 flex items-center justify-center gap-1 text-xs font-bold" }, e('i', { 'data-lucide': "check-circle-2", className: "w-3 h-3" }), "입금완료") :
+                                                            e('span', { className: "text-purple-500 flex items-center justify-center gap-1 text-xs font-bold animate-pulse" }, e('i', { 'data-lucide': "clock", className: "w-3 h-3" }), "미수")
+                                                ),
+                                                e('td', { className: "p-6 text-center" },
+                                                    isPaid ?
+                                                        e('span', { className: "bg-emerald-100 text-emerald-600 px-3 py-1 rounded-full text-xs font-bold" }, `완료 (${r.deposit_date})`) :
+                                                        e('span', { className: "bg-rose-100 text-rose-600 px-3 py-1 rounded-full text-xs font-bold" }, "미수")
+                                                )
+                                            );
+                                        })
+                            )
+                        )
+                    )
+                ),
+                e(DetailsModal, {
+                    isOpen: modal.isOpen,
+                    onClose: () => setModal({ ...modal, isOpen: false }),
+                    title: modal.title,
+                    items: modal.items
+                })
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(e(AccountsManagement));
+    </script>
+</body>
+
+</html>
