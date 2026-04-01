@@ -205,10 +205,11 @@ export function openPrintPreview(hdr, items, mgmtFee, itemsTotal, sub, disc, vat
     `;
 
     // 페이징 처리: 페이지 위치에 따라 수용 가능한 최대 행수 동적 할당
-    const P1_WITH_FOOTER = isYongYeok ? 5 : 15;  // 1페이지 (합계 포함) - 13(기본) < 15(정밀수정) < 18(잘림)
-    const P1_NO_FOOTER = isYongYeok ? 15 : 22; // 1페이지 (합계 미포함)
-    const PN_WITH_FOOTER = isYongYeok ? 18 : 30; // 이후페이지 (합계 포함)
-    const PN_NO_FOOTER = isYongYeok ? 25 : 36; // 이후페이지 (합계 미포함)
+    // 10mm 여백(상하) 기준 최적화된 행 수 (여유 공간 확보)
+    const P1_WITH_FOOTER = isYongYeok ? 5 : 14;  // 1페이지 (합계 포함) - 15에서 14로 하향 (여백 10mm 기준)
+    const P1_NO_FOOTER = isYongYeok ? 15 : 21; // 1페이지 (합계 미포함)
+    const PN_WITH_FOOTER = isYongYeok ? 18 : 29; // 이후페이지 (합계 포함)
+    const PN_NO_FOOTER = isYongYeok ? 25 : 35; // 이후페이지 (합계 미포함)
 
     let remainingItems = [...items];
     const chunks = [];
@@ -584,12 +585,17 @@ export function openPrintPreview(hdr, items, mgmtFee, itemsTotal, sub, disc, vat
                     const saved = localStorage.getItem('kiwe_quote_margins');
                     if(saved) {
                         const m = JSON.parse(saved);
-                        document.getElementById('m-top').value = m.top;
-                        document.getElementById('m-bottom').value = m.bottom;
-                        document.getElementById('m-left').value = m.left;
-                        document.getElementById('m-right').value = m.right;
-                        updateMargins();
+                        // 혹시 10mm보다 너무 작거나 비어있으면 10mm로 자동 보정
+                        document.getElementById('m-top').value = m.top || 10;
+                        document.getElementById('m-bottom').value = m.bottom || 10;
+                        document.getElementById('m-left').value = m.left || 10;
+                        document.getElementById('m-right').value = m.right || 10;
+                    } else {
+                        // 저장된 값이 없으면 상하 10mm 강제 적용
+                        document.getElementById('m-top').value = 10;
+                        document.getElementById('m-bottom').value = 10;
                     }
+                    updateMargins();
                 };
 
                 async function saveAsPdf() {
