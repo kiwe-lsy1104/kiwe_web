@@ -219,7 +219,7 @@ export function openPrintPreview(hdr, items, mgmtFee, itemsTotal, sub, disc, vat
         let isFirstPage = pageIdxCounter === 0;
         let capWithFooter = isFirstPage ? P1_WITH_FOOTER : PN_WITH_FOOTER;
         let capNoFooter = isFirstPage ? P1_NO_FOOTER : PN_NO_FOOTER;
-        
+
         if (remainingItems.length <= capWithFooter) {
             chunks.push({
                 items: remainingItems.splice(0, remainingItems.length),
@@ -244,7 +244,7 @@ export function openPrintPreview(hdr, items, mgmtFee, itemsTotal, sub, disc, vat
         const isLastPage = chunk.isLastPage;
         const startIndex = cumulativeItems;
         cumulativeItems += chunkItems.length;
-        
+
         const getRowSpan = (idx, field) => {
             if (idx > 0 && chunkItems[idx - 1][field] === chunkItems[idx][field] && chunkItems[idx][field] !== '') return 0;
             let span = 1;
@@ -254,7 +254,7 @@ export function openPrintPreview(hdr, items, mgmtFee, itemsTotal, sub, disc, vat
             }
             return span;
         };
-        
+
         const tbodyHtml = chunkItems.map((it, i) => {
             const wpSpan = getRowSpan(i, 'work_process');
             const rmSpan = getRowSpan(i, 'remarks');
@@ -388,16 +388,15 @@ export function openPrintPreview(hdr, items, mgmtFee, itemsTotal, sub, disc, vat
         }
 
         const footerHtml = isLastPage ? `
-            <div style="margin-top: 2mm;">
-                ${indirectCostsHtml}
-            </div>
-            <div style="display:flex; justify-content:flex-end;">
-                ${sumBoxHtml}
-            </div>
-
-            <div style="margin-top: auto; border:1.5px solid #000; padding:8px 10px; font-size:8.5pt; line-height:1.4; box-sizing:border-box; min-height:15mm;">
-                <p style="font-weight:bold; margin-bottom:4px; text-decoration:underline;">[ 특기사항 및 안내 ]</p>
-                <div style="white-space: pre-wrap;">${hdr.notes || getDefaultNotes(hdr.quote_type, hdr.support_type)}</div>
+            <div style="margin-top: auto; display: flex; flex-direction: column;">
+                ${indirectCostsHtml ? `<div>${indirectCostsHtml}</div>` : ''}
+                <div style="display:flex; justify-content:flex-end; margin-top: 2mm;">
+                    ${sumBoxHtml}
+                </div>
+                <div style="margin-top: 2mm; border:1.5px solid #000; padding:8px 10px; font-size:8.5pt; line-height:1.4; box-sizing:border-box; min-height:15mm; flex-shrink: 0; overflow: visible;">
+                    <p style="font-weight:bold; margin-bottom:4px; text-decoration:underline;">[ 특기사항 및 안내 ]</p>
+                    <div style="white-space: pre-wrap; word-break: break-all;">${hdr.notes || getDefaultNotes(hdr.quote_type, hdr.support_type)}</div>
+                </div>
             </div>
         ` : '';
 
@@ -499,14 +498,14 @@ export function openPrintPreview(hdr, items, mgmtFee, itemsTotal, sub, disc, vat
             </div>
 
             <p style="font-weight:bold; margin-bottom:4px; text-align:center; font-size:10pt;">${isMeasurement ? `${hdr.year}년 ${hdr.half_year} ` : ''}${hdr.title || fileNameTitle}${(() => {
-        const t = hdr.title || fileNameTitle;
-        if (!t) return '을';
-        const lastChar = t.charCodeAt(t.length - 1);
-        if (lastChar < 0xAC00 || lastChar > 0xD7A3) return '을'; 
-        const jong = (lastChar - 0xAC00) % 28;
-        return jong > 0 ? '을' : '를';
-    })()
-    } 아래와 같이 작성합니다.</p>
+                const t = hdr.title || fileNameTitle;
+                if (!t) return '을';
+                const lastChar = t.charCodeAt(t.length - 1);
+                if (lastChar < 0xAC00 || lastChar > 0xD7A3) return '을';
+                const jong = (lastChar - 0xAC00) % 28;
+                return jong > 0 ? '을' : '를';
+            })()
+            } 아래와 같이 작성합니다.</p>
 
             ${isMeasurement ? `
             <div style="font-weight:bold; margin-bottom:2mm; font-size:10pt;">1. 기본관리비</div>
@@ -533,13 +532,13 @@ export function openPrintPreview(hdr, items, mgmtFee, itemsTotal, sub, disc, vat
             ` : ''}
         ` : '';
 
-        const tableTitle = isFirstPage ? 
-            (isRental ? `<div style="text-align:center; font-weight:bold; font-size:12pt; margin-bottom:1.5mm;">세부사항</div>` 
-           : isYongYeok ? `<div style="font-weight:bold; margin-bottom:1.5mm; font-size:9pt;">1. 인건비</div>`
-           : `<div style="font-weight:bold; margin-bottom:1.5mm; font-size:9pt;">2. 분석수수료</div>`) 
-         : (isRental ? `<div style="text-align:center; font-weight:bold; font-size:12pt; margin-bottom:1.5mm;">세부사항 (계속)</div>`
-           : isYongYeok ? `<div style="font-weight:bold; margin-bottom:1.5mm; font-size:9pt;">1. 인건비 (계속)</div>`
-           : `<div style="font-weight:bold; margin-bottom:1.5mm; font-size:9pt;">2. 분석수수료 (계속)</div>`);
+        const tableTitle = isFirstPage ?
+            (isRental ? `<div style="text-align:center; font-weight:bold; font-size:12pt; margin-bottom:1.5mm;">세부사항</div>`
+                : isYongYeok ? `<div style="font-weight:bold; margin-bottom:1.5mm; font-size:9pt;">1. 인건비</div>`
+                    : `<div style="font-weight:bold; margin-bottom:1.5mm; font-size:9pt;">2. 분석수수료</div>`)
+            : (isRental ? `<div style="text-align:center; font-weight:bold; font-size:12pt; margin-bottom:1.5mm;">세부사항 (계속)</div>`
+                : isYongYeok ? `<div style="font-weight:bold; margin-bottom:1.5mm; font-size:9pt;">1. 인건비 (계속)</div>`
+                    : `<div style="font-weight:bold; margin-bottom:1.5mm; font-size:9pt;">2. 분석수수료 (계속)</div>`);
 
         return `
             <div class="kiwe-page" id="page-${pageIdx}">
@@ -759,7 +758,7 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
                     ...p,
                     preliminary_fee: nextPrelimFee,
                     management_fee: (() => {
-                        const norm = s => (s||'').toString().trim().replace(/사업장/g,'').replace(/\s+/g,'');
+                        const norm = s => (s || '').toString().trim().replace(/사업장/g, '').replace(/\s+/g, '');
                         const found = nextMgmt.find(m => norm(m.item_name) === norm(p.workplace_size));
                         return found ? Number(found.unit_price) || 0 : p.management_fee;
                     })()
@@ -820,11 +819,11 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
             setHdr(p => {
                 const currentSize = p.workplace_size;
                 if (!currentSize) return p;
-                
+
                 // 정규화 함수: 공백 제거, '사업장' 제거 등 (더 강력하게)
                 const norm = (s) => (s || '').toString().trim().replace(/사업장/g, '').replace(/\s+/g, '');
                 const target = norm(currentSize);
-                
+
                 let found = null;
                 // 비용지원인 경우 지원단가(supportMgmtPrices)에서 먼저 찾음 (이미 보충됨)
                 if (sType !== '일반') {
@@ -834,7 +833,7 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
                 if (!found) {
                     found = nextMgmt.find(m => norm(m.item_name) === target);
                 }
-                
+
                 if (found) {
                     const nextFee = Number(found.unit_price) || 0;
                     if (nextFee !== p.management_fee) {
@@ -915,15 +914,15 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
                 });
                 setClientSearch(q.client_name || '');
             }
-                if (its && its.length > 0) {
-                    setItems(its.map(it => ({
-                        ...it,
-                        _id: it.id,
-                        quantity: Number(it.quantity) || 0,
-                        unit_price: Number(it.unit_price) || 0
-                    })));
-                }
-            } catch (err) { console.error('로드 실패:', err); }
+            if (its && its.length > 0) {
+                setItems(its.map(it => ({
+                    ...it,
+                    _id: it.id,
+                    quantity: Number(it.quantity) || 0,
+                    unit_price: Number(it.unit_price) || 0
+                })));
+            }
+        } catch (err) { console.error('로드 실패:', err); }
     }
 
     const isYongYeok = hdr.quote_type === '용역';
@@ -937,7 +936,7 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
         if (isYongYeok || isRental) return s + (it.quantity * (Number(it.unit_type) || 1) * it.unit_price);
         return s + it.quantity * it.unit_price;
     }, 0), [items, isYongYeok, isRental]);
-    
+
     let sub = 0;
     if (isYongYeok) {
         const laborCost = itemsTotal;
@@ -953,11 +952,11 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
     // ── 비용지원 정보 및 기초 금액 계산 ──────────────────────────
     const supportInfo = useMemo(() => {
         if (!isSupport) return { rate: 0, amount: 0, limit: 0, userPay: sub, actualAmt: sub };
-        
+
         const prefix = hdr.support_type === '신규지원' ? '신규' : '기존';
         const rate = supportPolicies[`${prefix}_지원율`] || (hdr.support_type === '신규지원' ? 100 : 80);
         const limit = supportPolicies[`${prefix}_한도`] || (hdr.support_type === '신규지원' ? 1000000 : 400000);
-        
+
         let calcAmt = Math.floor(sub * (rate / 100));
         if (calcAmt > limit) calcAmt = limit;
 
@@ -965,7 +964,7 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
         const finalAmt = (hdr.support_amount && hdr.support_amount > 0) ? hdr.support_amount : calcAmt;
         const afterSubsidy = sub - finalAmt;
         const actualRate = sub > 0 ? Math.round((finalAmt / sub) * 100) : 0;
-        
+
         return { rate: actualRate, amount: finalAmt, limit, userPay: afterSubsidy, actualAmt: sub };
     }, [sub, isSupport, hdr.support_type, hdr.support_amount, supportPolicies]);
 
@@ -1100,8 +1099,8 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
         const fieldsOrder = hdr.quote_type === '용역'
             ? ['quantity', 'unit_type', 'unit_price', 'remarks']
             : hdr.quote_type === '장비대여'
-            ? ['work_process', 'hazard_name', 'quantity', 'unit_type', 'unit_price', 'remarks']
-            : ['work_process', 'hazard_name', 'analysis_method', 'quantity', 'unit_price', 'remarks'];
+                ? ['work_process', 'hazard_name', 'quantity', 'unit_type', 'unit_price', 'remarks']
+                : ['work_process', 'hazard_name', 'analysis_method', 'quantity', 'unit_price', 'remarks'];
 
         const startFieldIdx = fieldsOrder.indexOf(field);
         if (startFieldIdx === -1) return;
@@ -1133,8 +1132,8 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
         const fieldsOrder = hdr.quote_type === '용역'
             ? ['quantity', 'unit_type', 'unit_price', 'remarks']
             : hdr.quote_type === '장비대여'
-            ? ['work_process', 'hazard_name', 'quantity', 'unit_type', 'unit_price', 'remarks']
-            : ['work_process', 'hazard_name', 'analysis_method', 'quantity', 'unit_price', 'remarks'];
+                ? ['work_process', 'hazard_name', 'quantity', 'unit_type', 'unit_price', 'remarks']
+                : ['work_process', 'hazard_name', 'analysis_method', 'quantity', 'unit_price', 'remarks'];
         const colIdx = fieldsOrder.indexOf(field);
 
         if (ev.key === 'ArrowDown' || (ev.key === 'Enter' && !ev.shiftKey)) {
@@ -1221,7 +1220,7 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
             }
             const nextSeq = maxSeq + 1;
             const qno = `KIWE-${hdr.year}-${String(nextSeq).padStart(3, '0')}`;
-            
+
             const payload = {
                 year: hdr.year, half_year: hdr.half_year, quote_date: hdr.quote_date,
                 valid_days: hdr.valid_days, client_id: hdr.client_id, client_name: hdr.client_name,
@@ -1264,7 +1263,7 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
                     quantity: Number(it.quantity), unit_price: Number(it.unit_price), remarks: it.remarks
                 })));
             }
-            
+
             alert(`저장되었습니다.\n새 견적번호: ${qno}`);
             await loadEdit(qid);
             if (onSave) onSave();
@@ -1290,7 +1289,7 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
             // 툴바
             e('div', { className: 'flex items-center justify-between px-6 py-3 border-b bg-white shrink-0 gap-2' },
                 e('div', { className: 'flex items-center gap-3' },
-                    e('span', { className: 'text-lg font-black text-slate-700 flex items-center gap-2' }, 
+                    e('span', { className: 'text-lg font-black text-slate-700 flex items-center gap-2' },
                         editId ? `견적서 편집(${hdr.quote_no || '#' + editId})` : '새 견적서 작성',
                         e('a', { href: 'manual.html#section-quotations', target: '_blank', className: 'p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-colors', title: '견적 관리 도움말 (새창)' },
                             e(HelpCircle, { size: 18 })
@@ -1547,11 +1546,11 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
                                 e('div', { className: 'grid grid-cols-2 gap-4' },
                                     e('div', null,
                                         e('label', { className: labelCls + ' text-emerald-600 flex items-center gap-1.5' }, '합계금액 (L열)', e('span', { className: 'px-1 py-0.5 bg-emerald-600 text-white text-[8px] rounded' }, '자동')),
-                                        e('input', { 
-                                            type: 'text', 
-                                            value: fmt(sub), 
+                                        e('input', {
+                                            type: 'text',
+                                            value: fmt(sub),
                                             readOnly: true,
-                                            className: 'w-full px-3 py-2 border border-slate-200 rounded-lg text-sm text-right font-black bg-slate-100 text-slate-600' 
+                                            className: 'w-full px-3 py-2 border border-slate-200 rounded-lg text-sm text-right font-black bg-slate-100 text-slate-600'
                                         })
                                     ),
                                     e('div', null,
@@ -1626,8 +1625,8 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
                                 e('thead', { className: 'sticky top-0 z-10' },
                                     e('tr', { className: 'bg-slate-200' },
                                         e('th', { className: 'p-1 text-[11px] font-black text-slate-700 border-b border-r border-slate-400 w-10 text-center' }, 'No'),
-                                        (hdr.quote_type === '용역' 
-                                            ? ['항목', '구분', '인원', '조사일수', '단가', '금액', '비고'] 
+                                        (hdr.quote_type === '용역'
+                                            ? ['항목', '구분', '인원', '조사일수', '단가', '금액', '비고']
                                             : hdr.quote_type === '장비대여'
                                                 ? ['대여장비', '구분(등급/장비명)', '수량', '대여일수', '단가', '금액', '비고']
                                                 : ['단위작업장소', '유해인자', '분석방법', '수량', '단가', '금액', '비고']
@@ -1652,24 +1651,24 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
 
                                             e('td', { className: 'p-0 border-b border-r border-slate-400 relative' },
                                                 hdr.quote_type === '용역' ? e('div', { className: 'w-full h-full p-1 text-xs text-center font-bold text-slate-700 bg-slate-50 flex items-center justify-center' }, it.work_process)
-                                                : e('input', {
-                                                    value: it.work_process,
-                                                    onChange: ev => setItem(idx, 'work_process', ev.target.value),
-                                                    placeholder: '',
-                                                    ...common('work_process'),
-                                                    className: common('work_process').className + ' text-center'
-                                                })
+                                                    : e('input', {
+                                                        value: it.work_process,
+                                                        onChange: ev => setItem(idx, 'work_process', ev.target.value),
+                                                        placeholder: '',
+                                                        ...common('work_process'),
+                                                        className: common('work_process').className + ' text-center'
+                                                    })
                                             ),
 
-                                            e('td', { className: 'p-0 border-b border-r border-slate-400 relative' }, 
+                                            e('td', { className: 'p-0 border-b border-r border-slate-400 relative' },
                                                 hdr.quote_type === '용역' ? e('div', { className: 'w-full h-full p-1 text-xs text-center font-bold text-slate-700 bg-slate-50 flex items-center justify-center' }, it.hazard_name)
-                                                : e('input', {
-                                                    value: it.hazard_name || '',
-                                                    onChange: ev => setItem(idx, 'hazard_name', ev.target.value),
-                                                    list: hdr.quote_type === '장비대여' ? 'rental-list' : undefined,
-                                                    ...common('hazard_name'),
-                                                    className: common('hazard_name').className + ' font-bold text-center'
-                                                })
+                                                    : e('input', {
+                                                        value: it.hazard_name || '',
+                                                        onChange: ev => setItem(idx, 'hazard_name', ev.target.value),
+                                                        list: hdr.quote_type === '장비대여' ? 'rental-list' : undefined,
+                                                        ...common('hazard_name'),
+                                                        className: common('hazard_name').className + ' font-bold text-center'
+                                                    })
                                             ),
 
                                             (hdr.quote_type === '일반' || hdr.quote_type === '측정') && e('td', { className: 'p-0 border-b border-r border-slate-400 relative' }, e('input', {
@@ -1681,7 +1680,7 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
                                             })),
 
                                             e('td', { className: 'p-0 border-b border-r border-slate-400 relative w-16' }, e('input', { type: 'number', value: it.quantity, onChange: ev => setItem(idx, 'quantity', Number(ev.target.value) || 0), ...common('quantity'), className: common('quantity').className + ' text-center' })),
-                                            
+
                                             (hdr.quote_type === '용역' || hdr.quote_type === '장비대여') && e('td', { className: 'p-0 border-b border-r border-slate-400 relative w-16' }, e('input', { type: 'number', value: it.unit_type || 1, onChange: ev => setItem(idx, 'unit_type', Number(ev.target.value) || 0), ...common('unit_type'), className: common('unit_type').className + ' text-center' })),
 
                                             e('td', { className: 'p-0 border-b border-r border-slate-400 relative w-24' }, e('input', { type: 'text', value: fmt(it.unit_price), onChange: ev => setItem(idx, 'unit_price', unf(ev.target.value)), ...common('unit_price'), className: common('unit_price').className + ' text-right font-bold' })),
