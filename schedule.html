@@ -660,11 +660,13 @@
                                             ),
                                             e('div', { className: "flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity" },
                                                 e('button', { onClick: () => cloneEvent(evt), title: "다음날로 복제", className: "p-0.5 hover:bg-slate-50 rounded text-slate-300 hover:text-emerald-600" }, e('i', { 'data-lucide': "copy", className: "w-2.5 h-2.5" })),
-                                                e('button', { onClick: () => { 
-                                                    const payloadUsage = typeof evt.equipment_used === 'string' ? JSON.parse(evt.equipment_used) : (evt.equipment_used || {});
-                                                    setModalData({...evt, equipment_used: payloadUsage}); 
-                                                    setIsModalOpen(true); 
-                                                }, className: "p-0.5 hover:bg-slate-50 rounded text-slate-300 hover:text-indigo-600" }, e('i', { 'data-lucide': "edit-3", className: "w-2.5 h-2.5" })),
+                                                e('button', {
+                                                    onClick: () => {
+                                                        const payloadUsage = typeof evt.equipment_used === 'string' ? JSON.parse(evt.equipment_used) : (evt.equipment_used || {});
+                                                        setModalData({ ...evt, equipment_used: payloadUsage });
+                                                        setIsModalOpen(true);
+                                                    }, className: "p-0.5 hover:bg-slate-50 rounded text-slate-300 hover:text-indigo-600"
+                                                }, e('i', { 'data-lucide': "edit-3", className: "w-2.5 h-2.5" })),
                                                 e('button', { onClick: () => deleteEvent(evt.id), className: "p-0.5 hover:bg-slate-50 rounded text-slate-300 hover:text-red-600" }, e('i', { 'data-lucide': "trash-2", className: "w-2.5 h-2.5" }))
                                             )
                                         ),
@@ -699,7 +701,7 @@
                                 e('div', { className: "grid grid-cols-2 gap-1.5" },
                                     (() => {
                                         // equipment_type 순서: 고유량, 소음계, 길에어, 7L, 저유량, 기타
-                                        const typeOrder = ['고유량', '소음계', '길에어', '7L', '저유량'];
+                                        const typeOrder = ['고유량', '소음기', '길에어', '7L', '저유량'];
                                         const typeDisplayNames = {
                                             '고유량': '고유량(에어빌/카인에어)'
                                         };
@@ -817,7 +819,7 @@
                                         const modalUsageMap = getUsageForModalDate();
 
                                         // Use the same grouping logic as the sidebar
-                                        const typeOrder = ['고유량', '소음계', '길에어', '7L', '저유량'];
+                                        const typeOrder = ['고유량', '소음기', '길에어', '7L', '저유량'];
                                         const allModalCards = [];
                                         typeOrder.forEach(type => {
                                             if (grouped[type]) {
