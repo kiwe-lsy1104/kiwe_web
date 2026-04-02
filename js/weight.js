@@ -380,15 +380,14 @@ function App() {
         }
     };
 
-    const checkWeightDifference = (weights, typeName) => {
+    const checkWeightDifference = (weights) => {
         const valid = weights.filter(v => typeof v === 'number' && v > 0);
         if (valid.length > 1) {
             const max = Math.max(...valid);
             const min = Math.min(...valid);
-            if (max - min >= 100) {
-                alert(`[경고] ${typeName} 3회 입력값 중 100ug 이상 차이나는 값이 있습니다.\n(최대-최소 차이: ${max - min}ug)\n입력값을 다시 확인해주세요.`);
-            }
+            return (max - min >= 100);
         }
+        return false;
     };
 
     const updateWeight = (isBlank, idx, type, wIdx, val) => {
@@ -397,14 +396,14 @@ function App() {
             next[idx][type][wIdx] = val;
             setBlankSamples(next);
             if (type === 'w1' || type === 'w2') {
-                checkWeightDifference(next[idx][type], type === 'w1' ? '측정 전 무게' : '측정 후 무게');
+                // checkWeightDifference(next[idx][type], type === 'w1' ? '측정 전 무게' : '측정 후 무게');
             }
         } else {
             const next = [...mainSamples];
             next[idx][type][wIdx] = val;
             setMainSamples(next);
             if (type === 'w1' || type === 'w2') {
-                checkWeightDifference(next[idx][type], type === 'w1' ? '측정 전 무게' : '측정 후 무게');
+                // checkWeightDifference(next[idx][type], type === 'w1' ? '측정 전 무게' : '측정 후 무게');
             }
         }
     };
@@ -596,12 +595,18 @@ function App() {
                                         e('td', { rowSpan: 2, className: "py-3 px-4 font-bold border-r" }, b.sample_id, e('div', { className: "text-[10px] text-slate-400 font-normal" }, b.worker_name)),
                                         e('td', { className: "py-2 px-4 text-xs font-bold text-slate-500" }, "채취 전"),
                                         b.w1.map((v, i) => e('td', { key: i, className: "p-2" }, e(WeightInput, { value: v, onChange: val => updateWeight(true, idx, 'w1', i, val), className: "bg-slate-50 p-1 rounded" }))),
-                                        e('td', { className: "py-2 px-2 text-center font-bold text-indigo-600 bg-indigo-50/30" }, w1Avg)
+                                        e('td', { className: `py-2 px-2 text-center font-bold bg-indigo-50/30 ${checkWeightDifference(b.w1) ? 'text-red-500 flex items-center justify-center gap-1' : 'text-indigo-600'}` }, 
+                                            checkWeightDifference(b.w1) && e(AlertCircle, { size: 12, className: "text-red-500" }),
+                                            w1Avg
+                                        )
                                     ),
                                     e('tr', { key: b.sample_id + '_a', className: "bg-white" },
                                         e('td', { className: "py-2 px-4 text-xs font-bold text-slate-500" }, "채취 후"),
                                         b.w2.map((v, i) => e('td', { key: i, className: "p-2" }, e(WeightInput, { value: v, onChange: val => updateWeight(true, idx, 'w2', i, val), className: "bg-slate-50 p-1 rounded" }))),
-                                        e('td', { className: "py-2 px-2 text-center font-bold text-indigo-600 bg-indigo-50/30" }, w2Avg)
+                                        e('td', { className: `py-2 px-2 text-center font-bold bg-indigo-50/30 ${checkWeightDifference(b.w2) ? 'text-red-500 flex items-center justify-center gap-1' : 'text-indigo-600'}` }, 
+                                            checkWeightDifference(b.w2) && e(AlertCircle, { size: 12, className: "text-red-500" }),
+                                            w2Avg
+                                        )
                                     )
                                 ];
                             })
@@ -711,11 +716,17 @@ function App() {
                                             e('td', { className: "report-td text-[9px] whitespace-nowrap" }, formatTime(s.end_time)),
                                             e('td', { className: "report-td" }, e('div', { className: "center-wrap" }, s.duration)),
                                             e('td', { className: "report-td" }, e('div', { className: "center-wrap" }, formatDecimal(s.flow, 3))),
-                                            s.w1.map((v, i) => e('td', { key: i, className: "report-td p-0" },
-                                                e(WeightInput, { value: v, onChange: val => updateWeight(false, sIdx, 'w1', i, val) })
+                                            s.w1.map((v, i) => e('td', { key: i, className: `report-td p-0 ${checkWeightDifference(s.w1) ? 'bg-red-50' : ''}` },
+                                                e('div', { className: "flex items-center justify-center gap-1" },
+                                                    checkWeightDifference(s.w1) && i === 0 && e(AlertCircle, { size: 10, className: "text-red-500" }),
+                                                    e(WeightInput, { value: v, onChange: val => updateWeight(false, sIdx, 'w1', i, val) })
+                                                )
                                             )),
-                                            s.w2.map((v, i) => e('td', { key: i, className: "report-td p-0" },
-                                                e(WeightInput, { value: v, onChange: val => updateWeight(false, sIdx, 'w2', i, val) })
+                                            s.w2.map((v, i) => e('td', { key: i, className: `report-td p-0 ${checkWeightDifference(s.w2) ? 'bg-red-50' : ''}` },
+                                                e('div', { className: "flex items-center justify-center gap-1" },
+                                                    checkWeightDifference(s.w2) && i === 0 && e(AlertCircle, { size: 10, className: "text-red-500" }),
+                                                    e(WeightInput, { value: v, onChange: val => updateWeight(false, sIdx, 'w2', i, val) })
+                                                )
                                             )),
                                             e('td', { className: "report-td font-bold text-slate-800" }, e('div', { className: "center-wrap" }, amount.toFixed(6))),
                                             e('td', { className: `report-td font-bold ${exceed ? 'text-red-600' : 'text-indigo-600'}` }, e('div', { className: "center-wrap" }, conc.toFixed(6))),
