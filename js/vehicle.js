@@ -307,14 +307,16 @@ export function exportToExcel(logs, vehicleInfo, year) {
 
 // 특정 차량의 마지막 누적 주행거리 가져오기
 export async function fetchLastDist(vehicleId) {
-    if (!supabase || !vehicleId) return 0;
+    const sb = getSupabase();
+    if (!sb || !vehicleId) return 0;
     try {
-        const { data, error } = await supabase
+        const { data, error } = await sb
             .from('kiwe_vehicle_logs')
             .select('after_dist')
             .eq('vehicle_id', vehicleId)
             .order('date', { ascending: false })
             .order('after_dist', { ascending: false })
+            .order('created_at', { ascending: false })
             .limit(1);
         
         if (error) throw error;
