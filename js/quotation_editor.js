@@ -712,7 +712,8 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
         else {
             // 새 견기서인 경우 로그인 사용자명 세팅
             const user = JSON.parse(localStorage.getItem('kiwe_user') || '{}');
-            setH('manager_name', user.user_name || '이승용');
+            const userNameWithTitle = user.user_name ? `${user.user_name}${user.user_title ? ' ' + user.user_title : ''}` : '이승용';
+            setH('manager_name', userNameWithTitle);
         }
     }, [editId]);
 
@@ -1248,8 +1249,8 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
                 actual_amount: sub,
                 total_amount: total,
                 payment_terms: hdr.payment_terms, notes: hdr.notes, status: hdr.status,
-                manager_name: hdr.manager_name || user.user_name || '',
-                created_by: user.user_name || '',
+                manager_name: hdr.manager_name || (user.user_name ? `${user.user_name}${user.user_title ? ' ' + user.user_title : ''}` : ''),
+                created_by: user.user_name ? `${user.user_name}${user.user_title ? ' ' + user.user_title : ''}` : '',
                 updated_at: new Date().toISOString(),
                 quote_no: qno,
                 quote_seq: nextSeq

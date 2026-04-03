@@ -36,17 +36,20 @@ export function ClientsTab() {
     useEffect(() => { load(); fetchCompanies(); }, []);
 
     async function load() {
-        // kiwe_quotation_clients와 kiwe_companies를 조인하여 가져옴
-        // com_id가 있으면 kiwe_companies에서 최신 manage_status를 가져옴
-        const { data } = await sb.from('kiwe_quotation_clients').select(`
-            *,
-            kiwe_companies:com_id (manage_status)
-        `).order('client_name');
+        // kiwe_quotation_clients 정보를 가져옴
+        const { data, error } = await sb.from('kiwe_quotation_clients').select('*').order('client_name');
+        if (error) {
+            console.error('거래처 로드 실패:', error);
+            return;
+        }
+
+        // kiwe_companies 정보도 함께 가져와서 매핑 (com_id가 있는 경우에만)
+        const { data: cos } = await sb.from('kiwe_companies').select('com_id, manage_status');
+        const coMap = (cos || []).reduce((acc, curr) => ({ ...acc, [curr.com_id]: curr.manage_status }), {});
 
         const processed = (data || []).map(c => ({
             ...c,
-            // 조인된 데이터가 있으면 해당 상태 사용, 없으면 '미등록'
-            status: c.kiwe_companies?.manage_status || '미등록'
+            status: coMap[c.com_id] || '미등록'
         }));
         setClients(processed);
     }
