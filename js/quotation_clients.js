@@ -63,6 +63,10 @@ export function ClientsTab() {
             
             // com_id가 빈 문자열이면 null로 변경하여 외래키 또는 UUID 제약조건 오류 방지
             if (!payload.com_id) payload.com_id = null;
+            
+            // integer 타입 필드가 빈 문자열인 경우 null로 변환
+            if (payload.worker_count === '') payload.worker_count = null;
+            else if (payload.worker_count !== null) payload.worker_count = Number(payload.worker_count);
 
             if (modal === 'new') {
                 const { error } = await sb.from('kiwe_quotation_clients').insert(payload);
