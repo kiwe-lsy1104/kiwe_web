@@ -22,7 +22,12 @@ CREATE TABLE kiwe_quotation_clients (
   manager_name TEXT, -- 담당자명 추가
   contact_person TEXT,
   contact_email TEXT,
-  created_at TIMESTAMPTZ DEFAULT NOW()
+  biz_type TEXT,
+  biz_item TEXT,
+  worker_count INTEGER,
+  notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- ============================================
@@ -55,6 +60,10 @@ CREATE TABLE kiwe_quotations (
   support_amount NUMERIC DEFAULT 0,  -- 공단지원금 - M열
   total_amount NUMERIC DEFAULT 0,    -- 최종견적금액 - K열
   round_unit INTEGER DEFAULT 0,      -- 절삭 단위 (0:없음, 1:천원, 2:만원)
+  preliminary_fee NUMERIC DEFAULT 0, -- 예비조사 단가 (계약단가)
+  preliminary_days INTEGER DEFAULT 1, -- 예비조사 일수
+  contract_client_id BIGINT,         -- 계약단가 적용 시 거래처 ID
+  is_discount BOOLEAN DEFAULT false, -- 할인단가 여부
   payment_terms TEXT DEFAULT '현금',
   notes TEXT,
   title TEXT DEFAULT '작업환경측정 견적서',
