@@ -510,6 +510,8 @@ export async function loadGridData(hot, supabase, startDate, endDate, comName, u
 
         if (idFilter === 's') {
             newData = newData.filter(d => {
+                const isNoise = d.common_name && d.common_name.includes('소음');
+                if (isNoise) return false; // 소음은 필터링 시 무조건 제외
                 if (!d.sample_id) return true; // 번호 없는 건 일단 보여줌
                 const prefixMatch = d.sample_id.match(/^[A-Z]+/);
                 const prefix = prefixMatch ? prefixMatch[0] : '';
@@ -517,6 +519,8 @@ export async function loadGridData(hot, supabase, startDate, endDate, comName, u
             });
         } else if (idFilter === 'd') {
             newData = newData.filter(d => {
+                const isNoise = d.common_name && d.common_name.includes('소음');
+                if (isNoise) return false;
                 if (!d.sample_id) return true;
                 const prefixMatch = d.sample_id.match(/^[A-Z]+/);
                 const prefix = prefixMatch ? prefixMatch[0] : '';
@@ -524,6 +528,8 @@ export async function loadGridData(hot, supabase, startDate, endDate, comName, u
             });
         } else if (idFilter === 'sb') {
             newData = newData.filter(d => {
+                const isNoise = d.common_name && d.common_name.includes('소음');
+                if (isNoise) return false;
                 if (!d.sample_id) return false;
                 const prefixMatch = d.sample_id.match(/^[A-Z]+/);
                 const prefix = prefixMatch ? prefixMatch[0] : '';
@@ -531,6 +537,8 @@ export async function loadGridData(hot, supabase, startDate, endDate, comName, u
             });
         } else if (idFilter === 'db') {
             newData = newData.filter(d => {
+                const isNoise = d.common_name && d.common_name.includes('소음');
+                if (isNoise) return false;
                 if (!d.sample_id) return false;
                 const prefixMatch = d.sample_id.match(/^[A-Z]+/);
                 const prefix = prefixMatch ? prefixMatch[0] : '';

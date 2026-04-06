@@ -73,6 +73,9 @@ export function openPrintPreview(hdr, items, mgmtFee, itemsTotal, sub, disc, vat
 
     const fileNameSuffix = isSupport ? '(비용지원)' : '';
     const fileNameTitle = isYongYeok ? '용역견적서' : isRental ? '장비대여 견적서' : '작업환경측정 견적서';
+    const titleVal = hdr.title || fileNameTitle;
+    const titleFontSize = titleVal.length > 25 ? '16pt' : (titleVal.length > 15 ? '20pt' : '24pt');
+
     // 지정된 형식: 견적날짜_사업장명_년도 상/하반기 견적서(비용지원).pdf
     const downloadFileName = `${fileDate}_${hdr.client_name || '미지정'}_${isMeasurement ? `${hdr.year}년 ${hdr.half_year} ` : ''}${fileNameTitle}${fileNameSuffix}.pdf`;
 
@@ -403,7 +406,7 @@ export function openPrintPreview(hdr, items, mgmtFee, itemsTotal, sub, disc, vat
 
         const page1HeaderHtml = isFirstPage ? `
             <div style="position:relative; text-align:center; margin-bottom:3mm;">
-                <h1>${hdr.title || (isYongYeok ? '용역견적서' : '작업환경측정 견적서')}</h1>
+                <h1 style="font-size: ${titleFontSize};">${titleVal}</h1>
                 <img src="${getAbsUrl('images/logo_up.png')}" class="logo-top" alt="CI" crossorigin="anonymous">
             </div>
 
