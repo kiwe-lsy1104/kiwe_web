@@ -713,9 +713,10 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
         loadClients();
         if (editId) loadEdit(editId);
         else {
-            // 새 견기서인 경우 로그인 사용자명 세팅
+            // 새 견적서인 경우 로그인 사용자명 세팅
             const user = JSON.parse(localStorage.getItem('kiwe_user') || '{}');
-            const userNameWithTitle = user.user_name ? `${user.user_name}${user.user_title ? ' ' + user.user_title : ''}` : '이승용';
+            const title = user.job_title || user.position || '';
+            const userNameWithTitle = user.user_name ? `${user.user_name}${title ? ' ' + title : ''}` : '이승용';
             setH('manager_name', userNameWithTitle);
         }
     }, [editId]);
@@ -1252,8 +1253,14 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
                 actual_amount: sub,
                 total_amount: total,
                 payment_terms: hdr.payment_terms, notes: hdr.notes, status: hdr.status,
-                manager_name: hdr.manager_name || (user.user_name ? `${user.user_name}${user.user_title ? ' ' + user.user_title : ''}` : ''),
-                created_by: user.user_name ? `${user.user_name}${user.user_title ? ' ' + user.user_title : ''}` : '',
+                manager_name: (() => {
+                    const title = user.job_title || user.position || '';
+                    return user.user_name ? `${user.user_name}${title ? ' ' + title : ''}` : (hdr.manager_name || '이승용');
+                })(),
+                created_by: (() => {
+                    const title = user.job_title || user.position || '';
+                    return user.user_name ? `${user.user_name}${title ? ' ' + title : ''}` : '이승용';
+                })(),
                 updated_at: new Date().toISOString(),
                 quote_no: qno,
                 quote_seq: nextSeq
