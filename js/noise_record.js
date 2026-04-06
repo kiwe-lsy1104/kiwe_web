@@ -20,7 +20,7 @@ const STORAGE_KEY_ORDER = 'KIWE_NOISE_COL_ORDER_V1';
 
 const ALL_COLUMNS = [
     { key: 'm_date', label: '측정일자', width: 100, editable: false, inputType: 'date' },
-    { key: 'cal_date', label: '소음보정일', width: 100, editable: false, inputType: 'date' },
+    { key: 'cal_date', label: '소음보정일', width: 100, editable: true, inputType: 'date' },
     { key: 'com_name', label: '사업장명', width: 150, editable: false, inputType: 'text' },
     { key: 'work_process', label: '공정명', width: 130, editable: false, inputType: 'text' },
     { key: 'worker_name', label: '작업자명', width: 90, editable: false, inputType: 'text' },
@@ -872,7 +872,7 @@ export function NoiseRecord({ user, supabase: supabaseProp }) {
             style: { width: colWidths[col.key] || col.width, minWidth: 40 }
         },
             e('input', {
-                type: col.inputType === 'number' ? 'number' : 'text',
+                type: col.inputType === 'number' ? 'number' : col.inputType === 'date' ? 'date' : 'text',
                 step: col.inputType === 'number' ? '0.1' : undefined,
                 value: displayVal,
                 onChange: ev => handleCellChange(row, col.key, ev.target.value),
