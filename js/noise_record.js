@@ -570,18 +570,24 @@ export function NoiseRecord({ user, supabase: supabaseProp }) {
                 .gte('m_date', startDate)
                 .lte('m_date', endDate);
 
-            // 3. m_date + noise_no 키로 noise_records 맵 구성
+            // 3. m_date + noise_no + worker_name 키로 noise_records 맵 구성
             const noiseMap = {};
             (noiseData || []).forEach(r => {
-                const key = `${r.m_date}_${(r.noise_no || '').trim()}`;
+                const key = `${r.m_date}_${(r.noise_no || '').trim()}_${(r.worker_name || '').trim()}`;
                 noiseMap[key] = r;
             });
 
             // 4. 시료채취대장 기준으로 display 행 생성 → noise_records로 오버레이
             const mergedRows = samplingRows.map(emp => {
                 const noiseNo = (emp.pump_no || '').trim();
-                const rowKey = `${emp.m_date}_${noiseNo}`;
-                const noiseRec = noiseMap[rowKey] || {};
+                const workerName = (emp.worker_name || '').trim();
+                // rowKey는 그리드 내부 상태 관리를 위해 더 유니크하게 (ID 포함)
+                const rowKey = `${emp.m_date}_${noiseNo}_${workerName}_${emp.id}`;
+                
+                // DB 조회용 키 (검색 키)
+                const lookupKey = `${emp.m_date}_${noiseNo}_${workerName}`;
+                const noiseRec = noiseMap[lookupKey] || {};
+                
                 const mt = calcMeasureTime(emp.start_time, emp.end_time, emp.lunch_time ?? 60);
                 return {
                     _rowKey: rowKey,
@@ -590,7 +596,7 @@ export function NoiseRecord({ user, supabase: supabaseProp }) {
                     cal_date: noiseRec.cal_date || getPrevWeekday(emp.m_date),
                     com_name: emp.com_name || '',
                     work_process: emp.work_process || '',
-                    worker_name: emp.worker_name || '',
+                    worker_name: workerName,
                     noise_no: noiseNo,
                     start_time: emp.start_time ? emp.start_time.substring(0, 5) : '',
                     end_time: emp.end_time ? emp.end_time.substring(0, 5) : '',
@@ -627,9 +633,57 @@ export function NoiseRecord({ user, supabase: supabaseProp }) {
         const key = row._rowKey;
         setEditRows(prev => {
             const cur = prev[key] || {};
+            // 데이터가 실제로 변경되었을 때만 상태 업데이트를 최적화해도 되지만, 
+            // 현재는 간단하게 모두 반영
             return { ...prev, [key]: { ...cur, [field]: value } };
         });
     }, []);
+
+    // 키보드 네비게이션 핸들러
+    const handleKeyDown = useCallback((ev, rowIdx, colKey) => {
+        const { key } = ev;
+        
+        // 1. 위아래 화살표/엔터로 행 이동
+        if (key === 'ArrowDown' || key === 'ArrowUp' || key === 'Enter') {
+            // 숫자 입력 칸에서 화살표로 값이 변하는 것 방지 (사용자 요청)
+            if (key !== 'Enter') ev.preventDefault();
+            
+            let nextIdx = rowIdx;
+            if (key === 'ArrowDown' || key === 'Enter') nextIdx++;
+            else nextIdx--;
+            
+            const target = document.querySelector(`input[data-row-idx="${nextIdx}"][data-col-key="${colKey}"], select[data-row-idx="${nextIdx}"][data-col-key="${colKey}"]`);
+            if (target) {
+                target.focus();
+                if (target.select) target.select();
+            }
+            return;
+        }
+        
+        // 2. 좌우 화살표로 컬럼 이동
+        if (key === 'ArrowLeft' || key === 'ArrowRight') {
+            const currentIdx = columnOrder.indexOf(colKey);
+            if (currentIdx === -1) return;
+            
+            let nextColIdx = key === 'ArrowRight' ? currentIdx + 1 : currentIdx - 1;
+            
+            // 편집 가능한 다음 컬럼 찾기
+            while (nextColIdx >= 0 && nextColIdx < columnOrder.length) {
+                const nextColKey = columnOrder[nextColIdx];
+                const colDef = ALL_COLUMNS.find(c => c.key === nextColKey);
+                if (colDef && colDef.editable) {
+                    ev.preventDefault();
+                    const target = document.querySelector(`input[data-row-idx="${rowIdx}"][data-col-key="${nextColKey}"], select[data-row-idx="${rowIdx}"][data-col-key="${nextColKey}"]`);
+                    if (target) {
+                        target.focus();
+                        if (target.select) target.select();
+                    }
+                    break;
+                }
+                nextColIdx = key === 'ArrowRight' ? nextColIdx + 1 : nextColIdx - 1;
+            }
+        }
+    }, [columnOrder]);
 
     // =====================================================
     // 저장: kiwe_noise_records에 보정기번호 + 소음결과만 저장
@@ -652,10 +706,16 @@ export function NoiseRecord({ user, supabase: supabaseProp }) {
                 const saveData = {
                     m_date: merged.m_date || null,
                     noise_no: merged.noise_no || null,
+                    worker_name: merged.worker_name || null, // 개별 식별을 위해 추가
+                    work_process: merged.work_process || null,
                     com_name: merged.com_name || null,
                     cal_date: merged.cal_date || null,
                     calibrator_no: merged.calibrator_no === '' ? null : (merged.calibrator_no || null),
                     noise_result: merged.noise_result === '' ? null : (merged.noise_result !== null && merged.noise_result !== undefined ? parseFloat(merged.noise_result) : null),
+                    // 필요 시 다른 필드들도 동기화 (선택 사항)
+                    start_time: merged.start_time || null,
+                    end_time: merged.end_time || null,
+                    measure_time: merged.measure_time || null,
                 };
                 // NaN 방지
                 if (isNaN(saveData.noise_result)) saveData.noise_result = null;
@@ -820,6 +880,9 @@ export function NoiseRecord({ user, supabase: supabaseProp }) {
                     value: timeVal,
                     onChange: ev => handleCellChange(row, col.key, ev.target.value),
                     onBlur: ev => handleCellChange(row, col.key, formatTimeValue(ev.target.value)),
+                    onKeyDown: ev => handleKeyDown(ev, row.__idx, col.key),
+                    'data-row-idx': row.__idx,
+                    'data-col-key': col.key,
                     placeholder: '0000',
                     className: 'w-full bg-transparent outline-none text-center text-xs focus:ring-1 focus:ring-inset focus:ring-indigo-400 rounded px-1 py-0.5',
                 })
@@ -836,6 +899,9 @@ export function NoiseRecord({ user, supabase: supabaseProp }) {
                 e('select', {
                     value: displayVal,
                     onChange: ev => handleCellChange(row, col.key, ev.target.value),
+                    onKeyDown: ev => handleKeyDown(ev, row.__idx, col.key),
+                    'data-row-idx': row.__idx,
+                    'data-col-key': col.key,
                     className: 'w-full bg-transparent outline-none text-center text-xs focus:ring-1 focus:ring-inset focus:ring-indigo-400 rounded px-1 py-0.5 cursor-pointer'
                 },
                     (col.options || []).map(opt =>
@@ -858,7 +924,10 @@ export function NoiseRecord({ user, supabase: supabaseProp }) {
                         step: '0.1',
                         value: displayVal,
                         onChange: ev => handleCellChange(row, col.key, ev.target.value),
-                        className: `w-full bg-transparent outline-none text-center text-xs font-bold ${getNoiseResultClass(val)} focus:ring-1 focus:ring-inset focus:ring-indigo-400 rounded`,
+                        onKeyDown: ev => handleKeyDown(ev, row.__idx, col.key),
+                        'data-row-idx': row.__idx,
+                        'data-col-key': col.key,
+                        className: `w-full bg-transparent outline-none text-center text-xs font-bold ${getNoiseResultClass(val)} focus:ring-1 focus:ring-inset focus:ring-indigo-400 rounded hide-spin-buttons`,
                         placeholder: '0.0',
                     }),
                     e('span', { className: 'text-[10px] text-slate-400 whitespace-nowrap' }, 'dB')
@@ -876,17 +945,10 @@ export function NoiseRecord({ user, supabase: supabaseProp }) {
                 step: col.inputType === 'number' ? '0.1' : undefined,
                 value: displayVal,
                 onChange: ev => handleCellChange(row, col.key, ev.target.value),
-                onKeyDown: ev => {
-                    if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
-                        ev.preventDefault();
-                        const nextIdx = ev.key === 'ArrowDown' ? row.__idx + 1 : row.__idx - 1;
-                        const target = document.querySelector(`input[data-row-idx="${nextIdx}"][data-col-key="${col.key}"]`);
-                        if (target) target.focus();
-                    }
-                },
+                onKeyDown: ev => handleKeyDown(ev, row.__idx, col.key),
                 'data-row-idx': row.__idx,
                 'data-col-key': col.key,
-                className: 'w-full bg-transparent outline-none text-center text-xs focus:ring-1 focus:ring-inset focus:ring-indigo-400 rounded px-1 py-0.5',
+                className: `w-full bg-transparent outline-none text-center text-xs focus:ring-1 focus:ring-inset focus:ring-indigo-400 rounded px-1 py-0.5 ${col.inputType === 'number' ? 'hide-spin-buttons' : ''}`,
                 placeholder: col.label,
             })
         );
@@ -902,6 +964,17 @@ export function NoiseRecord({ user, supabase: supabaseProp }) {
         className: 'flex flex-col gap-3 h-full',
         style: { backgroundColor: '#ffffff', color: '#000000' } // 다크모드 환경 강제 흰색 배경
     },
+        // ── 스타일 (Spin Buttons 제거)
+        e('style', null, `
+            .hide-spin-buttons::-webkit-inner-spin-button,
+            .hide-spin-buttons::-webkit-outer-spin-button {
+                -webkit-appearance: none;
+                margin: 0;
+            }
+            .hide-spin-buttons {
+                -moz-appearance: textfield;
+            }
+        `),
 
         // ── 통계 모달
         e(StatsModal, { isOpen: showStats, onClose: () => setShowStats(false), data: filteredRows }),
