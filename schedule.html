@@ -249,7 +249,7 @@
                         ),
                         // Remaining
                         e('div', { className: "flex flex-col items-center" },
-                            e('span', { className: "text-[9px] text-black font-bold mb-0.5" }, "대여"),
+                            e('span', { className: "text-[9px] text-black font-bold mb-0.5" }, "잔여"),
                             e('span', { className: `text-sm font-black ${isSoldOut ? 'text-red-600' : 'text-emerald-500'}` }, remaining)
                         )
                     )
@@ -294,7 +294,7 @@
                     ),
                     // Available (Global Remaining)
                     e('div', { className: "flex flex-col items-center justify-center p-1.5 bg-slate-50 rounded-lg border border-slate-100" },
-                        e('span', { className: "text-[10px] font-bold text-slate-400" }, "대여"),
+                        e('span', { className: "text-[10px] font-bold text-slate-400" }, "잔여"),
                         e('span', { className: `text-xs font-black ${available === 0 ? 'text-red-500' : 'text-emerald-500'}` }, available)
                     ),
                     // Input (My Usage)
