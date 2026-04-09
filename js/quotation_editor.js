@@ -1109,10 +1109,10 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
     // 필드 순서 (quote_type별)
     const getFields = useCallback(() =>
         hdr.quote_type === '용역'
-            ? ['work_process_ro', 'hazard_name_ro', 'quantity', 'unit_type', 'unit_price', 'remarks']
+            ? ['work_process_ro', 'hazard_name_ro', 'quantity', 'unit_type', 'unit_price', '_amount', 'remarks']
             : hdr.quote_type === '장비대여'
-                ? ['work_process', 'hazard_name', 'quantity', 'unit_type', 'unit_price', 'remarks']
-                : ['work_process', 'hazard_name', 'analysis_method', 'quantity', 'unit_price', 'remarks']
+                ? ['work_process', 'hazard_name', 'quantity', 'unit_type', 'unit_price', '_amount', 'remarks']
+                : ['work_process', 'hazard_name', 'analysis_method', 'quantity', 'unit_price', '_amount', 'remarks']
     , [hdr.quote_type]);
 
     // 선택 범위 정규화 (min/max)
@@ -1141,6 +1141,10 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
         if (field === 'hazard_name_ro')  return item.hazard_name  || '';
         if (field === 'unit_price')      return item.unit_price != null ? String(item.unit_price) : '0';
         if (field === 'quantity')        return item.quantity  != null ? String(item.quantity)  : '1';
+        if (field === '_amount') {
+            const amt = item.quantity * (hdr.quote_type === '용역' || hdr.quote_type === '장비대여' ? (Number(item.unit_type) || 1) : 1) * item.unit_price;
+            return String(amt);
+        }
         return item[field] != null ? String(item[field]) : '';
     }
 
@@ -1209,7 +1213,7 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
             cols.forEach((val, ci) => {
                 const f = fields[startCol + ci];
                 if (!f) return;
-                if (f === 'work_process_ro' || f === 'hazard_name_ro') return;
+                if (f === 'work_process_ro' || f === 'hazard_name_ro' || f === '_amount') return;
                 let finalVal = val.trim();
                 if (f === 'quantity' || f === 'unit_price') {
                     finalVal = Number(finalVal.replace(/[^0-9.-]/g, '')) || 0;
@@ -1262,7 +1266,7 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
             for (let r = selRange.r1; r <= selRange.r2; r++) {
                 for (let c = selRange.c1; c <= selRange.c2; c++) {
                     const f = fields[c];
-                    if (!f || f === 'work_process_ro' || f === 'hazard_name_ro') continue;
+                    if (!f || f === 'work_process_ro' || f === 'hazard_name_ro' || f === '_amount') continue;
                     newItems[r] = { ...newItems[r], [f]: (f === 'quantity' || f === 'unit_price') ? 0 : '' };
                 }
             }
@@ -1273,7 +1277,7 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
         if (!isNav) {
             // 일반 문자 입력 → 편집 모드 진입
             const f = fields[col];
-            if (f && f !== 'work_process_ro' && f !== 'hazard_name_ro') {
+            if (f && f !== 'work_process_ro' && f !== 'hazard_name_ro' && f !== '_amount') {
                 setEditCell({ row, col });
                 // 현재 셀 값을 비우고 새 문자를 입력받도록 (input의 defaultValue 를 다음 render에서 처리)
             }
@@ -1823,12 +1827,12 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
 
                                                 // 데이터 셀 (fields 순서대로)
                                                 ...fields.map((field, colIdx) => {
-                                                    const isReadOnly = field === 'work_process_ro' || field === 'hazard_name_ro';
+                                                    const isReadOnly = field === 'work_process_ro' || field === 'hazard_name_ro' || field === '_amount';
                                                     const isEditing = editCell && editCell.row === rowIdx && editCell.col === colIdx;
                                                     const selected  = inRange(rowIdx, colIdx);
                                                     const anchor    = isAnchor(rowIdx, colIdx);
                                                     const cellVal   = getCellValue(it, field);
-                                                    const isNumField = field === 'quantity' || field === 'unit_price' || field === 'unit_type';
+                                                    const isNumField = field === 'quantity' || field === 'unit_price' || field === 'unit_type' || field === '_amount';
 
                                                     return e('td', {
                                                         key: field,
@@ -1872,21 +1876,9 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
                                                                     textAlign: isNumField ? 'right' : 'left',
                                                                     color: isReadOnly ? '#475569' : '#1e293b'
                                                                 }
-                                                            }, isNumField && field === 'unit_price' ? fmt(Number(cellVal)) : cellVal)
+                                                            }, isNumField && (field === 'unit_price' || field === '_amount') ? fmt(Number(cellVal)) : cellVal)
                                                     );
                                                 }),
-
-                                                // 금액 열 (읽기 전용, fields 루프 밖)
-                                                e('td', {
-                                                    key: '_amount',
-                                                    style: {
-                                                        fontSize: '11px', fontWeight: 700, textAlign: 'right',
-                                                        padding: '3px 5px', whiteSpace: 'nowrap', height: '26px',
-                                                        background: '#f8fafc',
-                                                        borderBottom: '1px solid #cbd5e1', borderRight: '1px solid #cbd5e1',
-                                                        color: '#1e293b'
-                                                    }
-                                                }, fmt(itemTotal)),
 
                                                 // 행 삭제/추가 버튼
                                                 e('td', { style: { padding: '2px', borderBottom: '1px solid #cbd5e1' } },
