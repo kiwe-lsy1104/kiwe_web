@@ -587,10 +587,19 @@ export function NoiseRecord({ user, supabase: supabaseProp }) {
                 .lte('m_date', endDate);
 
             // 3. m_date + noise_no + worker_name 키로 noise_records 맵 구성
-            const noiseMap = {};
+            //    구버전 데이터(worker_name 없음)와 신버전 데이터 모두 커버하기 위해 2가지 맵 구성:
+            //    - noiseMap3: 3중 키 (m_date + noise_no + worker_name) — 정확한 매칭
+            //    - noiseMap2: 2중 키 (m_date + noise_no) — fallback (worker_name이 null인 구버전)
+            const noiseMap3 = {};
+            const noiseMap2 = {};
             (noiseData || []).forEach(r => {
-                const key = `${r.m_date}_${(r.noise_no || '').trim()}_${(r.worker_name || '').trim()}`;
-                noiseMap[key] = r;
+                const key3 = `${r.m_date}_${(r.noise_no || '').trim()}_${(r.worker_name || '').trim()}`;
+                const key2 = `${r.m_date}_${(r.noise_no || '').trim()}`;
+                noiseMap3[key3] = r;
+                // 2중 키는 worker_name이 비어있는 경우(구버전)만 fallback으로 등록
+                if (!r.worker_name || r.worker_name.trim() === '') {
+                    noiseMap2[key2] = r;
+                }
             });
 
             // 4. 시료채취대장 기준으로 display 행 생성 → noise_records로 오버레이
@@ -601,8 +610,11 @@ export function NoiseRecord({ user, supabase: supabaseProp }) {
                 const rowKey = `${emp.m_date}_${noiseNo}_${workerName}_${emp.id}`;
                 
                 // DB 조회용 키 (검색 키)
-                const lookupKey = `${emp.m_date}_${noiseNo}_${workerName}`;
-                const noiseRec = noiseMap[lookupKey] || {};
+                // 1차: 3중 키(날짜+소음기번호+작업자명) 정확 매칭
+                // 2차 fallback: 2중 키(날짜+소음기번호) — worker_name이 null인 구버전 noise_records 데이터 커버
+                const lookupKey3 = `${emp.m_date}_${noiseNo}_${workerName}`;
+                const lookupKey2 = `${emp.m_date}_${noiseNo}`;
+                const noiseRec = noiseMap3[lookupKey3] || noiseMap2[lookupKey2] || {};
                 
                 const mt = calcMeasureTime(emp.start_time, emp.end_time, emp.lunch_time ?? 60);
                 return {
