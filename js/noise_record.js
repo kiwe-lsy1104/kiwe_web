@@ -111,18 +111,21 @@ const formatTimeValue = (val) => {
     return val;
 };
 
-const getNoiseRowClass = (val) => {
+// exposureLimit: 개별 노출기준(calcExposureLimit 결과), 없으면 NOISE_STANDARD(90) 사용
+const getNoiseRowClass = (val, exposureLimit) => {
     const n = parseFloat(val);
     if (isNaN(n)) return '';
-    if (n > NOISE_STANDARD) return 'bg-orange-100';
+    const lim = (exposureLimit !== null && exposureLimit !== undefined) ? exposureLimit : NOISE_STANDARD;
+    if (n > lim) return 'bg-orange-100';
     if (n >= WARN_LEVEL) return 'bg-yellow-50';
     return '';
 };
 
-const getNoiseResultClass = (val) => {
+const getNoiseResultClass = (val, exposureLimit) => {
     const n = parseFloat(val);
     if (isNaN(n)) return 'text-slate-700';
-    if (n > NOISE_STANDARD) return 'text-red-700 font-bold';
+    const lim = (exposureLimit !== null && exposureLimit !== undefined) ? exposureLimit : NOISE_STANDARD;
+    if (n > lim) return 'text-red-700 font-bold';
     if (n >= WARN_LEVEL) return 'text-amber-700 font-bold';
     return 'text-slate-700';
 };
@@ -170,7 +173,12 @@ function StatsModal({ isOpen, onClose, data }) {
 
     const allRecords = data.filter(r => r.noise_result !== null && r.noise_result !== '');
     const warn85 = allRecords.filter(r => parseFloat(r.noise_result) >= 85);
-    const over90 = allRecords.filter(r => parseFloat(r.noise_result) > 90);
+    // 노출기준 초과: 각 행의 실근로시간 기반 개별 노출기준과 비교
+    const overLimit = allRecords.filter(r => {
+        const n = parseFloat(r.noise_result);
+        const lim = calcExposureLimit(r.work_hour);
+        return !isNaN(n) && lim !== null && n > lim;
+    });
     const results = allRecords.map(r => parseFloat(r.noise_result)).filter(n => !isNaN(n));
     const avg = results.length ? (results.reduce((s, n) => s + n, 0) / results.length).toFixed(1) : '-';
     const max = results.length ? Math.max(...results).toFixed(1) : '-';
@@ -179,11 +187,12 @@ function StatsModal({ isOpen, onClose, data }) {
     // 사업장별 집계
     const byCompany = {};
     allRecords.forEach(r => {
-        if (!byCompany[r.com_name]) byCompany[r.com_name] = { total: 0, warn85: 0, over90: 0 };
+        if (!byCompany[r.com_name]) byCompany[r.com_name] = { total: 0, warn85: 0, overLimit: 0 };
         byCompany[r.com_name].total++;
         const n = parseFloat(r.noise_result);
+        const lim = calcExposureLimit(r.work_hour);
         if (n >= 85) byCompany[r.com_name].warn85++;
-        if (n > 90) byCompany[r.com_name].over90++;
+        if (!isNaN(n) && lim !== null && n > lim) byCompany[r.com_name].overLimit++;
     });
     const companyStats = Object.entries(byCompany).sort((a, b) => b[1].total - a[1].total);
 
@@ -195,11 +204,12 @@ function StatsModal({ isOpen, onClose, data }) {
         const year = d.getFullYear();
         const half = d.getMonth() + 1 <= 6 ? '상반기' : '하반기';
         const key = `${year} ${half}`;
-        if (!byHalf[key]) byHalf[key] = { total: 0, warn85: 0, over90: 0 };
+        if (!byHalf[key]) byHalf[key] = { total: 0, warn85: 0, overLimit: 0 };
         byHalf[key].total++;
         const n = parseFloat(r.noise_result);
+        const lim = calcExposureLimit(r.work_hour);
         if (n >= 85) byHalf[key].warn85++;
-        if (n > 90) byHalf[key].over90++;
+        if (!isNaN(n) && lim !== null && n > lim) byHalf[key].overLimit++;
     });
     const halfStats = Object.entries(byHalf).sort((a, b) => b[0].localeCompare(a[0]));
 
@@ -215,7 +225,7 @@ function StatsModal({ isOpen, onClose, data }) {
                     [
                         { label: '총 측정 건수', value: `${allRecords.length}건`, color: 'bg-slate-50 border-slate-200' },
                         { label: '85dB 이상', value: `${warn85.length}건`, sub: `${allRecords.length ? (warn85.length / allRecords.length * 100).toFixed(0) : 0}%`, color: 'bg-yellow-50 border-yellow-200' },
-                        { label: '90dB 초과', value: `${over90.length}건`, sub: `${allRecords.length ? (over90.length / allRecords.length * 100).toFixed(0) : 0}%`, color: 'bg-orange-50 border-orange-200' },
+                        { label: '노출기준 초과', value: `${overLimit.length}건`, sub: `${allRecords.length ? (overLimit.length / allRecords.length * 100).toFixed(0) : 0}%`, color: 'bg-orange-50 border-orange-200' },
                         { label: '평균/최고', value: `${avg} / ${max}`, sub: 'dB(A)', color: 'bg-sky-50 border-sky-200' },
                         { label: '최저값', value: `${min}`, sub: 'dB(A)', color: 'bg-emerald-50 border-emerald-200' },
                     ].map((s, i) => e('div', { key: i, className: `p-4 rounded-xl border ${s.color} text-center` },
@@ -231,7 +241,7 @@ function StatsModal({ isOpen, onClose, data }) {
                         e('table', { className: 'w-full text-sm border-collapse' },
                             e('thead', { className: 'bg-slate-50' },
                                 e('tr', null,
-                                    ['사업장명', '총 건수', '85dB 이상', '비율', '90dB 초과', '비율'].map(h =>
+                                    ['사업장명', '총 건수', '85dB 이상', '비율', '노출기준 초과', '비율'].map(h =>
                                         e('th', { key: h, className: 'px-4 py-2 text-xs font-bold text-slate-500 text-center border-b border-slate-200' }, h)
                                     )
                                 )
@@ -243,8 +253,8 @@ function StatsModal({ isOpen, onClose, data }) {
                                         e('td', { className: 'px-4 py-2 text-center text-slate-600' }, s.total),
                                         e('td', { className: 'px-4 py-2 text-center text-amber-700 font-bold' }, s.warn85),
                                         e('td', { className: 'px-4 py-2 text-center text-slate-500' }, `${(s.warn85 / s.total * 100).toFixed(0)}%`),
-                                        e('td', { className: 'px-4 py-2 text-center text-red-700 font-bold' }, s.over90),
-                                        e('td', { className: 'px-4 py-2 text-center text-slate-500' }, `${(s.over90 / s.total * 100).toFixed(0)}%`)
+                                        e('td', { className: 'px-4 py-2 text-center text-red-700 font-bold' }, s.overLimit),
+                                        e('td', { className: 'px-4 py-2 text-center text-slate-500' }, `${(s.overLimit / s.total * 100).toFixed(0)}%`)
                                     )
                                 )
                             )
@@ -258,7 +268,7 @@ function StatsModal({ isOpen, onClose, data }) {
                         e('table', { className: 'w-full text-sm border-collapse' },
                             e('thead', { className: 'bg-slate-50' },
                                 e('tr', null,
-                                    ['기간', '총 건수', '85dB 이상', '비율', '90dB 초과', '비율'].map(h =>
+                                    ['기간', '총 건수', '85dB 이상', '비율', '노출기준 초과', '비율'].map(h =>
                                         e('th', { key: h, className: 'px-4 py-2 text-xs font-bold text-slate-500 text-center border-b border-slate-200' }, h)
                                     )
                                 )
@@ -270,8 +280,8 @@ function StatsModal({ isOpen, onClose, data }) {
                                         e('td', { className: 'px-4 py-2 text-center text-slate-600' }, s.total),
                                         e('td', { className: 'px-4 py-2 text-center text-amber-700 font-bold' }, s.warn85),
                                         e('td', { className: 'px-4 py-2 text-center text-slate-500' }, `${(s.warn85 / s.total * 100).toFixed(0)}%`),
-                                        e('td', { className: 'px-4 py-2 text-center text-red-700 font-bold' }, s.over90),
-                                        e('td', { className: 'px-4 py-2 text-center text-slate-500' }, `${(s.over90 / s.total * 100).toFixed(0)}%`)
+                                        e('td', { className: 'px-4 py-2 text-center text-red-700 font-bold' }, s.overLimit),
+                                        e('td', { className: 'px-4 py-2 text-center text-slate-500' }, `${(s.overLimit / s.total * 100).toFixed(0)}%`)
                                     )
                                 )
                             )
@@ -499,7 +509,10 @@ export function NoiseRecord({ user, supabase: supabaseProp }) {
             const noiseMatch =
                 noiseFilter === 'all' ? true :
                     noiseFilter === 'warn85' ? (!isNaN(n) && n >= 85) :
-                        noiseFilter === 'over90' ? (!isNaN(n) && n > 90) : true;
+                        noiseFilter === 'overLimit' ? (() => {
+                            const lim = calcExposureLimit(r.work_hour);
+                            return !isNaN(n) && lim !== null && n > lim;
+                        })() : true;
             return nameMatch && noiseMatch;
         });
         filtered.sort((a, b) => {
@@ -510,18 +523,21 @@ export function NoiseRecord({ user, supabase: supabaseProp }) {
         return filtered;
     }, [records, editRows, comNameFilter, noiseFilter, sortOrder]);
 
-    // 통계 요약 (editRows 최신값 반영)
+    // 통계 요약 (editRows 최신값 반영, 노출기준 초과는 개별 노출기준 기준)
     const stats = useMemo(() => {
-        const results = filteredRows.map(r => {
+        const pairs = filteredRows.map(r => {
             const cur = editRows[r._rowKey]?.noise_result ?? r.noise_result;
-            return parseFloat(cur);
-        }).filter(n => !isNaN(n));
+            const n = parseFloat(cur);
+            const lim = calcExposureLimit(r.work_hour);
+            return { n, lim };
+        });
+        const withResult = pairs.filter(p => !isNaN(p.n));
         return {
             total: filteredRows.length,
-            warn85: results.filter(n => n >= 85).length,
-            over90: results.filter(n => n > 90).length,
-            avg: results.length ? (results.reduce((s, n) => s + n, 0) / results.length).toFixed(1) : '-',
-            max: results.length ? Math.max(...results).toFixed(1) : '-',
+            warn85: withResult.filter(p => p.n >= 85).length,
+            overLimit: withResult.filter(p => p.lim !== null && p.n > p.lim).length,
+            avg: withResult.length ? (withResult.reduce((s, p) => s + p.n, 0) / withResult.length).toFixed(1) : '-',
+            max: withResult.length ? Math.max(...withResult.map(p => p.n)).toFixed(1) : '-',
         };
     }, [filteredRows, editRows]);
 
@@ -911,11 +927,12 @@ export function NoiseRecord({ user, supabase: supabaseProp }) {
             );
         }
 
-        // 소음결과 강조
+        // 소음결과 강조 (개별 노출기준 기반)
         if (col.key === 'noise_result') {
+            const exposureLimit = calcExposureLimit(rowData.work_hour);
             return e('td', {
                 key: col.key,
-                className: `px-1 py-0 border-r border-slate-100 ${getNoiseRowClass(val)}`,
+                className: `px-1 py-0 border-r border-slate-100 ${getNoiseRowClass(val, exposureLimit)}`,
                 style: { width: colWidths[col.key] || col.width, minWidth: 40 }
             },
                 e('div', { className: 'flex items-center gap-1' },
@@ -927,7 +944,7 @@ export function NoiseRecord({ user, supabase: supabaseProp }) {
                         onKeyDown: ev => handleKeyDown(ev, row.__idx, col.key),
                         'data-row-idx': row.__idx,
                         'data-col-key': col.key,
-                        className: `w-full bg-transparent outline-none text-center text-xs font-bold ${getNoiseResultClass(val)} focus:ring-1 focus:ring-inset focus:ring-indigo-400 rounded hide-spin-buttons`,
+                        className: `w-full bg-transparent outline-none text-center text-xs font-bold ${getNoiseResultClass(val, exposureLimit)} focus:ring-1 focus:ring-inset focus:ring-indigo-400 rounded hide-spin-buttons`,
                         placeholder: '0.0',
                     }),
                     e('span', { className: 'text-[10px] text-slate-400 whitespace-nowrap' }, 'dB')
@@ -1019,12 +1036,12 @@ export function NoiseRecord({ user, supabase: supabaseProp }) {
                     [
                         { key: 'all', label: '전체' },
                         { key: 'warn85', label: '85↑ ⚠' },
-                        { key: 'over90', label: '90↑ 🔴' },
+                        { key: 'overLimit', label: '기준초과 🔴' },
                     ].map(f => e('button', {
                         key: f.key,
                         onClick: () => setNoiseFilter(f.key),
                         className: `px-3 py-2 rounded-lg text-xs font-bold border transition-all ${noiseFilter === f.key
-                            ? (f.key === 'over90' ? 'bg-orange-500 text-white border-orange-500' : f.key === 'warn85' ? 'bg-yellow-500 text-white border-yellow-500' : 'bg-indigo-600 text-white border-indigo-600')
+                            ? (f.key === 'overLimit' ? 'bg-orange-500 text-white border-orange-500' : f.key === 'warn85' ? 'bg-yellow-500 text-white border-yellow-500' : 'bg-indigo-600 text-white border-indigo-600')
                             : 'bg-white text-slate-500 border-slate-200 hover:border-indigo-300'
                             }`
                     }, f.label))
@@ -1083,7 +1100,7 @@ export function NoiseRecord({ user, supabase: supabaseProp }) {
             [
                 { label: '조회 건수', value: `${stats.total}건`, color: 'bg-white border-slate-200' },
                 { label: '85dB 이상', value: `${stats.warn85}건`, color: 'bg-yellow-50 border-yellow-200' },
-                { label: '90dB 초과', value: `${stats.over90}건`, color: 'bg-orange-50 border-orange-200' },
+                { label: '노출기준 초과', value: `${stats.overLimit}건`, color: 'bg-orange-50 border-orange-200' },
                 { label: '평균 소음', value: `${stats.avg} dB`, color: 'bg-sky-50 border-sky-200' },
                 { label: '최고 소음', value: `${stats.max} dB`, color: 'bg-red-50 border-red-200' },
             ].map((s, i) => e('div', { key: i, className: `bg-white rounded-xl border ${s.color} px-4 py-2 shadow-sm flex items-center gap-3` },
@@ -1095,8 +1112,8 @@ export function NoiseRecord({ user, supabase: supabaseProp }) {
         // ── 범례
         e('div', { className: 'flex gap-3 text-xs font-bold text-slate-500 no-print' },
             e('span', { className: 'flex items-center gap-1' }, e('span', { className: 'inline-block w-4 h-4 rounded bg-yellow-100 border border-yellow-300' }), '85dB 이상 주의'),
-            e('span', { className: 'flex items-center gap-1' }, e('span', { className: 'inline-block w-4 h-4 rounded bg-orange-100 border border-orange-300' }), '90dB 초과 기준초과'),
-            e('span', { className: 'text-slate-400' }, `노출기준: ${NOISE_STANDARD} dB(A)`)
+            e('span', { className: 'flex items-center gap-1' }, e('span', { className: 'inline-block w-4 h-4 rounded bg-orange-100 border border-orange-300' }), '노출기준(실근로시간 보정) 초과'),
+            e('span', { className: 'text-slate-400' }, '노출기준: 실근로시간별 개별 적용')
         ),
         // ── 컬럼 설정 패널
         e('div', { className: 'bg-white border border-slate-200 rounded-xl shadow-sm no-print' },
