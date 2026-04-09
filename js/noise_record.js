@@ -566,7 +566,7 @@ export function NoiseRecord({ user, supabase: supabaseProp }) {
             // 2. kiwe_noise_records에서 보정기번호 + 소음결과 로드 (lookup용)
             const { data: noiseData } = await sb
                 .from('kiwe_noise_records')
-                .select('id, m_date, noise_no, com_name, calibrator_no, noise_result, cal_date')
+                .select('id, m_date, noise_no, com_name, worker_name, calibrator_no, noise_result, cal_date')
                 .gte('m_date', startDate)
                 .lte('m_date', endDate);
 
