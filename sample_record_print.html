@@ -420,14 +420,27 @@ function buildProcessGroups(samples, noises) {
         const sRows = samplesByProc[proc] || [];
         const nRows = noisesByProc[proc] || [];
         
-        // 1. 시료들을 '포인트' 단위로 묶기
+        // 1. 시료들을 '포인트' 단위로 묶기 전에 먼저 근로자명 기준으로 정렬
+        // 이유: DB에 sample_id 순(유해인자 종류별로 전체 근로자 묶음)으로 저장된 경우
+        //       예) 용접흄(1)→용접흄(2)→금속류(1)→금속류(2) 처럼 인자별 묶음으로 저장될 수 있음
+        //       이를 정렬하지 않으면 포인트 분할 시 근로자 전환이 유해인자마다 발생하여
+        //       금속류가 소음/용접흄과 분리되는 버그 발생
+        //       정렬 후: 용접흄(1)→금속류(1)→용접흄(2)→금속류(2) → 올바른 포인트 분할 보장
+        const sortedSRows = [...sRows].sort((a, b) => {
+            const wa = String(a.worker_name || '');
+            const wb = String(b.worker_name || '');
+            if (wa !== wb) return wa.localeCompare(wb, undefined, { numeric: true, sensitivity: 'base' });
+            // 같은 근로자 내에서는 sample_id 순 유지
+            return String(a.sample_id || '').localeCompare(String(b.sample_id || ''), undefined, { numeric: true, sensitivity: 'base' });
+        });
+
         // 새 포인트 시작 조건: 근로자명이 다르거나, 해당 포인트 내에 이미 존재하는 유해인자가 또 나올 때
         const pointGroups = [];
         let curPoint = [];
         let seenHazards = new Set();
         let lastWorker = null;
 
-        sRows.forEach(s => {
+        sortedSRows.forEach(s => {
             const hasRep = s.common_name && seenHazards.has(s.common_name);
             const workerChanged = lastWorker !== null && s.worker_name !== lastWorker;
 
