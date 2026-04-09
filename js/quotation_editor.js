@@ -1102,6 +1102,7 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
     const [selAnchor, setSelAnchor] = React.useState(null);   // {row, col}
     const [selFocus, setSelFocus]   = React.useState(null);   // {row, col}
     const [editCell, setEditCell]   = React.useState(null);   // {row, col} – 편집 중인 셀
+    const [showGridDrop, setShowGridDrop] = React.useState(false);
     const [isDragging, setIsDragging] = React.useState(false);
     const gridRef = React.useRef(null);
     const editInputRef = React.useRef(null);
@@ -1109,7 +1110,7 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
     // 필드 순서 (quote_type별)
     const getFields = useCallback(() =>
         hdr.quote_type === '용역'
-            ? ['work_process_ro', 'hazard_name_ro', 'quantity', 'unit_type', 'unit_price', '_amount', 'remarks']
+            ? ['work_process', 'hazard_name', 'quantity', 'unit_type', 'unit_price', '_amount', 'remarks']
             : hdr.quote_type === '장비대여'
                 ? ['work_process', 'hazard_name', 'quantity', 'unit_type', 'unit_price', '_amount', 'remarks']
                 : ['work_process', 'hazard_name', 'analysis_method', 'quantity', 'unit_price', '_amount', 'remarks']
@@ -1775,7 +1776,7 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
                         ),
                         e('div', { className: 'flex items-center gap-2' },
                             e('span', { className: 'text-[10px] text-slate-400 font-bold' }, '셀 선택 후 Ctrl+C/V │ 드래그 범위선택 │ F2/더블클릭 편집'),
-                            hdr.quote_type !== '용역' && e('button', { onClick: addItem, className: 'flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-xl text-sm font-bold hover:bg-slate-800 transition-all shadow-lg' }, e(Plus, { size: 16 }), '항목 추가')
+                            e('button', { onClick: addItem, className: 'flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-xl text-sm font-bold hover:bg-slate-800 transition-all shadow-lg' }, e(Plus, { size: 16 }), '항목 추가')
                         )
                     ),
                     e('div', { className: 'flex-1 border border-slate-200 rounded-2xl overflow-hidden bg-white shadow-xl flex flex-col' },
@@ -1847,26 +1848,78 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
                                                             borderBottom: '1px solid #cbd5e1', borderRight: '1px solid #cbd5e1',
                                                             outline: anchor ? '2px solid #3b82f6' : 'none',
                                                             outlineOffset: '-2px', cursor: isReadOnly ? 'default' : 'cell',
-                                                            overflow: 'hidden'
+                                                            overflow: isEditing ? 'visible' : 'hidden',
+                                                            zIndex: isEditing ? 50 : 'auto'
                                                         }
                                                     },
                                                         isEditing
-                                                            ? e('input', {
-                                                                ref: editInputRef,
-                                                                defaultValue: cellVal,
-                                                                list: field === 'analysis_method' ? 'ana-list' : field === 'hazard_name' ? 'rental-list' : undefined,
-                                                                onChange: ev => setCellValue(rowIdx, field, ev.target.value),
-                                                                onBlur: () => setEditCell(null),
-                                                                onKeyDown: ev => handleGridKeyDown(ev),
-                                                                style: {
-                                                                    width: '100%', height: '100%', padding: '2px 4px',
-                                                                    border: 'none', outline: '2px solid #2563eb',
-                                                                    outlineOffset: '-2px', background: '#fff',
-                                                                    fontSize: '12px', fontWeight: isNumField ? 700 : 400,
-                                                                    textAlign: isNumField ? 'right' : 'left',
-                                                                    boxSizing: 'border-box'
+                                                            ? (() => {
+                                                                const isDropdownField = field === 'analysis_method' || (field === 'hazard_name' && (hdr.quote_type === '장비대여' || hdr.quote_type === '용역'));
+                                                                const inpNode = e('input', {
+                                                                    ref: editInputRef,
+                                                                    defaultValue: cellVal,
+                                                                    onChange: ev => setCellValue(rowIdx, field, ev.target.value),
+                                                                    onFocus: () => { if (isDropdownField) setShowGridDrop(true); },
+                                                                    onBlur: () => {
+                                                                        setTimeout(() => {
+                                                                            setEditCell(prev => (prev?.row === rowIdx && prev?.col === colIdx ? null : prev));
+                                                                            setShowGridDrop(false);
+                                                                        }, 150);
+                                                                    },
+                                                                    onKeyDown: ev => handleGridKeyDown(ev),
+                                                                    style: {
+                                                                        width: '100%', height: '100%', padding: '2px 4px',
+                                                                        border: 'none', outline: '2px solid #2563eb',
+                                                                        outlineOffset: '-2px', background: '#fff',
+                                                                        fontSize: '12px', fontWeight: isNumField ? 700 : 400,
+                                                                        textAlign: isNumField ? 'right' : 'left',
+                                                                        boxSizing: 'border-box'
+                                                                    }
+                                                                });
+
+                                                                if (!isDropdownField) return inpNode;
+                                                                
+                                                                let dropList = [];
+                                                                if (field === 'analysis_method') dropList = analysisPrices;
+                                                                else if (field === 'hazard_name') {
+                                                                    if (hdr.quote_type === '장비대여') dropList = rentalPrices;
+                                                                    else if (hdr.quote_type === '용역') dropList = engPrices;
                                                                 }
-                                                            })
+                                                                
+                                                                const filtered = dropList.filter(o => !cellVal || o.item_name.toLowerCase().includes(String(cellVal).toLowerCase()));
+
+                                                                return e('div', { style: { width: '100%', height: '100%', position: 'relative' } },
+                                                                    inpNode,
+                                                                    showGridDrop && e('div', {
+                                                                        style: {
+                                                                            position: 'absolute', top: '100%', left: 0, zIndex: 9999,
+                                                                            minWidth: '100%', width: 'max-content', maxWidth: '300px',
+                                                                            maxHeight: '200px', overflowY: 'auto',
+                                                                            background: '#fff', border: '1px solid #3b82f6',
+                                                                            boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)',
+                                                                            borderBottomLeftRadius: '4px', borderBottomRightRadius: '4px'
+                                                                        }
+                                                                    },
+                                                                        filtered.length === 0 ? e('div', { style: { padding: '6px 8px', fontSize: '11px', color: '#94a3b8' } }, '검색 결과 없음') :
+                                                                        filtered.map(p => e('div', {
+                                                                            key: p.item_name,
+                                                                            onMouseDown: ev => {
+                                                                                ev.preventDefault();
+                                                                                ev.stopPropagation();
+                                                                                setCellValue(rowIdx, field, p.item_name);
+                                                                                setEditCell(null);
+                                                                                setShowGridDrop(false);
+                                                                            },
+                                                                            onMouseEnter: ev => ev.currentTarget.style.backgroundColor = '#eff6ff',
+                                                                            onMouseLeave: ev => ev.currentTarget.style.backgroundColor = '#fff',
+                                                                            style: {
+                                                                                padding: '6px 8px', fontSize: '11px', cursor: 'pointer',
+                                                                                borderBottom: '1px solid #f1f5f9', color: '#0f172a', fontWeight: 'bold'
+                                                                            }
+                                                                        }, p.item_name))
+                                                                    )
+                                                                );
+                                                            })()
                                                             : e('div', {
                                                                 style: {
                                                                     width: '100%', height: '100%', padding: '3px 4px',
@@ -1882,7 +1935,7 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
 
                                                 // 행 삭제/추가 버튼
                                                 e('td', { style: { padding: '2px', borderBottom: '1px solid #cbd5e1' } },
-                                                    hdr.quote_type !== '용역' && e('div', { className: 'flex justify-center gap-0.5' },
+                                                    e('div', { className: 'flex justify-center gap-0.5' },
                                                         e('button', {
                                                             onMouseDown: ev => ev.stopPropagation(),
                                                             onClick: () => insertItem(rowIdx),
