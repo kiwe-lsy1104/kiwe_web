@@ -1098,106 +1098,241 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
         }));
     }
 
-    // 엑셀 스타일 붙여넣기 기능
-    function handlePaste(idx, field, ev) {
-        const text = ev.clipboardData.getData('text');
-        if (!text.includes('\t') && !text.includes('\n')) return; // 단순 텍스트는 기본 동작 유지
+    // ── 엑셀 그리드 상태 ────────────────────────────────────────────
+    const [selAnchor, setSelAnchor] = React.useState(null);   // {row, col}
+    const [selFocus, setSelFocus]   = React.useState(null);   // {row, col}
+    const [editCell, setEditCell]   = React.useState(null);   // {row, col} – 편집 중인 셀
+    const [isDragging, setIsDragging] = React.useState(false);
+    const gridRef = React.useRef(null);
+    const editInputRef = React.useRef(null);
 
-        ev.preventDefault();
-        const rows = text.split(/\r?\n/).filter(r => r.trim() !== '');
-        const newItems = [...items];
-
-        const fieldsOrder = hdr.quote_type === '용역'
-            ? ['quantity', 'unit_type', 'unit_price', 'remarks']
+    // 필드 순서 (quote_type별)
+    const getFields = useCallback(() =>
+        hdr.quote_type === '용역'
+            ? ['work_process_ro', 'hazard_name_ro', 'quantity', 'unit_type', 'unit_price', 'remarks']
             : hdr.quote_type === '장비대여'
                 ? ['work_process', 'hazard_name', 'quantity', 'unit_type', 'unit_price', 'remarks']
-                : ['work_process', 'hazard_name', 'analysis_method', 'quantity', 'unit_price', 'remarks'];
+                : ['work_process', 'hazard_name', 'analysis_method', 'quantity', 'unit_price', 'remarks']
+    , [hdr.quote_type]);
 
-        const startFieldIdx = fieldsOrder.indexOf(field);
-        if (startFieldIdx === -1) return;
+    // 선택 범위 정규화 (min/max)
+    const selRange = React.useMemo(() => {
+        if (!selAnchor || !selFocus) return null;
+        return {
+            r1: Math.min(selAnchor.row, selFocus.row),
+            r2: Math.max(selAnchor.row, selFocus.row),
+            c1: Math.min(selAnchor.col, selFocus.col),
+            c2: Math.max(selAnchor.col, selFocus.col),
+        };
+    }, [selAnchor, selFocus]);
 
-        rows.forEach((row, rowOffset) => {
-            const cols = row.split('\t');
-            const targetIdx = idx + rowOffset;
+    const inRange = useCallback((row, col) => {
+        if (!selRange) return false;
+        return row >= selRange.r1 && row <= selRange.r2 && col >= selRange.c1 && col <= selRange.c2;
+    }, [selRange]);
 
-            if (!newItems[targetIdx]) {
-                newItems[targetIdx] = { ...BLANK_ITEM(targetIdx), _id: Date.now() + targetIdx };
+    const isAnchor = useCallback((row, col) =>
+        selAnchor && selAnchor.row === row && selAnchor.col === col
+    , [selAnchor]);
+
+    // 셀 값 읽기
+    function getCellValue(item, field) {
+        if (field === 'work_process_ro') return item.work_process || '';
+        if (field === 'hazard_name_ro')  return item.hazard_name  || '';
+        if (field === 'unit_price')      return item.unit_price != null ? String(item.unit_price) : '0';
+        if (field === 'quantity')        return item.quantity  != null ? String(item.quantity)  : '1';
+        return item[field] != null ? String(item[field]) : '';
+    }
+
+    // 셀 값 쓰기
+    function setCellValue(rowIdx, field, raw) {
+        if (field === 'work_process_ro' || field === 'hazard_name_ro') return; // 읽기 전용
+        setItems(prev => prev.map((it, i) => {
+            if (i !== rowIdx) return it;
+            let u = { ...it };
+            let val = raw;
+            if (field === 'quantity' || field === 'unit_price') {
+                val = Number(String(raw).replace(/[^0-9.-]/g, '')) || 0;
             }
+            u[field] = val;
+            // analysis_method 변경 시 단가 자동 세팅
+            if (field === 'analysis_method') {
+                const found = analysisPrices.find(h => h.item_name === val);
+                if (found) u.unit_price = found.unit_price;
+                else { const ef = engPrices.find(f => f.item_name === val); if (ef) u.unit_price = ef.unit_price; }
+            }
+            if (field === 'hazard_name' && hdr.quote_type === '장비대여') {
+                const ef = rentalPrices.find(f => f.item_name === val); if (ef) u.unit_price = ef.unit_price;
+            }
+            return u;
+        }));
+    }
 
-            cols.forEach((val, colOffset) => {
-                const currentField = fieldsOrder[startFieldIdx + colOffset];
-                if (currentField) {
-                    let finalVal = val.trim();
-                    if (currentField === 'quantity' || currentField === 'unit_price') {
-                        finalVal = Number(finalVal.replace(/[^0-9.-]+/g, "")) || 0;
-                    }
-                    newItems[targetIdx][currentField] = finalVal;
+    // Ctrl+C: 선택 범위를 탭/줄바꿈으로 클립보드 복사
+    function copySelection() {
+        if (!selRange) return;
+        const fields = getFields();
+        const lines = [];
+        for (let r = selRange.r1; r <= selRange.r2; r++) {
+            const item = items[r];
+            if (!item) continue;
+            const cols = [];
+            for (let c = selRange.c1; c <= selRange.c2; c++) {
+                cols.push(getCellValue(item, fields[c]));
+            }
+            lines.push(cols.join('\t'));
+        }
+        const text = lines.join('\n');
+        navigator.clipboard.writeText(text).catch(() => {
+            // fallback
+            const ta = document.createElement('textarea');
+            ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+            document.body.appendChild(ta); ta.select();
+            document.execCommand('copy'); document.body.removeChild(ta);
+        });
+    }
+
+    // Ctrl+V: 붙여넣기
+    function pasteToGrid(text) {
+        if (!selAnchor) return;
+        const fields = getFields();
+        const startCol = selAnchor.col;
+        const startRow = selAnchor.row;
+        const rows = text.split(/\r?\n/).filter(r => r !== '');
+        const newItems = [...items];
+        rows.forEach((row, ri) => {
+            const cols = row.split('\t');
+            const targetRow = startRow + ri;
+            if (!newItems[targetRow]) {
+                newItems[targetRow] = { ...BLANK_ITEM(targetRow), _id: Date.now() + targetRow };
+            }
+            cols.forEach((val, ci) => {
+                const f = fields[startCol + ci];
+                if (!f) return;
+                if (f === 'work_process_ro' || f === 'hazard_name_ro') return;
+                let finalVal = val.trim();
+                if (f === 'quantity' || f === 'unit_price') {
+                    finalVal = Number(finalVal.replace(/[^0-9.-]/g, '')) || 0;
                 }
+                newItems[targetRow][f] = finalVal;
             });
         });
         setItems(newItems);
+        // 선택 범위 업데이트
+        const endRow = Math.min(startRow + rows.length - 1, newItems.length - 1);
+        const endCol = Math.min(startCol + (rows[0]?.split('\t').length || 1) - 1, fields.length - 1);
+        setSelFocus({ row: endRow, col: endCol });
     }
 
-    // 키보드 네비게이션 (엑셀 스타일)
-    function handleKeyDown(idx, field, ev) {
-        const fieldsOrder = hdr.quote_type === '용역'
-            ? ['quantity', 'unit_type', 'unit_price', 'remarks']
-            : hdr.quote_type === '장비대여'
-                ? ['work_process', 'hazard_name', 'quantity', 'unit_type', 'unit_price', 'remarks']
-                : ['work_process', 'hazard_name', 'analysis_method', 'quantity', 'unit_price', 'remarks'];
-        const colIdx = fieldsOrder.indexOf(field);
+    // 그리드 키다운 핸들러 (셀 선택 모드)
+    function handleGridKeyDown(ev) {
+        if (!selAnchor) return;
+        const fields = getFields();
+        const { row, col } = selAnchor;
 
-        if (ev.key === 'ArrowDown' || (ev.key === 'Enter' && !ev.shiftKey)) {
+        // 편집 중일 때는 일부 키만 처리
+        if (editCell) {
+            if (ev.key === 'Escape') { ev.preventDefault(); setEditCell(null); return; }
+            if (ev.key === 'Enter' && !ev.shiftKey) {
+                ev.preventDefault(); setEditCell(null);
+                const nr = Math.min(row + 1, items.length - 1);
+                setSelAnchor({ row: nr, col }); setSelFocus({ row: nr, col }); return;
+            }
+            if (ev.key === 'Tab') {
+                ev.preventDefault(); setEditCell(null);
+                let nc = col + (ev.shiftKey ? -1 : 1), nr = row;
+                if (nc < 0) { nc = fields.length - 1; nr = Math.max(0, nr - 1); }
+                if (nc >= fields.length) { nc = 0; nr = Math.min(nr + 1, items.length - 1); }
+                setSelAnchor({ row: nr, col: nc }); setSelFocus({ row: nr, col: nc }); return;
+            }
+            return; // 기타 키는 input에 맡김
+        }
+
+        if ((ev.ctrlKey || ev.metaKey) && ev.key === 'c') { ev.preventDefault(); copySelection(); return; }
+        if ((ev.ctrlKey || ev.metaKey) && ev.key === 'v') {
             ev.preventDefault();
-            const targetIdx = idx + 1;
-            const target = document.querySelector(`[data-idx="${targetIdx}"][data-field="${field}"]`);
-            if (target) target.focus();
-            else if (ev.key === 'Enter') addItem(); // 마지막 줄에서 엔터 시 행 추가
-        } else if (ev.key === 'ArrowUp' || (ev.key === 'Enter' && ev.shiftKey)) {
-            ev.preventDefault();
-            const targetIdx = idx - 1;
-            const target = document.querySelector(`[data-idx="${targetIdx}"][data-field="${field}"]`);
-            if (target) target.focus();
-        } else if (ev.key === 'ArrowRight' || (ev.key === 'Tab' && !ev.shiftKey)) {
-            // 입력창 커서가 끝에 있거나 Tab인 경우 다음 셀로
-            let isAtEnd = false;
-            try {
-                isAtEnd = ev.target.type === 'number' ? true : ev.target.selectionEnd === ev.target.value.length;
-            } catch (e) {
-                isAtEnd = true;
-            }
-            if (ev.key === 'Tab' || isAtEnd) {
-                ev.preventDefault();
-                let nextCol = colIdx + 1;
-                let nextRow = idx;
-                if (nextCol >= fieldsOrder.length) {
-                    nextCol = 0;
-                    nextRow++;
+            navigator.clipboard.readText().then(text => pasteToGrid(text)).catch(() => {});
+            return;
+        }
+
+        if (ev.key === 'F2') { ev.preventDefault(); setEditCell({ row, col }); return; }
+        if (ev.key === 'Delete' || ev.key === 'Backspace') {
+            if (!selRange) return;
+            const newItems = [...items];
+            for (let r = selRange.r1; r <= selRange.r2; r++) {
+                for (let c = selRange.c1; c <= selRange.c2; c++) {
+                    const f = fields[c];
+                    if (!f || f === 'work_process_ro' || f === 'hazard_name_ro') continue;
+                    newItems[r] = { ...newItems[r], [f]: (f === 'quantity' || f === 'unit_price') ? 0 : '' };
                 }
-                const target = document.querySelector(`[data-idx="${nextRow}"][data-field="${fieldsOrder[nextCol]}"]`);
-                if (target) target.focus();
-                else if (ev.key === 'Tab' && nextRow >= items.length) addItem();
             }
-        } else if (ev.key === 'ArrowLeft' || (ev.key === 'Tab' && ev.shiftKey)) {
-            let isAtStart = false;
-            try {
-                isAtStart = ev.target.type === 'number' ? true : ev.target.selectionStart === 0;
-            } catch (e) {
-                isAtStart = true;
+            setItems(newItems); return;
+        }
+
+        const isNav = ['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Tab','Enter'].includes(ev.key);
+        if (!isNav) {
+            // 일반 문자 입력 → 편집 모드 진입
+            const f = fields[col];
+            if (f && f !== 'work_process_ro' && f !== 'hazard_name_ro') {
+                setEditCell({ row, col });
+                // 현재 셀 값을 비우고 새 문자를 입력받도록 (input의 defaultValue 를 다음 render에서 처리)
             }
-            if (ev.key === 'Tab' || isAtStart) {
-                ev.preventDefault();
-                let nextCol = colIdx - 1;
-                let nextRow = idx;
-                if (nextCol < 0) {
-                    nextCol = fieldsOrder.length - 1;
-                    nextRow--;
-                }
-                const target = document.querySelector(`[data-idx="${nextRow}"][data-field="${fieldsOrder[nextCol]}"]`);
-                if (target) target.focus();
-            }
+            return;
+        }
+
+        ev.preventDefault();
+        let nr = row, nc = col;
+        if (ev.key === 'ArrowDown' || (ev.key === 'Enter' && !ev.shiftKey)) { nr = Math.min(row + 1, items.length - 1); }
+        else if (ev.key === 'ArrowUp'   || (ev.key === 'Enter' && ev.shiftKey))  { nr = Math.max(row - 1, 0); }
+        else if (ev.key === 'ArrowRight' || (ev.key === 'Tab' && !ev.shiftKey)) {
+            nc = col + 1;
+            if (nc >= fields.length) { nc = 0; nr = Math.min(row + 1, items.length - 1); }
+        }
+        else if (ev.key === 'ArrowLeft' || (ev.key === 'Tab' && ev.shiftKey)) {
+            nc = col - 1;
+            if (nc < 0) { nc = fields.length - 1; nr = Math.max(row - 1, 0); }
+        }
+        if (ev.shiftKey && isNav && !ev.key.startsWith('Tab') && !ev.key.startsWith('Enter')) {
+            setSelFocus({ row: nr, col: nc });
+        } else {
+            setSelAnchor({ row: nr, col: nc }); setSelFocus({ row: nr, col: nc });
         }
     }
+
+    // 셀 mousedown → 선택 시작
+    function handleCellMouseDown(ev, row, col) {
+        ev.preventDefault();
+        setEditCell(null);
+        if (ev.shiftKey && selAnchor) {
+            setSelFocus({ row, col });
+        } else {
+            setSelAnchor({ row, col }); setSelFocus({ row, col });
+        }
+        setIsDragging(true);
+    }
+
+    function handleCellMouseEnter(row, col) {
+        if (isDragging) setSelFocus({ row, col });
+    }
+
+    React.useEffect(() => {
+        const up = () => setIsDragging(false);
+        window.addEventListener('mouseup', up);
+        return () => window.removeEventListener('mouseup', up);
+    }, []);
+
+    // 편집 셀 input 포커스
+    React.useEffect(() => {
+        if (editCell && editInputRef.current) {
+            editInputRef.current.focus();
+            try { editInputRef.current.select(); } catch(_) {}
+        }
+    }, [editCell]);
+
+    // 그리드 포커스 유지 (키보드 이벤트를 위해)
+    React.useEffect(() => {
+        if (gridRef.current && selAnchor && !editCell) gridRef.current.focus();
+    }, [selAnchor, editCell]);
 
     // 저장: 기존 editId와 관계없이 항상 신규 INSERT → 해당 연도의 새 KIWE 번호 부여
     async function doSave() {
@@ -1627,109 +1762,168 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
                         )
                     )
                 ),
-                // 오른쪽 패널 (분석수수료 그리드) - 최소폭 보장
+                // ── 오른쪽 패널: 완전 엑셀 그리드 ────────────────────────
                 e('div', { className: 'flex-[3] min-w-[700px] flex flex-col p-5 overflow-hidden' },
                     e('div', { className: 'flex items-center justify-between mb-3 shrink-0' },
                         e('h3', { className: 'text-lg font-black text-slate-700 flex items-center gap-2' },
                             e('span', { className: 'w-6 h-6 bg-slate-700 text-white rounded text-sm flex items-center justify-center font-black' }, '3'),
                             (hdr.quote_type === '장비대여' ? '세부사항 (장비대여 내역)' : hdr.quote_type === '용역' ? '세부사항 (인건비)' : '분석수수료 (측정 세부내역)')
                         ),
-                        hdr.quote_type !== '용역' && e('button', { onClick: addItem, className: 'flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-xl text-sm font-bold hover:bg-slate-800 transition-all shadow-lg' }, e(Plus, { size: 16 }), '항목 추가')
+                        e('div', { className: 'flex items-center gap-2' },
+                            e('span', { className: 'text-[10px] text-slate-400 font-bold' }, '셀 선택 후 Ctrl+C/V │ 드래그 범위선택 │ F2/더블클릭 편집'),
+                            hdr.quote_type !== '용역' && e('button', { onClick: addItem, className: 'flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-xl text-sm font-bold hover:bg-slate-800 transition-all shadow-lg' }, e(Plus, { size: 16 }), '항목 추가')
+                        )
                     ),
                     e('div', { className: 'flex-1 border border-slate-200 rounded-2xl overflow-hidden bg-white shadow-xl flex flex-col' },
-                        e('div', { className: 'flex-1 overflow-auto relative p-1' },
-                            e('table', { className: 'w-full border-collapse border-t border-l border-slate-400' },
+                        // ── 엑셀 그리드 본체 (tabIndex로 키보드 이벤트 수신) ──
+                        e('div', {
+                            ref: gridRef,
+                            className: 'flex-1 overflow-auto relative select-none outline-none',
+                            tabIndex: 0,
+                            onKeyDown: handleGridKeyDown,
+                            onPaste: ev => { ev.preventDefault(); ev.stopPropagation(); navigator.clipboard.readText().then(t => pasteToGrid(t)).catch(() => { const txt = ev.clipboardData?.getData('text'); if(txt) pasteToGrid(txt); }); },
+                            style: { cursor: 'default' }
+                        },
+                            e('table', { className: 'w-full border-collapse', style: { tableLayout: 'fixed' } },
+                                // 컬럼 너비 정의 (No + fields + 금액 + 행버튼)
+                                e('colgroup', null,
+                                    e('col', { style: { width: '36px' } }),  // No
+                                    ...(hdr.quote_type === '용역'
+                                        ? [170, 110, 50, 60, 85, 80]  // fields 6개
+                                        : hdr.quote_type === '장비대여'
+                                            ? [130, 130, 50, 60, 85, 80]  // fields 6개
+                                            : [120, 150, 100, 50, 85, 80]  // fields 6개
+                                    ).map((w, i) => e('col', { key: i, style: { width: w + 'px' } })),
+                                    e('col', { style: { width: '90px' } }), // 금액 열
+                                    e('col', { style: { width: '52px' } })  // 행 버튼
+                                ),
                                 e('thead', { className: 'sticky top-0 z-10' },
-                                    e('tr', { className: 'bg-slate-200' },
-                                        e('th', { className: 'p-1 text-[11px] font-black text-slate-700 border-b border-r border-slate-400 w-10 text-center' }, 'No'),
+                                    e('tr', { style: { background: '#e2e8f0' } },
+                                        e('th', { style: { padding: '4px 2px', fontSize: '11px', fontWeight: 900, borderBottom: '2px solid #94a3b8', borderRight: '1px solid #94a3b8', textAlign: 'center', userSelect: 'none' } }, 'No'),
                                         (hdr.quote_type === '용역'
                                             ? ['항목', '구분', '인원', '조사일수', '단가', '금액', '비고']
                                             : hdr.quote_type === '장비대여'
                                                 ? ['대여장비', '구분(등급/장비명)', '수량', '대여일수', '단가', '금액', '비고']
                                                 : ['단위작업장소', '유해인자', '분석방법', '수량', '단가', '금액', '비고']
-                                        ).map(h => e('th', { key: h, className: 'p-1 text-[11px] font-black text-slate-700 border-b border-r border-slate-400 text-center' }, h)),
-                                        e('th', { className: 'p-1 border-b border-r border-slate-400 w-16' }, '')
+                                        ).map(h => e('th', { key: h, style: { padding: '4px 3px', fontSize: '11px', fontWeight: 900, borderBottom: '2px solid #94a3b8', borderRight: '1px solid #94a3b8', textAlign: 'center', userSelect: 'none' } }, h)),
+                                        e('th', { style: { borderBottom: '2px solid #94a3b8' } })
                                     )
                                 ),
                                 e('tbody', null,
-                                    items.map((it, idx) => {
-                                        const common = (f) => ({
-                                            'data-idx': idx,
-                                            'data-field': f,
-                                            onKeyDown: (ev) => handleKeyDown(idx, f, ev),
-                                            onPaste: (ev) => handlePaste(idx, f, ev),
-                                            className: 'w-full h-full p-1 bg-transparent text-xs text-slate-800 shadow-none outline-none border-none rounded-none focus:bg-white focus:ring-inset focus:ring-2 focus:ring-blue-500 transition-none'
-                                        });
+                                    (() => {
+                                        const fields = getFields();
+                                        return items.map((it, rowIdx) => {
+                                            const itemTotal = it.quantity * (hdr.quote_type === '용역' || hdr.quote_type === '장비대여' ? (Number(it.unit_type) || 1) : 1) * it.unit_price;
 
-                                        const itemTotal = it.quantity * (hdr.quote_type === '용역' || hdr.quote_type === '장비대여' ? (Number(it.unit_type) || 1) : 1) * it.unit_price;
+                                            return e('tr', { key: it._id },
+                                                // No 열
+                                                e('td', {
+                                                    style: { padding: '0 2px', textAlign: 'center', fontSize: '10px', fontWeight: 700, color: '#64748b', background: '#f1f5f9', borderBottom: '1px solid #cbd5e1', borderRight: '1px solid #cbd5e1', userSelect: 'none' }
+                                                }, rowIdx + 1),
 
-                                        return e('tr', { key: it._id, className: 'group hover:bg-blue-50/20' },
-                                            e('td', { className: 'p-0 text-center text-[10px] font-bold text-slate-500 border-b border-r border-slate-400 bg-slate-100' }, idx + 1),
+                                                // 데이터 셀 (fields 순서대로)
+                                                ...fields.map((field, colIdx) => {
+                                                    const isReadOnly = field === 'work_process_ro' || field === 'hazard_name_ro';
+                                                    const isEditing = editCell && editCell.row === rowIdx && editCell.col === colIdx;
+                                                    const selected  = inRange(rowIdx, colIdx);
+                                                    const anchor    = isAnchor(rowIdx, colIdx);
+                                                    const cellVal   = getCellValue(it, field);
+                                                    const isNumField = field === 'quantity' || field === 'unit_price' || field === 'unit_type';
 
-                                            e('td', { className: 'p-0 border-b border-r border-slate-400 relative' },
-                                                hdr.quote_type === '용역' ? e('div', { className: 'w-full h-full p-1 text-xs text-center font-bold text-slate-700 bg-slate-50 flex items-center justify-center' }, it.work_process)
-                                                    : e('input', {
-                                                        value: it.work_process,
-                                                        onChange: ev => setItem(idx, 'work_process', ev.target.value),
-                                                        placeholder: '',
-                                                        ...common('work_process'),
-                                                        className: common('work_process').className + ' text-center'
-                                                    })
-                                            ),
+                                                    return e('td', {
+                                                        key: field,
+                                                        onMouseDown: ev => handleCellMouseDown(ev, rowIdx, colIdx),
+                                                        onMouseEnter: () => handleCellMouseEnter(rowIdx, colIdx),
+                                                        onDoubleClick: () => { if (!isReadOnly) setEditCell({ row: rowIdx, col: colIdx }); },
+                                                        style: {
+                                                            padding: 0, position: 'relative', height: '26px',
+                                                            background: isReadOnly
+                                                                ? (selected ? (anchor ? '#bfdbfe' : '#dbeafe') : '#f8fafc')
+                                                                : (selected ? (anchor ? '#bfdbfe' : '#dbeafe') : '#fff'),
+                                                            borderBottom: '1px solid #cbd5e1', borderRight: '1px solid #cbd5e1',
+                                                            outline: anchor ? '2px solid #3b82f6' : 'none',
+                                                            outlineOffset: '-2px', cursor: isReadOnly ? 'default' : 'cell',
+                                                            overflow: 'hidden'
+                                                        }
+                                                    },
+                                                        isEditing
+                                                            ? e('input', {
+                                                                ref: editInputRef,
+                                                                defaultValue: cellVal,
+                                                                list: field === 'analysis_method' ? 'ana-list' : field === 'hazard_name' ? 'rental-list' : undefined,
+                                                                onChange: ev => setCellValue(rowIdx, field, ev.target.value),
+                                                                onBlur: () => setEditCell(null),
+                                                                onKeyDown: ev => handleGridKeyDown(ev),
+                                                                style: {
+                                                                    width: '100%', height: '100%', padding: '2px 4px',
+                                                                    border: 'none', outline: '2px solid #2563eb',
+                                                                    outlineOffset: '-2px', background: '#fff',
+                                                                    fontSize: '12px', fontWeight: isNumField ? 700 : 400,
+                                                                    textAlign: isNumField ? 'right' : 'left',
+                                                                    boxSizing: 'border-box'
+                                                                }
+                                                            })
+                                                            : e('div', {
+                                                                style: {
+                                                                    width: '100%', height: '100%', padding: '3px 4px',
+                                                                    fontSize: '12px', overflow: 'hidden', textOverflow: 'ellipsis',
+                                                                    whiteSpace: 'nowrap', boxSizing: 'border-box',
+                                                                    fontWeight: isNumField || isReadOnly ? 700 : 400,
+                                                                    textAlign: isNumField ? 'right' : 'left',
+                                                                    color: isReadOnly ? '#475569' : '#1e293b'
+                                                                }
+                                                            }, isNumField && field === 'unit_price' ? fmt(Number(cellVal)) : cellVal)
+                                                    );
+                                                }),
 
-                                            e('td', { className: 'p-0 border-b border-r border-slate-400 relative' },
-                                                hdr.quote_type === '용역' ? e('div', { className: 'w-full h-full p-1 text-xs text-center font-bold text-slate-700 bg-slate-50 flex items-center justify-center' }, it.hazard_name)
-                                                    : e('input', {
-                                                        value: it.hazard_name || '',
-                                                        onChange: ev => setItem(idx, 'hazard_name', ev.target.value),
-                                                        list: hdr.quote_type === '장비대여' ? 'rental-list' : undefined,
-                                                        ...common('hazard_name'),
-                                                        className: common('hazard_name').className + ' font-bold text-center'
-                                                    })
-                                            ),
+                                                // 금액 열 (읽기 전용, fields 루프 밖)
+                                                e('td', {
+                                                    key: '_amount',
+                                                    style: {
+                                                        fontSize: '11px', fontWeight: 700, textAlign: 'right',
+                                                        padding: '3px 5px', whiteSpace: 'nowrap', height: '26px',
+                                                        background: '#f8fafc',
+                                                        borderBottom: '1px solid #cbd5e1', borderRight: '1px solid #cbd5e1',
+                                                        color: '#1e293b'
+                                                    }
+                                                }, fmt(itemTotal)),
 
-                                            (hdr.quote_type === '일반' || hdr.quote_type === '측정') && e('td', { className: 'p-0 border-b border-r border-slate-400 relative' }, e('input', {
-                                                value: it.analysis_method || '',
-                                                onChange: ev => setItem(idx, 'analysis_method', ev.target.value),
-                                                list: 'ana-list',
-                                                ...common('analysis_method'),
-                                                className: common('analysis_method').className + ' text-center'
-                                            })),
-
-                                            e('td', { className: 'p-0 border-b border-r border-slate-400 relative w-16' }, e('input', { type: 'number', value: it.quantity, onChange: ev => setItem(idx, 'quantity', Number(ev.target.value) || 0), ...common('quantity'), className: common('quantity').className + ' text-center' })),
-
-                                            (hdr.quote_type === '용역' || hdr.quote_type === '장비대여') && e('td', { className: 'p-0 border-b border-r border-slate-400 relative w-16' }, e('input', { type: 'number', value: it.unit_type || 1, onChange: ev => setItem(idx, 'unit_type', Number(ev.target.value) || 0), ...common('unit_type'), className: common('unit_type').className + ' text-center' })),
-
-                                            e('td', { className: 'p-0 border-b border-r border-slate-400 relative w-24' }, e('input', { type: 'text', value: fmt(it.unit_price), onChange: ev => setItem(idx, 'unit_price', unf(ev.target.value)), ...common('unit_price'), className: common('unit_price').className + ' text-right font-bold' })),
-                                            e('td', { className: 'p-1 border-b border-r border-slate-400 text-right text-[11px] font-black text-slate-700 bg-slate-50 w-28' }, fmt(itemTotal)),
-
-                                            // 비고
-                                            e('td', { className: 'p-0 border-b border-r border-slate-400 relative' },
-                                                e('input', {
-                                                    value: it.remarks,
-                                                    onChange: ev => setItem(idx, 'remarks', ev.target.value),
-                                                    placeholder: '',
-                                                    ...common('remarks')
-                                                })
-                                            ),
-
-                                            e('td', { className: 'p-1 w-16' },
-                                                hdr.quote_type !== '용역' && e('div', { className: 'flex justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity' },
-                                                    e('button', { onClick: () => insertItem(idx), className: 'p-1 text-slate-400 hover:text-blue-500 hover:bg-blue-50 rounded', title: '아래에 행 삽입' }, e(Plus, { size: 14 })),
-                                                    e('button', { onClick: () => delItem(idx), className: 'p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded', title: '행 삭제' }, e(Trash2, { size: 14 }))
+                                                // 행 삭제/추가 버튼
+                                                e('td', { style: { padding: '2px', borderBottom: '1px solid #cbd5e1' } },
+                                                    hdr.quote_type !== '용역' && e('div', { className: 'flex justify-center gap-0.5' },
+                                                        e('button', {
+                                                            onMouseDown: ev => ev.stopPropagation(),
+                                                            onClick: () => insertItem(rowIdx),
+                                                            title: '아래 행 삽입',
+                                                            style: { padding: '2px', color: '#94a3b8', borderRadius: '3px', cursor: 'pointer', background: 'none', border: 'none', lineHeight: 1 },
+                                                            onMouseEnter: ev => ev.currentTarget.style.color = '#3b82f6',
+                                                            onMouseLeave: ev => ev.currentTarget.style.color = '#94a3b8'
+                                                        }, e(Plus, { size: 13 })),
+                                                        e('button', {
+                                                            onMouseDown: ev => ev.stopPropagation(),
+                                                            onClick: () => delItem(rowIdx),
+                                                            title: '행 삭제',
+                                                            style: { padding: '2px', color: '#94a3b8', borderRadius: '3px', cursor: 'pointer', background: 'none', border: 'none', lineHeight: 1 },
+                                                            onMouseEnter: ev => ev.currentTarget.style.color = '#ef4444',
+                                                            onMouseLeave: ev => ev.currentTarget.style.color = '#94a3b8'
+                                                        }, e(Trash2, { size: 13 }))
+                                                    )
                                                 )
-                                            )
-                                        );
-                                    })
+                                            );
+                                        });
+                                    })()
                                 )
                             )
                         ),
-                        e('div', { className: 'px-6 py-4 bg-slate-50 border-t border-slate-200 flex justify-between shrink-0' },
-                            e('div', { className: 'text-xs text-slate-400 font-bold flex items-center gap-4' },
-                                e('span', null, `항목: ${items.length}개`),
-                                e('span', null, 'Tip: 엑셀 복사/붙여넣기 및 방향키 이동 가능')
+                        e('div', { className: 'px-6 py-3 bg-slate-50 border-t border-slate-200 flex justify-between items-center shrink-0' },
+                            e('div', { className: 'text-[11px] text-slate-400 font-bold flex items-center gap-3' },
+                                e('span', null, `항목 ${items.length}개`),
+                                selRange && e('span', { style: { color: '#3b82f6' } },
+                                    `선택: ${selRange.r2 - selRange.r1 + 1}행 × ${selRange.c2 - selRange.c1 + 1}열`
+                                ),
+                                e('span', { style: { color: '#94a3b8' } }, '| Ctrl+C 복사 · Ctrl+V 붙여넣기 · F2 편집 · Del 삭제')
                             ),
-                            e('div', { className: 'text-base font-black text-slate-800' }, '세부항목 합계: ', e('span', { className: 'text-blue-600' }, fmt(itemsTotal)), ' 원')
+                            e('div', { className: 'text-sm font-black text-slate-800' }, '합계: ', e('span', { style: { color: '#2563eb' } }, fmt(itemsTotal)), ' 원')
                         )
                     )
                 )
