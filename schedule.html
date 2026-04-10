@@ -337,6 +337,37 @@
                 activity_type: '정기측정',
                 equipment_used: {}
             });
+            const [companyResults, setCompanyResults] = useState([]);
+            const [showCompanyDropdown, setShowCompanyDropdown] = useState(false);
+            const searchTimeoutRef = useRef(null);
+
+            const handleCompanySearch = (val) => {
+                setModalData(prev => ({ ...prev, com_name: val }));
+                if(searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+                
+                if (!val || val.length === 0) {
+                    setCompanyResults([]);
+                    setShowCompanyDropdown(false);
+                    return;
+                }
+                
+                searchTimeoutRef.current = setTimeout(async () => {
+                    const { data } = await supabase.from('kiwe_companies').select('com_name').ilike('com_name', `%${val}%`).limit(15);
+                    if (data && data.length > 0) {
+                        setCompanyResults(data);
+                        setShowCompanyDropdown(true);
+                    } else {
+                        setCompanyResults([]);
+                        setShowCompanyDropdown(false);
+                    }
+                }, 300);
+            };
+
+            const selectCompany = (name) => {
+                setModalData(prev => ({ ...prev, com_name: name }));
+                setCompanyResults([]);
+                setShowCompanyDropdown(false);
+            };
 
             // Color Palette for Users: Red, Yellow(Amber), Green(Emerald), Blue, Purple
             const colorPalette = [
@@ -395,7 +426,7 @@
                 ev.preventDefault();
                 const payload = { ...modalData };
                 if (payload.com_name) {
-                    payload.com_name = payload.com_name.replace(/\(주\)/g, '주').trim();
+                    payload.com_name = payload.com_name.trim();
                 }
                 // CRITICAL: Always remove id from payload to prevent UPDATE error
                 delete payload.id;
@@ -769,9 +800,24 @@
                                         )
                                     )
                                 ),
-                                e('div', { className: "space-y-1" },
+                                e('div', { className: "space-y-1 relative z-20" },
                                     e('label', { className: "text-xs font-black text-slate-400 ml-1" }, "사업장명 / 업무내용"),
-                                    e('input', { required: true, value: modalData.com_name, onChange: ev => setModalData({ ...modalData, com_name: ev.target.value }), className: "w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-black outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500" })
+                                    e('input', { 
+                                        required: true, 
+                                        value: modalData.com_name, 
+                                        onChange: ev => handleCompanySearch(ev.target.value),
+                                        onFocus: () => { if(companyResults.length > 0) setShowCompanyDropdown(true); },
+                                        onBlur: () => setTimeout(() => setShowCompanyDropdown(false), 200),
+                                        className: "w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-black outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500",
+                                        autoComplete: "off"
+                                    }),
+                                    showCompanyDropdown && companyResults.length > 0 && e('div', { className: "absolute top-full left-0 right-0 mt-2 bg-white border border-slate-200 rounded-xl shadow-xl max-h-48 overflow-y-auto" },
+                                        companyResults.map(cr => e('div', {
+                                            key: cr.com_name,
+                                            onMouseDown: (e) => { e.preventDefault(); selectCompany(cr.com_name); },
+                                            className: "p-4 hover:bg-slate-50 border-b border-slate-50 font-bold text-sm text-slate-700 cursor-pointer"
+                                        }, cr.com_name))
+                                    )
                                 ),
                                 e('div', { className: "space-y-1" },
                                     e('label', { className: "text-xs font-black text-slate-400 ml-1" }, "측정자 (다중 선택 가능)"),
