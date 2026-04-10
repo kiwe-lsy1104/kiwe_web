@@ -737,14 +737,42 @@ function App() {
         }
 
         const rawLatest = hot.getSourceData();
+        
         // ★ 개선: 사업장명과 유해인자가 모두 있는 데이터만 저장 대상으로 선정
-        // ID가 있더라도 셀 내용을 모두 지웠다면(삭제 대기 또는 실수) 저장에서 제외하여 'ghost' 데이터 생성 방지
         const valid = rawLatest.filter(r => (r.com_name && r.common_name));
+        
+        // ★ 내용이 비워진 기존 데이터 처리 
+        const ghosts = rawLatest.filter(r => r.id && (!r.com_name || !r.common_name));
 
-        if (valid.length === 0) { alert('저장할 데이터가 없습니다.'); return; }
+        if (valid.length === 0 && ghosts.length === 0) { 
+            alert('저장하거나 지워진 데이터가 없습니다.'); 
+            return; 
+        }
 
         setLoading(true);
         try {
+            if (ghosts.length > 0) {
+                if(!confirm(`사업장명이나 유해인자가 지워진 기존 데이터가 ${ghosts.length}건 있습니다.\n이 데이터들은 데이터베이스에서도 완전히 삭제됩니다. 계속 진행하시겠습니까?`)) {
+                    setLoading(false);
+                    return;
+                }
+                // 그룹별로 삭제
+                const ghostsByTable = {};
+                ghosts.forEach(g => {
+                    const tName = getTableName(g.m_date || startDate);
+                    if(tName) {
+                        if(!ghostsByTable[tName]) ghostsByTable[tName] = [];
+                        ghostsByTable[tName].push(g.id);
+                    }
+                });
+                for (const [tName, ids] of Object.entries(ghostsByTable)) {
+                    const { error: delErr } = await supabase.from(tName).delete().in('id', ids);
+                    if (delErr) {
+                        console.error('Delete ghost error:', delErr);
+                        throw new Error(`빈 행 삭제 중 오류 발생: ${delErr.message}`);
+                    }
+                }
+            }
             // Helper: Format time to HH:mm (remove seconds)
             const formatTimeHHMM = (val) => {
                 if (!val) return null;
