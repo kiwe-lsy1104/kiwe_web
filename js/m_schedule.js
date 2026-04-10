@@ -173,6 +173,11 @@ window.searchBusiness = async function () {
 };
 
 window.openNavModal = function (address) {
+    if (!address || address === '주소 미입력' || address.trim() === '') {
+        alert('등록된 주소가 없습니다.');
+        return;
+    }
+
     const modal = document.getElementById('navModal');
     const addressDisplay = document.getElementById('navAddressDisplay');
     const tmapBtn = document.getElementById('btnTmap');
