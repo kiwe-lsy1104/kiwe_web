@@ -272,42 +272,42 @@
                 return 'box';
             };
 
-            return e('div', { className: "bg-white border border-slate-200 rounded-xl p-3 shadow-sm hover:border-indigo-300 transition-colors" },
+            const isLowStock = equip.eq_name === 'WBGT' ? remainingAfterMyInput === 0 : remainingAfterMyInput <= 4;
+
+            return e('div', { className: `bg-white border rounded-xl p-3 shadow-sm hover:border-indigo-300 transition-colors ${isLowStock ? 'border-red-200 bg-red-50/30' : 'border-slate-200'}` },
                 // Header
                 e('div', { className: "flex justify-between items-center mb-2" },
                     e('div', { className: "flex items-center gap-1.5" },
-                        e('div', { className: "p-1.5 bg-slate-50 rounded-lg text-slate-500" },
+                        e('div', { className: `p-1.5 rounded-lg ${isLowStock ? 'bg-red-100 text-red-500' : 'bg-slate-50 text-slate-500'}` },
                             e('i', { 'data-lucide': getIcon(equip.eq_name), className: "w-4 h-4" })
                         ),
-                        e('span', { className: "text-sm font-black text-slate-700" }, equip.eq_name)
+                        e('span', { className: `text-sm font-black ${isLowStock ? 'text-red-700' : 'text-slate-700'}` }, equip.eq_name)
                     ),
-                    // Optional: Show if sold out physically?
-                    available <= 0 && e('span', { className: "text-[10px] font-bold text-red-500 bg-red-50 px-2 py-0.5 rounded-full" }, "품절")
+                    remainingAfterMyInput <= 0 && e('span', { className: "text-[10px] font-bold text-red-500 bg-red-50 px-2 py-0.5 rounded-full animate-pulse" }, "매진")
                 ),
 
                 // Metrics Grid
                 e('div', { className: "grid grid-cols-3 gap-1" },
                     // Total
-                    e('div', { className: "flex flex-col items-center justify-center p-1.5 bg-slate-50 rounded-lg border border-slate-100" },
+                    e('div', { className: "flex flex-col items-center justify-center p-1.5 bg-white/50 rounded-lg border border-slate-100" },
                         e('span', { className: "text-[10px] font-bold text-slate-400" }, "보유"),
                         e('span', { className: "text-xs font-black text-slate-600" }, limit)
                     ),
-                    // Available (Global Remaining)
-                    e('div', { className: "flex flex-col items-center justify-center p-1.5 bg-slate-50 rounded-lg border border-slate-100" },
+                    // Remaining (Closing Balance)
+                    e('div', { className: "flex flex-col items-center justify-center p-1.5 bg-white/50 rounded-lg border border-slate-100" },
                         e('span', { className: "text-[10px] font-bold text-slate-400" }, "잔여"),
-                        e('span', { className: `text-xs font-black ${available === 0 ? 'text-red-500' : 'text-emerald-500'}` }, available)
+                        e('span', { className: `text-xs font-black ${remainingAfterMyInput === 0 ? 'text-red-500' : (isLowStock ? 'text-amber-500' : 'text-emerald-500')}` }, remainingAfterMyInput)
                     ),
                     // Input (My Usage)
                     e('div', { className: "relative" },
                         e('input', {
                             type: "number",
                             min: "0",
-                            max: available, // Limit max input to available? Or allow overbooking with warning? Let's limit for now to prevent errors.
+                            max: available,
                             value: myUsage === 0 ? '' : myUsage,
                             placeholder: "0",
                             onChange: (e) => {
                                 const val = parseInt(e.target.value) || 0;
-                                // Prevent negative
                                 onChange(Math.max(0, val));
                             },
                             className: "w-full h-full text-center font-black text-indigo-600 bg-indigo-50 border-2 border-indigo-100 rounded-lg outline-none focus:border-indigo-500 focus:bg-white transition-colors p-0 text-sm"
