@@ -715,8 +715,8 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
         else {
             // 새 견적서인 경우 로그인 사용자명 세팅
             const user = JSON.parse(localStorage.getItem('kiwe_user') || '{}');
-            const title = user.job_title || user.position || '';
-            const userNameWithTitle = user.user_name ? `${user.user_name}${title ? ' ' + title : ''}` : '이승용';
+            const title = user.position || ''; // '측정자' 등 job_title 대신 직급(position) 우선 표시
+            const userNameWithTitle = user.user_name ? `${user.user_name}${title ? ' ' + title : ''}` : '';
             setH('manager_name', userNameWithTitle);
         }
     }, [editId]);
