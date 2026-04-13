@@ -257,13 +257,14 @@ function renderGrid(data) {
         data: displayData,
         readOnly: mode === 'view',
         colHeaders: [
-            '관리', '측정일자', '펌프번호', '보정기', '전유량보정일자',
+            '연번', '관리', '측정일자', '펌프번호', '보정기', '전유량보정일자',
             '전-1회', '전-2회', '전-3회', '전평균',
             '후유량보정일자',
             '후-1회', '후-2회', '후-3회', '후평균',
             '전체평균유량'
         ],
         columns: [
+            { data: 'seq', renderer: function(instance, td, row) { td.innerHTML = row + 1; td.style.background = '#f8fafc'; td.style.color = '#475569'; td.style.fontWeight = 'bold'; return td; }, readOnly: true, width: 40, className: 'htCenter htMiddle' },
             { data: 'actions', renderer: deleteRenderer, readOnly: true, width: 45, className: centerClass },
             { data: 'm_date', type: 'date', dateFormat: 'YYYY-MM-DD', renderer: autoShrinkRenderer, width: 95, className: centerClass },
             { data: 'pump_no', type: 'text', width: 75, className: centerClass },
@@ -281,8 +282,8 @@ function renderGrid(data) {
             { data: 'total_avg', type: 'numeric', numericFormat: { pattern: '0.000' }, readOnly: true, renderer: autoShrinkRenderer, width: 120, className: 'htCenter htMiddle font-bold text-indigo-700' }
         ],
         wordWrap: false,
-        rowHeaders: true,
-        fixedColumnsLeft: 3,
+        rowHeaders: false,
+        fixedColumnsLeft: 0,
         stretchH: 'all',  /* 화면 전체 폭 활용 */
         rowHeights: 34,
         autoRowSize: false,
