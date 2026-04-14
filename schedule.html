@@ -495,7 +495,7 @@
                 equipments.forEach(eq => {
                     const type = eq.equipment_type || '기타';
 
-                    if (type === '유량보정기') return; // Exclude calibrators from this view
+                    if (type === '유량보정기' || type === '소음보정기') return; // Exclude calibrators from this view
 
                     if (type === '기타') {
                         // 기타 타입은 각각 개별 카드로 표시
@@ -689,16 +689,9 @@
                                                 e('div', { className: `w-1 h-1 rounded-full ${colorObj.hex}` }),
                                                 e('span', { className: "text-[11px] font-black text-slate-400 uppercase tracking-wide" }, evt.activity_type)
                                             ),
-                                            e('div', { className: "flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity" },
-                                                e('button', { onClick: () => cloneEvent(evt), title: "다음날로 복제", className: "p-0.5 hover:bg-slate-50 rounded text-slate-300 hover:text-emerald-600" }, e('i', { 'data-lucide': "copy", className: "w-2.5 h-2.5" })),
-                                                e('button', {
-                                                    onClick: () => {
-                                                        const payloadUsage = typeof evt.equipment_used === 'string' ? JSON.parse(evt.equipment_used) : (evt.equipment_used || {});
-                                                        setModalData({ ...evt, equipment_used: payloadUsage });
-                                                        setIsModalOpen(true);
-                                                    }, className: "p-0.5 hover:bg-slate-50 rounded text-slate-300 hover:text-indigo-600"
-                                                }, e('i', { 'data-lucide': "edit-3", className: "w-2.5 h-2.5" })),
-                                                e('button', { onClick: () => deleteEvent(evt.id), className: "p-0.5 hover:bg-slate-50 rounded text-slate-300 hover:text-red-600" }, e('i', { 'data-lucide': "trash-2", className: "w-2.5 h-2.5" }))
+                                            e('div', { className: "flex gap-3 opacity-0 group-hover:opacity-100 transition-opacity pr-1" },
+                                                e('button', { onClick: () => cloneEvent(evt), title: "다음날로 복제", className: "p-1.5 hover:bg-slate-100 rounded text-slate-400 hover:text-emerald-600 transition-colors" }, e('i', { 'data-lucide': "copy", className: "w-4 h-4" })),
+                                                e('button', { onClick: () => deleteEvent(evt.id), title: "삭제", className: "p-1.5 hover:bg-slate-100 rounded text-slate-400 hover:text-red-600 transition-colors" }, e('i', { 'data-lucide': "trash-2", className: "w-4 h-4" }))
                                             )
                                         ),
                                         e('div', { className: "flex flex-col gap-0.5" },
@@ -793,7 +786,6 @@
                                             e('option', { value: "정기측정" }, "정기측정"),
                                             e('option', { value: "예비조사" }, "예비조사"),
                                             e('option', { value: "보고서" }, "보고서"),
-                                            e('option', { value: "예측치" }, "예측치"),
                                             e('option', { value: "회사행사" }, "회사행사"),
                                             e('option', { value: "공휴일" }, "공휴일"),
                                             e('option', { value: "기타" }, "기타")

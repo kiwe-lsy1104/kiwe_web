@@ -868,7 +868,7 @@ function PlanApp() {
                                 const individualCards = [];
                                 rawData.equipments.forEach(eq => {
                                     const type = eq.equipment_type || '기타';
-                                    if (type === '유량보정기') return;
+                                    if (type === '유량보정기' || type === '소음보정기') return;
                                     if (type === '기타') {
                                         individualCards.push({ id: eq.id, eq_name: eq.eq_name, equipment_type: type, limit_count: eq.limit_count, isGroup: false });
                                     } else {
