@@ -206,6 +206,15 @@ export function ExternalRequestManager({ supabase, sessionData }) {
         return result;
     };
 
+    // ── 매핑용 정규화 키 생성 ──
+    const getMappingKey = (com, date, hazard) => {
+        const c = (com || '').replace(/\(주\)|㈜|\s/g, '');
+        const d = date || '';
+        // 유해인자명에서 / 나 ( 앞부분만 추출하여 매칭 유연성 확보함 (예: 질산/염산 -> 질산)
+        const h = (hazard || '').split(/[/(]/)[0].replace(/\s/g, '');
+        return `${c}_${d}_${h}`;
+    };
+
     // ── Fetch New Mode Data ──
     const fetchData = async () => {
         setLoading(true);
@@ -237,9 +246,15 @@ export function ExternalRequestManager({ supabase, sessionData }) {
             rawData.forEach(row => {
                 const isBlank = (row.worker_name?.includes('공시료')) || (row.sample_id?.startsWith('DB') || row.sample_id?.startsWith('SB'));
                 if (isBlank) {
-                    const gk = `${row.com_name || ''}_${row.m_date || ''}_${row.common_name || ''}`;
-                    if (!blankMap.has(gk)) blankMap.set(gk, []);
-                    blankMap.get(gk).push(row.sample_id);
+                    // 유해인자가 복합인 경우(질산/염산 등) 분리하여 각각 매핑 테이블에 등록
+                    const hazards = (row.common_name || '').split(/[/(]/).filter(Boolean);
+                    hazards.forEach(hSub => {
+                        const gk = getMappingKey(row.com_name, row.m_date, hSub.trim());
+                        if (!blankMap.has(gk)) blankMap.set(gk, []);
+                        if (!blankMap.get(gk).includes(row.sample_id)) {
+                            blankMap.get(gk).push(row.sample_id);
+                        }
+                    });
                 }
             });
 
@@ -253,7 +268,7 @@ export function ExternalRequestManager({ supabase, sessionData }) {
                     const hazardInfo = hazardMap.get(searchKey) || {};
                     const minutes = calculateMinutes(row.start_time, row.end_time, row.lunch_time);
                     const avgFlow = flowMap.get(`${row.m_date}_${row.pump_no}`) || 0;
-                    const gk = `${row.com_name || ''}_${row.m_date || ''}_${row.common_name || ''}`;
+                    const gk = getMappingKey(row.com_name, row.m_date, row.common_name);
                     return {
                         ...hazardInfo, ...row,
                         corp_code: '',
@@ -591,9 +606,14 @@ export function ExternalRequestManager({ supabase, sessionData }) {
             allSamples.forEach(r => {
                 const isBlank = (r.worker_name?.includes('공시료')) || (r.sample_id?.startsWith('DB') || r.sample_id?.startsWith('SB'));
                 if (isBlank) {
-                    const gk = `${r.com_name || ''}_${r.m_date || ''}_${r.common_name || ''}`;
-                    if (!blankMap.has(gk)) blankMap.set(gk, []);
-                    blankMap.get(gk).push(r.sample_id);
+                    const hazards = (r.common_name || '').split(/[/(]/).filter(Boolean);
+                    hazards.forEach(hSub => {
+                        const gk = getMappingKey(r.com_name, r.m_date, hSub.trim());
+                        if (!blankMap.has(gk)) blankMap.set(gk, []);
+                        if (!blankMap.get(gk).includes(r.sample_id)) {
+                            blankMap.get(gk).push(r.sample_id);
+                        }
+                    });
                 }
             });
 
@@ -613,7 +633,7 @@ export function ExternalRequestManager({ supabase, sessionData }) {
                 const hazardInfo = hazardMap.get(searchKey) || {};
                 const minutes = calculateMinutes(r.start_time, r.end_time, r.lunch_time);
                 const avgFlow = flowMap.get(`${r.m_date}_${r.pump_no}`) || 0;
-                const gk = `${r.com_name || ''}_${r.m_date || ''}_${r.common_name || ''}`;
+                const gk = getMappingKey(r.com_name, r.m_date, r.common_name);
 
                 return {
                     ...hazardInfo, ...r,

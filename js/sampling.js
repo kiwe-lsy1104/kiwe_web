@@ -941,6 +941,25 @@ function App() {
                 }
 
                 if (existingRows.length > 0) {
+                    // ★ 고유 키 중복 방지: 업데이트할 행들의 시료번호를 먼저 NULL로 초기화
+                    const existingIds = existingRows.map(r => r.id).filter(Boolean);
+                    if (existingIds.length > 0) {
+                        const { error: resetErr } = await supabase
+                            .from(tableName)
+                            .update({ sample_id: null })
+                            .in('id', existingIds);
+                        
+                        if (resetErr) {
+                            // 만약 NOT NULL 제약조건이 있다면 'TEMP_' + ID 형식으로 회피 시도
+                            console.warn('Sample ID reset failed, trying TEMP prefix:', resetErr);
+                            const tempUpdates = existingIds.map(id => 
+                                supabase.from(tableName).update({ sample_id: 'TEMP_' + id }).eq('id', id)
+                            );
+                            await Promise.all(tempUpdates);
+                        }
+                    }
+
+                    // 이제 새로운 시료번호로 안전하게 업데이트
                     const { error: upsErr } = await supabase.from(tableName).upsert(existingRows);
                     if (upsErr) throw upsErr;
                     totalSaved += existingRows.length;

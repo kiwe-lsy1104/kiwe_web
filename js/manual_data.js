@@ -2,8 +2,8 @@
  * KiWE 측정관리 매뉴얼 데이터
  * 버전 및 공지사항은 Supabase에서 동적으로 로드됩니다.
  */
-const MANUAL_VERSION = '2.0.0';
-const MANUAL_UPDATED = '2026-03-24';
+const MANUAL_VERSION = '2.1.0';
+const MANUAL_UPDATED = '2026-04-14';
 
 const MANUAL_SECTIONS = [
   {
@@ -138,11 +138,26 @@ const MANUAL_SECTIONS = [
         <li><strong>원단위 절삭</strong>: 최종 합계 금액을 <code>원단위 없음</code>, <code>천원 단위 절삭</code>, <code>만원 단위 절삭</code>으로 일괄 조정하여 깔끔한 결제 금액을 맞출 수 있습니다.</li>
       </ul>
 
-      <h5>4. 출력 및 관리</h5>
+      <h5>4. 저장 방식 및 발행 (중요)</h5>
+      <p>엑셀의 '워크시트 저장'과 '매크로 실행' 개념을 도입하여 더욱 안전한 업무 흐름을 제공합니다.</p>
       <ul>
-        <li><button class="px-2 py-1 bg-white border border-slate-200 rounded text-xs">미리보기</button> : 현재 작성 중인 견적서가 A4 용지에 어떻게 출력될지 팝업창으로 가시화합니다.</li>
-        <li><strong>여백(mm) 도구 (미리보기 화면)</strong>: 미리보기 창 상단의 도구바를 이용해 상/하/좌/우 여백을 실시간(mm단위)으로 조절할 수 있습니다! 프린터마다 여백의 고유영역이 다르기 때문에 요긴하게 쓸 수 있습니다.</li>
-        <li><button class="px-2 py-1 bg-blue-600 text-white border border-blue-600 rounded text-xs">견적서 저장</button> : DB에 저장하며, 고유한 견적 번호(<code>KIWE-연도-순번</code>)가 자동 부여(또는 갱신)됩니다.</li>
+        <li><button class="px-2 py-1 bg-white border border-blue-200 text-blue-600 rounded text-xs">중간저장</button> : 현재 작성 중인 내용을 DB에 보관합니다. <strong>견적번호가 부여되지 않으므로</strong> 번호 중복 걱정 없이 여러 번 저장할 수 있습니다. 훗날 목록에서 언제든 다시 열어 작업을 이어갈 수 있습니다.</li>
+        <li><button class="px-2 py-1 bg-blue-600 text-white rounded text-xs">견적서 최종발행</button> : 모든 작성이 끝난 후 클릭하면 비로소 정식 견적번호(<code>KIWE-연도-순번</code>)가 부여되며 직인이 포함된 공식 문서가 완성됩니다.</li>
+        <li><button class="px-2 py-1 bg-slate-700 text-white rounded text-xs">변경사항 저장</button> : 이미 번호가 발행된 견적서를 수정할 때 나타나며, 기존 번호는 유지한 채 내용만 업데이트합니다.</li>
+      </ul>
+
+      <h5>5. 스마트 그리드 기능 (Excel 호환)</h5>
+      <p>분석수수료 입력창은 엑셀과 거의 동일한 사용성을 제공합니다.</p>
+      <ul>
+        <li><strong>Ctrl+C / Ctrl+V</strong>: 엑셀 파일의 데이터를 다중 행/열 단위로 즉시 붙여넣을 수 있습니다.</li>
+        <li><strong>단가 자동 연동</strong>: 엑셀 데이터를 붙여넣는 즉시, 해당 <code>분석방법</code>에 맞는 <strong>최신 단가를 DB에서 자동으로 조회</strong>하여 입력해 줍니다. 일일이 클릭하여 단가를 불러오지 않아도 됩니다.</li>
+        <li><strong>작성자 서명</strong>: 작성 완료 시 성함 뒤에 <code>과장, 팀장</code> 등 사용자의 **직책(Position)**이 자동으로 붙어 전문성을 더해줍니다.</li>
+      </ul>
+
+      <h5>6. 미리보기 및 출력</h5>
+      <ul>
+        <li><button class="px-2 py-1 bg-white border border-slate-200 rounded text-xs">미리보기</button> : 현재 작성 중인 견적서가 A4 용지에 어떻게 출력될지 확인합니다.</li>
+        <li><strong>여백(mm) 도구</strong>: 미리보기 창 상단에서 상/하/좌/우 여백을 실시간(mm단위)으로 조절할 수 있습니다.</li>
       </ul>
     `
   },
@@ -200,7 +215,7 @@ const MANUAL_SECTIONS = [
       <ul>
         <li>달력 우상단에서 <strong>[주간 보기]</strong> / <strong>[월별 보기]</strong>를 전환할 수 있습니다.</li>
       </ul>
-      <div class="tip-box">💡 측정계획관리에서 수립한 계획이 이 달력에 자동으로 반영됩니다.</div>
+      <div class="tip-box">💡 측정계획관리에서 수립한 계획이 이 달력에 자동으로 반영됩니다. 오늘의 일정 창에서는 <strong>더 커진 복사/삭제 버튼</strong>을 통해 실수 없는 빠른 관리가 가능합니다.</div>
     `
   },
   {
@@ -310,6 +325,7 @@ const MANUAL_SECTIONS = [
         <li><strong>측정 단가 설정</strong>: 유해인자별 측정 기본 단가를 설정합니다.</li>
         <li><strong>관리비 기준</strong>: 일반 및 비용지원 관리비 기준을 설정합니다.</li>
         <li><strong>분석 항목 추가</strong>: 견적 및 측정에서 사용할 분석 항목을 추가/수정합니다.</li>
+        <li><strong>보유장비 관리</strong>: 평가원에서 보유한 장비 목록(예: 소음보정기 등)을 업데이트합니다.</li>
       </ul>
       <h4>데이터 관리</h4>
       <ul>

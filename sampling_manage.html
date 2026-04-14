@@ -539,13 +539,27 @@
                     if (f.m_date && f.pump_no) flowMap.set(`${f.m_date}_${f.pump_no}`, f.total_avg);
                 });
 
+                // ── 매핑용 정규화 키 생성 ──
+                const getMappingKey = (com, date, hazard) => {
+                    const c = (com || '').replace(/\(주\)|㈜|\s/g, '');
+                    const d = date || '';
+                    const h = (hazard || '').split(/[/(]/)[0].replace(/\s/g, '');
+                    return `${c}_${d}_${h}`;
+                };
+
                 const blankMap = new Map();
                 rawData.forEach(row => {
                     const isBlank = (row.worker_name?.includes('공시료')) || (row.sample_id?.startsWith('DB') || row.sample_id?.startsWith('SB'));
                     if (isBlank) {
-                        const gk = `${row.com_name || ''}_${row.m_date || ''}_${row.common_name || ''}`;
-                        if (!blankMap.has(gk)) blankMap.set(gk, []);
-                        blankMap.get(gk).push(row.sample_id);
+                        // 유해인자가 복합인 경우(질산/염산 등) 분리하여 각각 매핑 테이블에 등록
+                        const hazards = (row.common_name || '').split(/[/(]/).filter(Boolean);
+                        hazards.forEach(hSub => {
+                            const gk = getMappingKey(row.com_name, row.m_date, hSub.trim());
+                            if (!blankMap.has(gk)) blankMap.set(gk, []);
+                            if (!blankMap.get(gk).includes(row.sample_id)) {
+                                blankMap.get(gk).push(row.sample_id);
+                            }
+                        });
                     }
                 });
 
@@ -568,7 +582,7 @@
                         const hazardInfo = hazardMap.get(searchKey) || {};
                         const minutes = calculateMinutes(row.start_time, row.end_time, row.lunch_time);
                         const avgFlow = flowMap.get(`${row.m_date}_${row.pump_no}`) || 0;
-                        const gk = `${row.com_name || ''}_${row.m_date || ''}_${row.common_name || ''}`;
+                        const gk = getMappingKey(row.com_name, row.m_date, row.common_name);
                         return {
                             ...hazardInfo, ...row,
                             corp_code: '',
