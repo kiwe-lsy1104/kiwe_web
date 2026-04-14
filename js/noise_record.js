@@ -516,9 +516,20 @@ export function NoiseRecord({ user, supabase: supabaseProp }) {
             return nameMatch && noiseMatch;
         });
         filtered.sort((a, b) => {
+            // 1차: 날짜 (최신순/과거순)
             const da = a.m_date || '';
             const db = b.m_date || '';
-            return sortOrder === 'asc' ? da.localeCompare(db) : db.localeCompare(da);
+            const dateComp = sortOrder === 'asc' ? da.localeCompare(db) : db.localeCompare(da);
+            if (dateComp !== 0) return dateComp;
+
+            // 2차: 사업장명 (가나다순 묶기)
+            const ca = a.com_name || '';
+            const cb = b.com_name || '';
+            const comComp = ca.localeCompare(cb);
+            if (comComp !== 0) return comComp;
+
+            // 3차: 입력 순서 (시료채취대장 ID 기준)
+            return (a._samplingId || 0) - (b._samplingId || 0);
         });
         return filtered;
     }, [records, editRows, comNameFilter, noiseFilter, sortOrder]);
@@ -620,6 +631,7 @@ export function NoiseRecord({ user, supabase: supabaseProp }) {
                 return {
                     _rowKey: rowKey,
                     _noiseId: noiseRec.id || null,
+                    _samplingId: emp.id, // 정렬용 원본 ID
                     m_date: emp.m_date || '',
                     cal_date: noiseRec.cal_date || getPrevWeekday(emp.m_date),
                     com_name: emp.com_name || '',
