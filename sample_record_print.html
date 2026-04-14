@@ -489,8 +489,8 @@ function buildProcessGroups(samples, noises) {
         groups.push({ proc, rows });
     });
 
-    // 공정명 기준으로 정렬 (숫자 포함 자연 정렬, 소음만 있는 공정이 뒤로 밀리지 않게 함)
-    groups.sort((a, b) => a.proc.localeCompare(b.proc, undefined, { numeric: true, sensitivity: 'base' }));
+    // 공정명 기준으로 정렬 (주석 처리: 시료번호 순서를 유지하기 위해 가나다순 정렬을 제외함)
+    // groups.sort((a, b) => a.proc.localeCompare(b.proc, undefined, { numeric: true, sensitivity: 'base' }));
 
     return groups;
 }
