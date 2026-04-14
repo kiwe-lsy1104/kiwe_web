@@ -700,6 +700,7 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
     const [clientSearch, setClientSearch] = useState('');
     const [showClientDrop, setShowClientDrop] = useState(false);
     const [saving, setSaving] = useState(false);
+    const [initialPeriod, setInitialPeriod] = useState(null); // 로드 시점의 기간 정보 보관
 
     // DB 단가 목록 (복구됨)
     const [mgmtPrices, setMgmtPrices] = useState(DEFAULT_MANAGEMENT_COSTS);
@@ -912,6 +913,8 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
                     real_support = real_support.replace('_할인', '');
                 }
 
+                setInitialPeriod({ year: q.year, half_year: q.half_year, quote_date: q.quote_date });
+
                 setHdr({
                     ...BLANK_HDR,
                     ...q,
@@ -935,6 +938,14 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
             }
         } catch (err) { console.error('로드 실패:', err); }
     }
+
+    // 기간 변경 여부 감지 (editId가 있고 initialPeriod와 다를 경우)
+    const isPeriodChanged = useMemo(() => {
+        if (!editId || !initialPeriod) return false;
+        return hdr.year !== initialPeriod.year ||
+            hdr.half_year !== initialPeriod.half_year ||
+            hdr.quote_date !== initialPeriod.quote_date;
+    }, [hdr.year, hdr.half_year, hdr.quote_date, initialPeriod, editId]);
 
     const isYongYeok = hdr.quote_type === '용역';
     const isRental = hdr.quote_type === '장비대여';
@@ -1368,8 +1379,17 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
         setSaving(true);
         try {
             const user = JSON.parse(localStorage.getItem('kiwe_user') || '{}');
+            let qid = editId;
             let qno = hdr.quote_no || null;
             let nextSeq = hdr.quote_seq || null;
+
+            // ★ 기간(날짜/연도/반기)이 변경된 경우, 기존 기록 수정이 정황상 신규 발행이므로 
+            //   editId와 quote_no를 비워 신규 INSERT 및 신규 채번이 일어날 수 있도록 함.
+            if (isPeriodChanged) {
+                qid = null;
+                qno = null;
+                nextSeq = null;
+            }
 
             // 1. 견적번호 발행(Finalize) 요청 시에만 번호 채번
             if (isFinalize && !qno) {
@@ -1506,11 +1526,11 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
                         onClick: () => handleSave(false), disabled: saving,
                         className: 'flex items-center gap-2 px-5 py-2 bg-white text-blue-600 border border-blue-200 rounded-lg text-sm font-bold hover:bg-blue-50 transition-all shadow-sm'
                     }, e(Save, { size: 15 }), saving ? '저장 중...' : '중간저장'),
-                    !hdr.quote_no && e('button', {
+                    (!hdr.quote_no || isPeriodChanged) && e('button', {
                         onClick: () => handleSave(true), disabled: saving,
                         className: 'flex items-center gap-2 px-5 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 shadow-md transform active:scale-95 transition-all'
                     }, e(Printer, { size: 15 }), saving ? '발행 중...' : '견적서 최종발행'),
-                    hdr.quote_no && e('button', {
+                    (hdr.quote_no && !isPeriodChanged) && e('button', {
                         onClick: () => handleSave(false), disabled: saving,
                         className: 'flex items-center gap-2 px-5 py-2 bg-slate-700 text-white rounded-lg text-sm font-bold hover:bg-slate-800'
                     }, e(Save, { size: 15 }), '변경사항 저장'),
@@ -1521,6 +1541,13 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
             e('div', { className: 'flex-1 flex overflow-x-auto overflow-y-hidden bg-slate-100' },
                 // 왼쪽 패널 (설정/합계) - 폭 가변적(min 500px, max 800px)
                 e('div', { className: 'flex-[2] min-w-[500px] max-w-[800px] flex flex-col gap-6 p-6 pb-20 overflow-y-auto bg-slate-50 border-r border-slate-200 shadow-inner' },
+                    isPeriodChanged && e('div', { className: 'bg-indigo-50 border border-indigo-200 p-3 rounded-xl flex items-center justify-between animate-pulse shadow-sm' },
+                        e('div', null,
+                            e('span', { className: 'text-xs font-black text-indigo-700 block' }, '💡 기간 정보 변경 감지'),
+                            e('p', { className: 'text-[10px] text-indigo-500 font-bold' }, '날짜/연도/반기가 변경되었습니다. 저장 시 기존 기록은 유지되고 "새로운 견적"으로 저장됩니다.')
+                        ),
+                        e('span', { className: 'px-2 py-1 bg-white text-indigo-600 rounded text-[10px] font-black' }, '신규 발행 모드')
+                    ),
                     // 섹션1: 기본정보 (4열 그리드 복구)
                     e('div', { className: 'bg-white rounded-xl border border-slate-200 p-5 shadow-sm shrink-0' },
                         e('h3', { className: 'text-sm font-black text-slate-700 mb-4 pb-1 border-b flex items-center gap-2' },
