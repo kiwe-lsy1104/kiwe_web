@@ -1194,8 +1194,35 @@
             }, []);
 
             const loadClients = async () => {
-                const { data } = await supabase.from('kiwe_quotation_clients').select('id, client_name').order('client_name');
-                setClients(data || []);
+                const [{ data: qClients }, { data: companies }] = await Promise.all([
+                    supabase.from('kiwe_quotation_clients').select('id, client_name, com_id').order('client_name'),
+                    supabase.from('kiwe_companies').select('com_id, com_name, com_reg_no, address, ceo_name, tel, fax, biz_type, main_product').order('com_name')
+                ]);
+
+                const registeredMap = (qClients || []).reduce((acc, c) => {
+                    if (c.com_id) acc[c.com_id] = c.id;
+                    return acc;
+                }, {});
+
+                const unified = (companies || []).map(co => ({
+                    id: registeredMap[co.com_id] || null, // 이미 등록되어 있으면 그 ID 사용
+                    client_name: co.com_name,
+                    com_id: co.com_id,
+                    isRegistered: !!registeredMap[co.com_id],
+                    comData: co
+                }));
+
+                // kiwe_quotation_clients에는 있지만 kiwe_companies에는 매핑되지 않은 데이터도 추가
+                const linkedComIds = new Set((companies || []).map(co => co.com_id));
+                const extras = (qClients || []).filter(qc => !qc.com_id || !linkedComIds.has(qc.com_id)).map(qc => ({
+                    id: qc.id,
+                    client_name: qc.client_name,
+                    com_id: qc.com_id,
+                    isRegistered: true,
+                    comData: null
+                }));
+
+                setClients([...unified, ...extras].sort((a,b) => a.client_name.localeCompare(b.client_name)));
             };
 
             const loadStdMgmt = async () => {
@@ -1210,10 +1237,39 @@
             };
 
             const selectClient = async (c) => {
-                setSelectedClient(c);
+                let finalId = c.id;
+                
+                // 만약 사업장에는 있지만 거래처(kiwe_quotation_clients)에는 없다면 자동 등록
+                if (!finalId && c.comData) {
+                    if (!confirm(`'${c.client_name}'은(는) 아직 견적 거래처로 등록되지 않았습니다.\n거래처로 등록하고 계약단가 설정을 진행하시겠습니까?`)) return;
+                    
+                    const payload = {
+                        client_name: c.comData.com_name,
+                        com_id: c.comData.com_id,
+                        biz_reg_no: c.comData.com_reg_no,
+                        address: c.comData.address,
+                        ceo_name: c.comData.ceo_name,
+                        manager_name: c.comData.ceo_name,
+                        tel: c.comData.tel,
+                        fax: c.comData.fax,
+                        biz_type: c.comData.biz_type,
+                        biz_item: c.comData.main_product,
+                        updated_at: new Date().toISOString()
+                    };
+                    
+                    const { data: ins, error } = await supabase.from('kiwe_quotation_clients').insert(payload).select().single();
+                    if (error) { alert('거래처 등록 실패: ' + error.message); return; }
+                    finalId = ins.id;
+                    // 등록 후 목록 갱신 및 선택 처리
+                    await loadClients();
+                }
+
+                if (!finalId) return;
+
+                setSelectedClient({ ...c, id: finalId });
                 setSearchText(c.client_name);
                 setShowDrop(false);
-                await loadContractData(c.id);
+                await loadContractData(finalId);
             };
 
             const loadContractData = async (clientId) => {
@@ -1332,11 +1388,16 @@
                             placeholder: '거래처명 검색...',
                             className: 'w-full px-4 py-3 border-2 border-rose-200 rounded-xl outline-none focus:border-rose-500 font-bold text-slate-800'
                         }),
-                        showDrop && fClients.length > 0 && e('div', { className: 'absolute z-20 w-full bg-white border border-slate-200 rounded-xl shadow-xl max-h-48 overflow-y-auto mt-1' },
+                        showDrop && fClients.length > 0 && e('div', { className: 'absolute z-20 w-full bg-white border border-slate-200 rounded-xl shadow-xl max-h-64 overflow-y-auto mt-1' },
                             fClients.map(c => e('div', {
-                                key: c.id, onClick: () => selectClient(c),
-                                className: 'px-4 py-2.5 hover:bg-rose-50 cursor-pointer text-sm font-bold border-b border-slate-50'
-                            }, c.client_name))
+                                key: c.com_id || c.id, onClick: () => selectClient(c),
+                                className: 'px-4 py-2.5 hover:bg-rose-50 cursor-pointer text-sm font-bold border-b border-slate-50 flex items-center justify-between'
+                            }, 
+                                e('span', null, c.client_name),
+                                c.isRegistered 
+                                    ? e('span', { className: 'text-[9px] px-1.5 py-0.5 bg-emerald-100 text-emerald-600 rounded uppercase font-black' }, 'Registered')
+                                    : e('span', { className: 'text-[9px] px-1.5 py-0.5 bg-rose-100 text-rose-600 rounded uppercase font-black' }, 'New')
+                            ))
                         )
                     ),
                     selectedClient && e('div', { className: 'mt-3 flex items-center gap-2' },
