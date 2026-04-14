@@ -1379,14 +1379,14 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
         setSaving(true);
         try {
             const user = JSON.parse(localStorage.getItem('kiwe_user') || '{}');
-            let qid = editId;
+            let qId = editId;
             let qno = hdr.quote_no || null;
             let nextSeq = hdr.quote_seq || null;
 
             // ★ 기간(날짜/연도/반기)이 변경된 경우, 기존 기록 수정이 정황상 신규 발행이므로 
             //   editId와 quote_no를 비워 신규 INSERT 및 신규 채번이 일어날 수 있도록 함.
             if (isPeriodChanged) {
-                qid = null;
+                qId = null;
                 qno = null;
                 nextSeq = null;
             }
@@ -1452,21 +1452,21 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
             }
 
             // 2. 신규 INSERT 또는 기존 UPDATE
-            if (qid) {
-                const { error: updErr } = await sb.from('kiwe_quotations').update(payload).eq('id', qid);
+            if (qId) {
+                const { error: updErr } = await sb.from('kiwe_quotations').update(payload).eq('id', qId);
                 if (updErr) throw updErr;
             } else {
                 const { data: ins, error: insErr } = await sb.from('kiwe_quotations').insert(payload).select().single();
                 if (insErr) throw insErr;
-                qid = ins.id;
+                qId = ins.id;
             }
 
             // 3. 아이템 저장: 기존 것 삭제 후 재삽입 (동기화)
-            if (qid) {
-                await sb.from('kiwe_quotation_items').delete().eq('quotation_id', qid);
+            if (qId) {
+                await sb.from('kiwe_quotation_items').delete().eq('quotation_id', qId);
                 if (items.length > 0) {
                     await sb.from('kiwe_quotation_items').insert(items.map((it, i) => ({
-                        quotation_id: qid, sort_order: i,
+                        quotation_id: qId, sort_order: i,
                         work_process: it.work_process, hazard_name: it.hazard_name,
                         analysis_method: it.analysis_method, unit_type: it.unit_type || '식',
                         quantity: Number(it.quantity), unit_price: Number(it.unit_price), remarks: it.remarks
@@ -1477,7 +1477,7 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
             alert(isFinalize ? `견적서가 최종 발행되었습니다.\n견적번호: ${qno}` : '저장되었습니다. (중간저장)');
             
             // 저장 후 편집 모드로 전환하여 현재 ID 유지
-            await loadEdit(qid);
+            await loadEdit(qId);
             if (onSave) onSave(); // 목록 갱신 트리거
         } catch (err) { alert('저장 실패: ' + err.message); }
         finally { setSaving(false); }
