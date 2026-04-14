@@ -276,7 +276,7 @@ export function openPrintPreview(hdr, items, mgmtFee, itemsTotal, sub, disc, vat
                         <td style="text-align:center;">${it.unit_type}</td>
                         <td style="text-align:right;">${fmt(it.unit_price)}</td>
                         <td style="text-align:right; font-weight:bold;">${fmt(amt)}</td>
-                        ${rmSpan > 0 ? `<td rowspan="${rmSpan}" style="text-align:center; vertical-align:middle; font-size: 7.5pt;">${it.remarks || ''}</td>` : ''}
+                        ${rmSpan > 0 ? `<td rowspan="${rmSpan}" style="text-align:center; vertical-align:middle; font-size: 7.5pt; color: #1d4ed8;">${it.remarks || ''}</td>` : ''}
                     </tr>
                 `;
             } else if (isRental) {
@@ -292,7 +292,7 @@ export function openPrintPreview(hdr, items, mgmtFee, itemsTotal, sub, disc, vat
                         <td style="text-align:center;">${it.unit_type}</td>
                         <td style="text-align:right;">${fmt(it.unit_price)}</td>
                         <td style="text-align:right; font-weight:bold;">${fmt(amt)}</td>
-                        ${rmSpan > 0 ? `<td rowspan="${rmSpan}" style="text-align:center; vertical-align:middle; font-size: 7.5pt;">${it.remarks || ''}</td>` : ''}
+                        ${rmSpan > 0 ? `<td rowspan="${rmSpan}" style="text-align:center; vertical-align:middle; font-size: 7.5pt; color: #1d4ed8;">${it.remarks || ''}</td>` : ''}
                     </tr>
                 `;
             } else {
@@ -307,7 +307,7 @@ export function openPrintPreview(hdr, items, mgmtFee, itemsTotal, sub, disc, vat
                         <td style="text-align:center;">${it.quantity}</td>
                         <td style="text-align:right;">${fmt(it.unit_price)}</td>
                         <td style="text-align:right; font-weight:bold;">${fmt(it.unit_price * it.quantity)}</td>
-                        ${rmSpan > 0 ? `<td rowspan="${rmSpan}" style="text-align:center; vertical-align:middle; font-size: 7.5pt;">${it.remarks || ''}</td>` : ''}
+                        ${rmSpan > 0 ? `<td rowspan="${rmSpan}" style="text-align:center; vertical-align:middle; font-size: 7.5pt; color: #1d4ed8;">${it.remarks || ''}</td>` : ''}
                     </tr>
                 `;
             }
