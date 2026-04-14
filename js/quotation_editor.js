@@ -715,7 +715,7 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
         else {
             // 새 견적서인 경우 로그인 사용자명 세팅
             const user = JSON.parse(localStorage.getItem('kiwe_user') || '{}');
-            const title = user.position || ''; // '측정자' 등 job_title 대신 직급(position) 우선 표시
+            const title = user.position || user.job_title || ''; 
             const userNameWithTitle = user.user_name ? `${user.user_name}${title ? ' ' + title : ''}` : '';
             setH('manager_name', userNameWithTitle);
         }
@@ -1138,8 +1138,6 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
 
     // 셀 값 읽기
     function getCellValue(item, field) {
-        if (field === 'work_process_ro') return item.work_process || '';
-        if (field === 'hazard_name_ro')  return item.hazard_name  || '';
         if (field === 'unit_price')      return item.unit_price != null ? String(item.unit_price) : '0';
         if (field === 'quantity')        return item.quantity  != null ? String(item.quantity)  : '1';
         if (field === '_amount') {
@@ -1149,27 +1147,43 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
         return item[field] != null ? String(item[field]) : '';
     }
 
+    // 개별 필드 업데이트 및 단가 연동 로직 통합
+    function getUpdatedItem(item, field, rawValue) {
+        let u = { ...item };
+        let val = rawValue;
+
+        if (field === 'quantity' || field === 'unit_price') {
+            val = Number(String(rawValue).replace(/[^0-9.-]/g, '')) || 0;
+        }
+        u[field] = val;
+
+        // analysis_method 변경 시 단가 자동 세팅 (측정 모드)
+        if (field === 'analysis_method') {
+            const found = analysisPrices.find(h => h.item_name === val);
+            if (found) u.unit_price = found.unit_price;
+            else {
+                const ef = engPrices.find(f => f.item_name === val);
+                if (ef) u.unit_price = ef.unit_price;
+            }
+        }
+        // hazard_name 변경 시 단가 자동 세팅 (장비대여/용역 모드)
+        if (field === 'hazard_name') {
+            if (hdr.quote_type === '장비대여') {
+                const rf = rentalPrices.find(f => f.item_name === val);
+                if (rf) u.unit_price = rf.unit_price;
+            } else if (hdr.quote_type === '용역') {
+                const ef = engPrices.find(f => f.item_name === val);
+                if (ef) u.unit_price = ef.unit_price;
+            }
+        }
+        return u;
+    }
+
     // 셀 값 쓰기
     function setCellValue(rowIdx, field, raw) {
-        if (field === 'work_process_ro' || field === 'hazard_name_ro') return; // 읽기 전용
         setItems(prev => prev.map((it, i) => {
             if (i !== rowIdx) return it;
-            let u = { ...it };
-            let val = raw;
-            if (field === 'quantity' || field === 'unit_price') {
-                val = Number(String(raw).replace(/[^0-9.-]/g, '')) || 0;
-            }
-            u[field] = val;
-            // analysis_method 변경 시 단가 자동 세팅
-            if (field === 'analysis_method') {
-                const found = analysisPrices.find(h => h.item_name === val);
-                if (found) u.unit_price = found.unit_price;
-                else { const ef = engPrices.find(f => f.item_name === val); if (ef) u.unit_price = ef.unit_price; }
-            }
-            if (field === 'hazard_name' && hdr.quote_type === '장비대여') {
-                const ef = rentalPrices.find(f => f.item_name === val); if (ef) u.unit_price = ef.unit_price;
-            }
-            return u;
+            return getUpdatedItem(it, field, raw);
         }));
     }
 
@@ -1204,27 +1218,34 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
         const startCol = selAnchor.col;
         const startRow = selAnchor.row;
         const rows = text.split(/\r?\n/).filter(r => r !== '');
-        const newItems = [...items];
-        rows.forEach((row, ri) => {
-            const cols = row.split('\t');
-            const targetRow = startRow + ri;
-            if (!newItems[targetRow]) {
-                newItems[targetRow] = { ...BLANK_ITEM(targetRow), _id: Date.now() + targetRow };
-            }
-            cols.forEach((val, ci) => {
-                const f = fields[startCol + ci];
-                if (!f) return;
-                if (f === 'work_process_ro' || f === 'hazard_name_ro' || f === '_amount') return;
-                let finalVal = val.trim();
-                if (f === 'quantity' || f === 'unit_price') {
-                    finalVal = Number(finalVal.replace(/[^0-9.-]/g, '')) || 0;
+        
+        setItems(prev => {
+            const newItems = [...prev];
+            rows.forEach((row, ri) => {
+                const cols = row.split('\t');
+                const targetRow = startRow + ri;
+                
+                // 새로운 행이 필요한 경우 생성
+                if (!newItems[targetRow]) {
+                    newItems[targetRow] = { ...BLANK_ITEM(targetRow), _id: Date.now() + ri };
+                } else {
+                    // 객체 불변성 유지 (한 번만 클론)
+                    newItems[targetRow] = { ...newItems[targetRow] };
                 }
-                newItems[targetRow][f] = finalVal;
+
+                cols.forEach((val, ci) => {
+                    const f = fields[startCol + ci];
+                    if (!f || f === '_amount') return;
+                    
+                    // 통합 업데이트 함수 사용 (단가 연동 포함)
+                    newItems[targetRow] = getUpdatedItem(newItems[targetRow], f, val.trim());
+                });
             });
+            return newItems;
         });
-        setItems(newItems);
+
         // 선택 범위 업데이트
-        const endRow = Math.min(startRow + rows.length - 1, newItems.length - 1);
+        const endRow = Math.min(startRow + rows.length - 1, (items.length + rows.length)); // 대략적 범위
         const endCol = Math.min(startCol + (rows[0]?.split('\t').length || 1) - 1, fields.length - 1);
         setSelFocus({ row: endRow, col: endCol });
     }
@@ -1339,38 +1360,40 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
         if (gridRef.current && selAnchor && !editCell) gridRef.current.focus();
     }, [selAnchor, editCell]);
 
-    // 저장: 기존 editId와 관계없이 항상 신규 INSERT → 해당 연도의 새 KIWE 번호 부여
-    async function doSave() {
+    // 저장 로직 개편: 중간저장(Draft) vs 최종발행(Finalize)
+    async function handleSave(isFinalize = false) {
         if (!hdr.client_name.trim()) return alert('거래처명을 입력하세요.');
+        if (isFinalize && !confirm('견적번호를 부여하고 최종 발행하시겠습니까?')) return;
+        
         setSaving(true);
         try {
             const user = JSON.parse(localStorage.getItem('kiwe_user') || '{}');
+            let qno = hdr.quote_no || null;
+            let nextSeq = hdr.quote_seq || null;
 
-            // 1. 해당 연도 기준 최대 시퀀스 및 번호 문자열 조회 (INSERT 전 채번)
-            // quote_seq뿐만 아니라 quote_no 문자열에서도 숫자를 추출하여 합산 비교 (사용자 수동 수정 대응)
-            const { data: qData } = await sb.from('kiwe_quotations')
-                .select('quote_seq, quote_no')
-                .eq('year', hdr.year);
+            // 1. 견적번호 발행(Finalize) 요청 시에만 번호 채번
+            if (isFinalize && !qno) {
+                const { data: qData } = await sb.from('kiwe_quotations')
+                    .select('quote_seq, quote_no')
+                    .eq('year', hdr.year);
 
-            let maxSeq = 0;
-            if (qData && qData.length > 0) {
-                qData.forEach(q => {
-                    const s = q.quote_seq || 0;
-                    if (s > maxSeq) maxSeq = s;
-
-                    // 문자열 기반 파싱 (KIWE-2026-054 등)
-                    // ★ 반드시 현재 연도와 일치하는 quote_no만 파싱 (다른 연도 번호로 오염 방지)
-                    if (q.quote_no) {
-                        const yearMatch = q.quote_no.match(/KIWE-(\d{4})-(\d+)/);
-                        if (yearMatch && parseInt(yearMatch[1], 10) === hdr.year) {
-                            const num = parseInt(yearMatch[2], 10);
-                            if (!isNaN(num) && num > maxSeq) maxSeq = num;
+                let maxSeq = 0;
+                if (qData && qData.length > 0) {
+                    qData.forEach(q => {
+                        const s = q.quote_seq || 0;
+                        if (s > maxSeq) maxSeq = s;
+                        if (q.quote_no) {
+                            const yearMatch = q.quote_no.match(/KIWE-(\d{4})-(\d+)/);
+                            if (yearMatch && parseInt(yearMatch[1], 10) === hdr.year) {
+                                const num = parseInt(yearMatch[2], 10);
+                                if (!isNaN(num) && num > maxSeq) maxSeq = num;
+                            }
                         }
-                    }
-                });
+                    });
+                }
+                nextSeq = maxSeq + 1;
+                qno = `KIWE-${hdr.year}-${String(nextSeq).padStart(3, '0')}`;
             }
-            const nextSeq = maxSeq + 1;
-            const qno = `KIWE-${hdr.year}-${String(nextSeq).padStart(3, '0')}`;
 
             const payload = {
                 year: hdr.year, half_year: hdr.half_year, quote_date: hdr.quote_date,
@@ -1392,38 +1415,52 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
                 title: hdr.title || '작업환경측정 견적서',
                 actual_amount: sub,
                 total_amount: total,
-                payment_terms: hdr.payment_terms, notes: hdr.notes, status: hdr.status,
+                payment_terms: hdr.payment_terms, notes: hdr.notes, 
+                status: isFinalize ? '완료' : hdr.status,
                 manager_name: (() => {
-                    const title = user.job_title || user.position || '';
+                    const title = user.position || user.job_title || '';
                     return user.user_name ? `${user.user_name}${title ? ' ' + title : ''}` : (hdr.manager_name || '이승용');
-                })(),
-                created_by: (() => {
-                    const title = user.job_title || user.position || '';
-                    return user.user_name ? `${user.user_name}${title ? ' ' + title : ''}` : '이승용';
                 })(),
                 updated_at: new Date().toISOString(),
                 quote_no: qno,
                 quote_seq: nextSeq
             };
 
-            // 2. 신규 INSERT (채번된 번호 포함하여 저장)
-            const { data: ins, error: insErr } = await sb.from('kiwe_quotations').insert(payload).select().single();
-            if (insErr) throw insErr;
-            const qid = ins.id;
-
-            // 아이템 저장
-            if (items.length > 0) {
-                await sb.from('kiwe_quotation_items').insert(items.map((it, i) => ({
-                    quotation_id: qid, sort_order: i,
-                    work_process: it.work_process, hazard_name: it.hazard_name,
-                    analysis_method: it.analysis_method, unit_type: it.unit_type || '식',
-                    quantity: Number(it.quantity), unit_price: Number(it.unit_price), remarks: it.remarks
-                })));
+            // 신규 작성 시에만 created_by 추가
+            if (!editId) {
+                payload.created_by = payload.manager_name;
             }
 
-            alert(`저장되었습니다.\n새 견적번호: ${qno}`);
+            let qid = editId;
+
+            // 2. 신규 INSERT 또는 기존 UPDATE
+            if (qid) {
+                const { error: updErr } = await sb.from('kiwe_quotations').update(payload).eq('id', qid);
+                if (updErr) throw updErr;
+            } else {
+                const { data: ins, error: insErr } = await sb.from('kiwe_quotations').insert(payload).select().single();
+                if (insErr) throw insErr;
+                qid = ins.id;
+            }
+
+            // 3. 아이템 저장: 기존 것 삭제 후 재삽입 (동기화)
+            if (qid) {
+                await sb.from('kiwe_quotation_items').delete().eq('quotation_id', qid);
+                if (items.length > 0) {
+                    await sb.from('kiwe_quotation_items').insert(items.map((it, i) => ({
+                        quotation_id: qid, sort_order: i,
+                        work_process: it.work_process, hazard_name: it.hazard_name,
+                        analysis_method: it.analysis_method, unit_type: it.unit_type || '식',
+                        quantity: Number(it.quantity), unit_price: Number(it.unit_price), remarks: it.remarks
+                    })));
+                }
+            }
+
+            alert(isFinalize ? `견적서가 최종 발행되었습니다.\n견적번호: ${qno}` : '저장되었습니다. (중간저장)');
+            
+            // 저장 후 편집 모드로 전환하여 현재 ID 유지
             await loadEdit(qid);
-            if (onSave) onSave();
+            if (onSave) onSave(); // 목록 갱신 트리거
         } catch (err) { alert('저장 실패: ' + err.message); }
         finally { setSaving(false); }
     }
@@ -1466,9 +1503,17 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
                         className: 'flex items-center gap-2 px-5 py-2 bg-slate-100 text-slate-700 rounded-lg text-sm font-bold hover:bg-slate-200'
                     }, e(Eye, { size: 15 }), '미리보기'),
                     e('button', {
-                        onClick: doSave, disabled: saving,
-                        className: 'flex items-center gap-2 px-5 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700'
-                    }, e(Save, { size: 15 }), saving ? '저장 중...' : '견적서 저장'),
+                        onClick: () => handleSave(false), disabled: saving,
+                        className: 'flex items-center gap-2 px-5 py-2 bg-white text-blue-600 border border-blue-200 rounded-lg text-sm font-bold hover:bg-blue-50 transition-all shadow-sm'
+                    }, e(Save, { size: 15 }), saving ? '저장 중...' : '중간저장'),
+                    !hdr.quote_no && e('button', {
+                        onClick: () => handleSave(true), disabled: saving,
+                        className: 'flex items-center gap-2 px-5 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 shadow-md transform active:scale-95 transition-all'
+                    }, e(Printer, { size: 15 }), saving ? '발행 중...' : '견적서 최종발행'),
+                    hdr.quote_no && e('button', {
+                        onClick: () => handleSave(false), disabled: saving,
+                        className: 'flex items-center gap-2 px-5 py-2 bg-slate-700 text-white rounded-lg text-sm font-bold hover:bg-slate-800'
+                    }, e(Save, { size: 15 }), '변경사항 저장'),
                     e('button', { onClick: onCancel, className: 'p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg ml-2' }, e(X, { size: 22 }))
                 )
             ),
@@ -1828,7 +1873,7 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
 
                                                 // 데이터 셀 (fields 순서대로)
                                                 ...fields.map((field, colIdx) => {
-                                                    const isReadOnly = field === 'work_process_ro' || field === 'hazard_name_ro' || field === '_amount';
+                                                    const isReadOnly = field === '_amount';
                                                     const isEditing = editCell && editCell.row === rowIdx && editCell.col === colIdx;
                                                     const selected  = inRange(rowIdx, colIdx);
                                                     const anchor    = isAnchor(rowIdx, colIdx);
