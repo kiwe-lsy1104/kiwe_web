@@ -1451,8 +1451,6 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
                 payload.created_by = payload.manager_name;
             }
 
-            let qid = editId;
-
             // 2. 신규 INSERT 또는 기존 UPDATE
             if (qid) {
                 const { error: updErr } = await sb.from('kiwe_quotations').update(payload).eq('id', qid);
