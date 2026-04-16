@@ -385,154 +385,237 @@
             );
         }
 
-        // ==== TAB 3: 지정현황 ====
+        // ==== TAB 3: 지정현황 (이력 관리제 개편) ====
         function AgencyTab() {
             const [agencies, setAgencies] = useState([]);
-            const [isModalOpen, setIsModalOpen] = useState(false);
-            const [formData, setFormData] = useState({ id: '', approval_date: '', office_name: '안산', limit_under_5: 0, limit_over_5: 0 });
-            const [isEdit, setIsEdit] = useState(false);
+            const [historyModal, setHistoryModal] = useState({ isOpen: false, office: null });
+            const [renewModal, setRenewModal] = useState({ isOpen: false, office: null });
+            const [formData, setFormData] = useState({ 
+                approval_date: new Date().toISOString().split('T')[0], 
+                office_name: '안산', 
+                limit_under_5: 0, 
+                limit_over_5: 0,
+                change_reason: '' 
+            });
 
             useEffect(() => { fetchAgencies(); }, []);
 
-            useEffect(() => {
-                const handleEsc = (e) => {
-                    if (e.key === 'Escape') setIsModalOpen(false);
-                };
-                window.addEventListener('keydown', handleEsc);
-                return () => window.removeEventListener('keydown', handleEsc);
-            }, []);
-
             const fetchAgencies = async () => {
-                const { data } = await supabase.from('kiwe_agencies').select('*').order('id');
+                const { data } = await supabase.from('kiwe_agencies').select('*').order('approval_date', { ascending: true });
                 setAgencies(data || []);
             };
 
-            const stats = useMemo(() => {
-                const totalUnder5 = agencies.reduce((sum, a) => sum + (Number(a.limit_under_5) || 0), 0);
-                const totalOver5 = agencies.reduce((sum, a) => sum + (Number(a.limit_over_5) || 0), 0);
-                return { totalUnder5, totalOver5 };
+            // 지청별 요약 데이터 계산
+            const officeSummaries = useMemo(() => {
+                const groups = {};
+                agencies.forEach(a => {
+                    const name = a.office_name || '기타';
+                    if (!groups[name]) {
+                        groups[name] = {
+                            initialDate: a.approval_date,
+                            latestDate: a.approval_date,
+                            currentUnder5: a.limit_under_5,
+                            currentOver5: a.limit_over_5,
+                            latestReason: a.change_reason || '-',
+                            history: []
+                        };
+                    }
+                    groups[name].latestDate = a.approval_date;
+                    groups[name].currentUnder5 = a.limit_under_5;
+                    groups[name].currentOver5 = a.limit_over_5;
+                    groups[name].latestReason = a.change_reason || '-';
+                    groups[name].history.push(a);
+                });
+                return Object.entries(groups).map(([name, data]) => ({ name, ...data }));
             }, [agencies]);
 
-            const openNew = () => {
-                setFormData({ approval_date: '', office_name: '안산', limit_under_5: 0, limit_over_5: 0 });
-                setIsEdit(false);
-                setIsModalOpen(true);
-            };
-
-            const openEdit = (a) => {
+            const handleRenew = (officeName) => {
+                const latest = officeSummaries.find(s => s.name === officeName);
                 setFormData({
-                    id: a.id,
-                    approval_date: a.approval_date || '',
-                    office_name: a.office_name || '안산',
-                    limit_under_5: a.limit_under_5 || 0,
-                    limit_over_5: a.limit_over_5 || 0
+                    approval_date: new Date().toISOString().split('T')[0],
+                    office_name: officeName,
+                    limit_under_5: latest ? latest.currentUnder5 : 0,
+                    limit_over_5: latest ? latest.currentOver5 : 0,
+                    change_reason: ''
                 });
-                setIsEdit(true);
-                setIsModalOpen(true);
+                setRenewModal({ isOpen: true, office: officeName });
             };
 
-            const closeModal = () => setIsModalOpen(false);
-
-            const handleSave = async (e) => {
+            const handleSaveRenewal = async (e) => {
                 e.preventDefault();
-                const payload = {
-                    approval_date: formData.approval_date,
-                    office_name: formData.office_name,
-                    limit_under_5: Number(formData.limit_under_5),
-                    limit_over_5: Number(formData.limit_over_5)
-                };
-                if (isEdit) await supabase.from('kiwe_agencies').update(payload).eq('id', formData.id);
-                else await supabase.from('kiwe_agencies').insert([payload]);
-                closeModal(); fetchAgencies();
-            };
-
-            const handleDelete = async () => {
-                if (confirm('삭제하시겠습니까?')) {
-                    await supabase.from('kiwe_agencies').delete().eq('id', formData.id);
-                    closeModal(); fetchAgencies();
+                const { error } = await supabase.from('kiwe_agencies').insert([formData]);
+                if (error) alert('저장 실패: ' + error.message);
+                else {
+                    setRenewModal({ isOpen: false, office: null });
+                    fetchAgencies();
                 }
             };
 
-            return e('div', { className: "max-w-7xl mx-auto space-y-6" },
-                e('div', { className: "flex justify-between items-center px-2" },
-                    e('div', { className: "space-y-1" },
-                        e('h2', { className: "text-2xl font-black text-slate-800" }, "지정현황"),
-                        e('p', { className: "text-slate-500 font-medium" }, "연간 측정 한도 및 지청별 지정 상태를 관리합니다.")
-                    ),
-                    e('button', { onClick: openNew, className: "bg-emerald-600 text-white px-8 py-3 rounded-xl font-bold hover:bg-emerald-700 shadow-lg transition-all transform hover:-translate-y-1" }, "지정 정보 추가")
-                ),
-                e('div', { className: "grid grid-cols-2 gap-6 mb-6" },
-                    e('div', { className: "bg-white p-6 rounded-2xl border border-emerald-100 shadow-sm flex flex-col items-center justify-center gap-1" },
-                        e('p', { className: "text-xs font-bold text-emerald-600 uppercase tracking-widest" }, "지정한계 (5인 미만) 총계"),
-                        e('p', { className: "text-3xl font-black text-slate-800" }, stats.totalUnder5.toLocaleString(), e('span', { className: "text-sm font-bold text-slate-400 ml-1" }, "건"))
-                    ),
-                    e('div', { className: "bg-white p-6 rounded-2xl border border-indigo-100 shadow-sm flex flex-col items-center justify-center gap-1" },
-                        e('p', { className: "text-xs font-bold text-indigo-600 uppercase tracking-widest" }, "지정한계 (5인 이상) 총계"),
-                        e('p', { className: "text-3xl font-black text-slate-800" }, stats.totalOver5.toLocaleString(), e('span', { className: "text-sm font-bold text-slate-400 ml-1" }, "건"))
-                    )
-                ),
-                e('div', { className: "bg-white rounded-2xl shadow-lg border border-slate-100 overflow-hidden" },
-                    e('table', { className: "w-full text-left" },
-                        e('thead', { className: "bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider text-sm" },
-                            e('tr', null,
-                                e('th', { className: "px-8 py-4" }, "관할지청"),
-                                e('th', { className: "px-8 py-4" }, "지정통보일"),
-                                e('th', { className: "px-8 py-4" }, "지정한계 (5인미만)"),
-                                e('th', { className: "px-8 py-4" }, "지정한계 (5인이상)"),
-                                e('th', { className: "px-8 py-4 text-right pr-20" }, "수정/관리")
-                            )
+            const HistoryModal = ({ isOpen, office, onClose }) => {
+                if (!isOpen) return null;
+                const summary = officeSummaries.find(s => s.name === office);
+                const history = summary ? [...summary.history].reverse() : [];
+
+                return e('div', { className: "fixed inset-0 bg-slate-900/70 backdrop-blur-sm flex items-center justify-center z-50 p-6" },
+                    e('div', { className: "bg-white rounded-3xl shadow-2xl w-full max-w-4xl overflow-hidden animate-slideUp flex flex-col max-h-[85vh]" },
+                        e('div', { className: "p-6 border-b bg-slate-50 flex justify-between items-center" },
+                            e('div', null,
+                                e('h3', { className: "text-xl font-black text-slate-800" }, `[${office}] 지정 현황 변경 이력`),
+                                e('p', { className: "text-sm text-slate-500 font-medium" }, "최초 지정부터 현재까지의 모든 변경 내역입니다.")
+                            ),
+                            e('button', { onClick: onClose, className: "p-2 hover:bg-slate-200 rounded-full" }, "✕")
                         ),
-                        e('tbody', { className: "divide-y divide-slate-100 text-base" },
-                            agencies.map(a => e('tr', { key: a.id, className: "hover:bg-emerald-50/50 transition-colors" },
-                                e('td', { className: "px-8 py-4 font-black text-slate-800" }, a.office_name),
-                                e('td', { className: "px-8 py-4 text-slate-500 text-sm font-bold" }, a.approval_date || '-'),
-                                e('td', { className: "px-8 py-4 font-bold text-blue-600" }, `${a.limit_under_5.toLocaleString()} 건`),
-                                e('td', { className: "px-8 py-4 font-bold text-indigo-600" }, `${a.limit_over_5.toLocaleString()} 건`),
-                                e('td', { className: "px-8 py-4 text-right pr-12" },
-                                    e('button', { onClick: () => openEdit(a), className: "bg-slate-100 text-slate-700 font-bold px-6 py-2 rounded-lg hover:bg-slate-200 transition-colors text-sm" }, "수정/관리")
-                                )
-                            ))
-                        )
-                    )
-                ),
-                isModalOpen && e('div', { className: "fixed inset-0 bg-slate-900/70 backdrop-blur-sm flex items-center justify-center z-50 p-6" },
-                    e('div', { className: "bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden animate-slideUp" },
-                        e('div', { className: "p-6 border-b bg-slate-50" },
-                            e('h3', { className: "text-xl font-black text-slate-800" }, isEdit ? '지정 정보 수정' : '신규 지정 정보 등록')
-                        ),
-                        e('form', { onSubmit: handleSave, className: "p-8 space-y-6" },
-                            e('div', { className: "grid grid-cols-2 gap-4" },
-                                e('div', { className: "space-y-1" },
-                                    e('label', { className: "text-xs font-bold text-slate-400" }, "지정일자 (approval_date)"),
-                                    e('input', { type: "date", value: formData.approval_date, onChange: (ev) => setFormData({ ...formData, approval_date: ev.target.value }), className: "w-full p-3 border rounded-xl" })
-                                ),
-                                e('div', { className: "space-y-1" },
-                                    e('label', { className: "text-xs font-bold text-slate-400" }, "관할지청 (office_name)"),
-                                    e('select', { value: formData.office_name, onChange: (ev) => setFormData({ ...formData, office_name: ev.target.value }), className: "w-full p-3 border rounded-xl font-bold" },
-                                        e('option', { value: "안산" }, "안산"),
-                                        e('option', { value: "경기" }, "경기"),
-                                        e('option', { value: "평택" }, "평택"),
-                                        e('option', { value: "서울서부" }, "서울서부"),
-                                        e('option', { value: "기타" }, "기타")
+                        e('div', { className: "p-6 overflow-y-auto" },
+                            e('table', { className: "w-full text-left" },
+                                e('thead', { className: "bg-slate-50 border-b text-xs font-bold text-slate-500 uppercase tracking-wider" },
+                                    e('tr', null,
+                                        e('th', { className: "px-6 py-3" }, "통보일자(지정일)"),
+                                        e('th', { className: "px-6 py-3" }, "5인 미만 한도"),
+                                        e('th', { className: "px-6 py-3" }, "5인 이상 한도"),
+                                        e('th', { className: "px-6 py-3" }, "변경 사유 / 비고")
                                     )
                                 ),
+                                e('tbody', { className: "divide-y divide-slate-100" },
+                                    history.map((h, i) => e('tr', { key: i, className: "hover:bg-slate-50" },
+                                        e('td', { className: "px-6 py-4 font-bold text-slate-700" }, h.approval_date),
+                                        e('td', { className: "px-6 py-4 font-bold text-blue-600" }, `${Number(h.limit_under_5).toLocaleString()} 건`),
+                                        e('td', { className: "px-6 py-4 font-bold text-indigo-600" }, `${Number(h.limit_over_5).toLocaleString()} 건`),
+                                        e('td', { className: "px-6 py-4 text-slate-500 text-sm font-medium" }, h.change_reason || '-')
+                                    ))
+                                )
+                            )
+                        ),
+                        e('div', { className: "p-6 border-t bg-slate-50 flex justify-end" },
+                            e('button', { onClick: onClose, className: "px-6 py-2 bg-slate-700 text-white font-bold rounded-xl" }, "닫기")
+                        )
+                    )
+                );
+            };
+
+            return e('div', { className: "max-w-7xl mx-auto space-y-8" },
+                e('div', { className: "flex justify-between items-end px-2" },
+                    e('div', { className: "space-y-2" },
+                        e('h2', { className: "text-3xl font-black text-slate-800" }, "지정현황 관리"),
+                        e('p', { className: "text-slate-500 font-bold text-lg" }, "평가원 지정 상태 및 연간 측정 한도 이력을 통합 관리합니다.")
+                    ),
+                    e('button', { 
+                        onClick: () => handleRenew('안산'), 
+                        className: "bg-blue-600 text-white px-8 py-3 rounded-2xl font-black hover:bg-blue-700 shadow-xl transition-all transform hover:-translate-y-1 flex items-center gap-2" 
+                    }, "신규 지정/변경 등록")
+                ),
+
+                // 지청별 요약 카드 그리드
+                e('div', { className: "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" },
+                    officeSummaries.map((s, idx) => e('div', { 
+                        key: idx, 
+                        onDoubleClick: () => setHistoryModal({ isOpen: true, office: s.name }),
+                        className: "bg-white rounded-[32px] border border-slate-100 shadow-xl overflow-hidden hover:shadow-2xl transition-all group" 
+                    },
+                        e('div', { className: "p-8 space-y-6" },
+                            e('div', { className: "flex justify-between items-start" },
                                 e('div', { className: "space-y-1" },
-                                    e('label', { className: "text-xs font-bold text-blue-600" }, "한도 (5인 미만)"),
-                                    e('input', { type: "number", required: true, value: formData.limit_under_5, onChange: (ev) => setFormData({ ...formData, limit_under_5: ev.target.value }), className: "w-full p-3 border-2 border-blue-50 rounded-xl focus:border-blue-500 outline-none font-bold" })
+                                    e('h3', { className: "text-2xl font-black text-slate-800" }, s.name),
+                                    e('div', { className: "inline-block px-3 py-1 bg-emerald-100 text-emerald-700 rounded-full text-xs font-black uppercase" }, "정상 운영중")
                                 ),
-                                e('div', { className: "space-y-1" },
-                                    e('label', { className: "text-xs font-bold text-indigo-600" }, "한도 (5인 이상)"),
-                                    e('input', { type: "number", required: true, value: formData.limit_over_5, onChange: (ev) => setFormData({ ...formData, limit_over_5: ev.target.value }), className: "w-full p-3 border-2 border-indigo-50 rounded-xl focus:border-indigo-500 outline-none font-bold" })
+                                e('div', { className: "p-4 bg-slate-50 rounded-2xl group-hover:bg-blue-50 transition-colors" },
+                                    e('svg', { className: "w-6 h-6 text-slate-400 group-hover:text-blue-500", fill: "none", stroke: "currentColor", viewBox: "0 0 24 24" },
+                                        e('path', { strokeLinecap: "round", strokeLinejoin: "round", strokeWidth: "2", d: "M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" })
+                                    )
                                 )
                             ),
-                            e('div', { className: "flex gap-3 pt-4" },
-                                e('button', { type: "button", onClick: closeModal, className: "flex-1 py-3 bg-slate-100 rounded-xl font-bold" }, "취소"),
-                                isEdit && e('button', { type: "button", onClick: handleDelete, className: "flex-1 py-3 bg-red-100 text-red-600 rounded-xl font-bold" }, "삭제"),
-                                e('button', { type: "submit", className: "flex-[2] py-3 bg-emerald-600 text-white rounded-xl font-bold shadow-lg" }, "저장하기")
+                            
+                            e('div', { className: "space-y-4" },
+                                // 날짜 섹션
+                                e('div', { className: "grid grid-cols-2 gap-4 py-4 border-y border-slate-50" },
+                                    e('div', { className: "text-center space-y-1" },
+                                        e('p', { className: "text-[10px] font-black text-slate-400 uppercase tracking-widest" }, "최초 지정일"),
+                                        e('p', { className: "text-sm font-bold text-slate-600" }, s.initialDate || '-')
+                                    ),
+                                    e('div', { className: "text-center space-y-1" },
+                                        e('p', { className: "text-[10px] font-black text-blue-400 uppercase tracking-widest" }, "최근 갱신일"),
+                                        e('p', { className: "text-sm font-bold text-blue-600" }, s.latestDate || '-')
+                                    )
+                                ),
+
+                                // 한도 섹션
+                                e('div', { className: "grid grid-cols-2 gap-4" },
+                                    e('div', { className: "p-4 bg-blue-50/50 rounded-2xl border border-blue-100" },
+                                        e('p', { className: "text-[10px] font-black text-blue-500 mb-1" }, "5인 미만 한도"),
+                                        e('p', { className: "text-xl font-black text-slate-800" }, s.currentUnder5.toLocaleString(), e('span', { className: "text-xs ml-1 text-slate-400" }, "건"))
+                                    ),
+                                    e('div', { className: "p-4 bg-indigo-50/50 rounded-2xl border border-indigo-100" },
+                                        e('p', { className: "text-[10px] font-black text-indigo-500 mb-1" }, "5인 이상 한도"),
+                                        e('p', { className: "text-xl font-black text-slate-800" }, s.currentOver5.toLocaleString(), e('span', { className: "text-xs ml-1 text-slate-400" }, "건"))
+                                    )
+                                )
+                            ),
+
+                            e('div', { className: "space-y-2" },
+                                e('p', { className: "text-xs font-black text-slate-400" }, "최근 변경 사유"),
+                                e('p', { className: "text-sm font-bold text-slate-600 line-clamp-2 min-h-[40px]" }, s.latestReason)
+                            ),
+
+                            e('div', { className: "flex gap-2 pt-2" },
+                                e('button', { 
+                                    onClick: () => setHistoryModal({ isOpen: true, office: s.name }),
+                                    className: "flex-1 py-3 bg-slate-100 text-slate-600 font-black rounded-xl hover:bg-slate-200 transition-all text-xs" 
+                                }, "이력 보기"),
+                                e('button', { 
+                                    onClick: () => handleRenew(s.name),
+                                    className: "flex-1 py-3 bg-blue-50 text-blue-600 font-black rounded-xl hover:bg-blue-100 transition-all text-xs" 
+                                }, "정보 업데이트")
+                            )
+                        )
+                    ))
+                ),
+
+                // 신규 등록 모달
+                renewModal.isOpen && e('div', { className: "fixed inset-0 bg-slate-900/70 backdrop-blur-sm flex items-center justify-center z-50 p-6" },
+                    e('div', { className: "bg-white rounded-[32px] shadow-2xl w-full max-w-lg overflow-hidden animate-slideUp" },
+                        e('div', { className: "p-8 border-b bg-slate-50" },
+                            e('h3', { className: "text-2xl font-black text-slate-800" }, `${renewModal.office}지정 현황 갱신`),
+                            e('p', { className: "text-slate-500 font-bold mt-1" }, "새로운 지정 통보 내용을 등록합니다.")
+                        ),
+                        e('form', { onSubmit: handleSaveRenewal, className: "p-8 space-y-6" },
+                            e('div', { className: "grid grid-cols-2 gap-4" },
+                                e('div', { className: "space-y-2" },
+                                    e('label', { className: "text-xs font-black text-slate-500" }, "지정(갱신) 통보일 *"),
+                                    e('input', { type: "date", required: true, value: formData.approval_date, onChange: (ev) => setFormData({ ...formData, approval_date: ev.target.value }), className: "w-full p-4 border rounded-2xl font-bold bg-slate-50 outline-none focus:ring-2 focus:ring-blue-500" })
+                                ),
+                                e('div', { className: "space-y-2" },
+                                    e('label', { className: "text-xs font-black text-slate-500" }, "지청 선택"),
+                                    e('select', { value: formData.office_name, onChange: (ev) => setFormData({ ...formData, office_name: ev.target.value }), className: "w-full p-4 border rounded-2xl font-bold bg-slate-50 outline-none focus:ring-2 focus:ring-blue-500" },
+                                        ['안산', '경기', '평택', '서울서부', '기타'].map(o => e('option', { key: o, value: o }, o))
+                                    )
+                                )
+                            ),
+                            e('div', { className: "grid grid-cols-2 gap-4" },
+                                e('div', { className: "space-y-2" },
+                                    e('label', { className: "text-xs font-black text-blue-500" }, "5인 미만 한도 *"),
+                                    e('input', { type: "number", required: true, value: formData.limit_under_5, onChange: (ev) => setFormData({ ...formData, limit_under_5: ev.target.value }), className: "w-full p-4 border rounded-2xl font-bold bg-blue-50/30 outline-none focus:ring-2 focus:ring-blue-500" })
+                                ),
+                                e('div', { className: "space-y-2" },
+                                    e('label', { className: "text-xs font-black text-indigo-500" }, "5인 이상 한도 *"),
+                                    e('input', { type: "number", required: true, value: formData.limit_over_5, onChange: (ev) => setFormData({ ...formData, limit_over_5: ev.target.value }), className: "w-full p-4 border rounded-2xl font-bold bg-indigo-50/30 outline-none focus:ring-2 focus:ring-indigo-500" })
+                                )
+                            ),
+                            e('div', { className: "space-y-2" },
+                                e('label', { className: "text-xs font-black text-slate-500" }, "변경 사유 및 상세 내용 *"),
+                                e('textarea', { required: true, rows: 3, value: formData.change_reason, onChange: (ev) => setFormData({ ...formData, change_reason: ev.target.value }), placeholder: "예: 2025년 정기 지정 갱신, 인원 변경에 따른 한도 조정 등", className: "w-full p-4 border rounded-2xl font-bold bg-slate-50 outline-none focus:ring-2 focus:ring-blue-500 resize-none" })
+                            ),
+                            e('div', { className: "flex gap-4 pt-4" },
+                                e('button', { type: "button", onClick: () => setRenewModal({ isOpen: false }), className: "flex-1 py-4 bg-slate-100 text-slate-600 font-bold rounded-2xl" }, "취소"),
+                                e('button', { type: "submit", className: "flex-[2] py-4 bg-blue-600 text-white font-black rounded-2xl shadow-xl shadow-blue-100 hover:bg-blue-700" }, "지정 현황 갱신")
                             )
                         )
                     )
-                )
+                ),
+
+                e(HistoryModal, { 
+                    isOpen: historyModal.isOpen, 
+                    office: historyModal.office, 
+                    onClose: () => setHistoryModal({ isOpen: false, office: null }) 
+                })
             );
         }
 
