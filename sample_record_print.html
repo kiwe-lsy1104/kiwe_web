@@ -300,7 +300,7 @@ async function buildPrint() {
         }
 
         // 입력순 정렬 (DB ID 기준) - 사용자가 대장에 입력한 순서 그대로 노출
-        allSamples.sort((a, b) => (a.id || 0) - (b.id || 0));
+        allSamples.sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0));
 
 
         // 1. 시료 데이터에서 "소음" 분리 및 일반 시료 필터링
@@ -399,98 +399,57 @@ async function buildPrint() {
 
 // 인터리빙 알고리즘 (소음 1:1, 시료 위에 소음)
 function buildProcessGroups(samples, noises) {
-    const processOrder = [];
-    const samplesByProc = {};
-    samples.forEach(s => {
-        const proc = s.work_process || '(미입력)';
-        if (!samplesByProc[proc]) { samplesByProc[proc] = []; processOrder.push(proc); }
-        samplesByProc[proc].push(s);
-    });
+    // 1. 모든 행을 하나로 합쳐서 ID순으로 정렬 (전체 리스트)
+    const allRows = [
+        ...samples.map(s => ({ ...s, _type: 'sample' })),
+        ...noises.map(n => ({ ...n, _type: 'noise' }))
+    ];
+    // ID를 숫자로 변환하여 정확한 순서 보장
+    allRows.sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0));
 
-    const noisesByProc = {};
-    const noiseOnlyProcs = [];
-    noises.forEach(n => {
-        const proc = n.work_process || '(미입력)';
-        if (!noisesByProc[proc]) noisesByProc[proc] = [];
-        noisesByProc[proc].push(n);
-        if (!samplesByProc[proc] && !noiseOnlyProcs.includes(proc)) noiseOnlyProcs.push(proc);
-    });
+    const segments = []; // { proc, points: [] } 형태
+    let curSeg = null;
+    let curPt = null;
+    let seenHazards = new Set();
 
-    const groups = [];
+    allRows.forEach(row => {
+        const proc = row.work_process || '(미입력)';
+        const worker = row.worker_name || '';
+        const hazard = (row._type === 'noise') ? '소음' : (row.common_name || '');
 
-    processOrder.forEach(proc => {
-        const sRows = samplesByProc[proc] || [];
-        const nRows = noisesByProc[proc] || [];
-        
-        // 1. 시료들을 '포인트' 단위로 묶기 전에 먼저 근로자명 기준으로 정렬
-        // 이유: DB에 sample_id 순(유해인자 종류별로 전체 근로자 묶음)으로 저장된 경우
-        //       예) 용접흄(1)→용접흄(2)→금속류(1)→금속류(2) 처럼 인자별 묶음으로 저장될 수 있음
-        //       이를 정렬하지 않으면 포인트 분할 시 근로자 전환이 유해인자마다 발생하여
-        //       금속류가 소음/용접흄과 분리되는 버그 발생
-        //       정렬 후: 용접흄(1)→금속류(1)→용접흄(2)→금속류(2) → 올바른 포인트 분할 보장
-        // 입력순 정렬 (DB ID 기준)
-        // 근로자명으로 먼저 정렬하면 입력 순서가 뒤섞이므로, DB ID를 최우선으로 합니다.
-        const sortedSRows = [...sRows].sort((a, b) => (a.id || 0) - (b.id || 0));
-
-        // 새 포인트 시작 조건: 근로자명이 다르거나, 해당 포인트 내에 이미 존재하는 유해인자가 또 나올 때
-        const pointGroups = [];
-        let curPoint = [];
-        let seenHazards = new Set();
-        let lastWorker = null;
-
-        sortedSRows.forEach(s => {
-            const hasRep = s.common_name && seenHazards.has(s.common_name);
-            const workerChanged = lastWorker !== null && s.worker_name !== lastWorker;
-
-            if (curPoint.length > 0 && (hasRep || workerChanged)) {
-                pointGroups.push(curPoint);
-                curPoint = [];
-                seenHazards = new Set();
-            }
-            curPoint.push(s);
-            if (s.common_name) seenHazards.add(s.common_name);
-            lastWorker = s.worker_name;
-        });
-        if (curPoint.length > 0) pointGroups.push(curPoint);
-
-        // 2. 소음 매칭 및 행 구성
-        const procRows = [];
-        // 포인트 수와 소음 수 중 큰 쪽을 기준으로 루프
-        const maxPts = Math.max(pointGroups.length, nRows.length);
-        
-        for (let i = 0; i < maxPts; i++) {
-            const ptSamples = pointGroups[i] || [];
-            const noise = nRows[i];
-            const ptRows = [];
-
-            if (noise) ptRows.push({ ...noise, _type: 'noise', _proc: proc });
-            ptSamples.forEach(s => ptRows.push({ ...s, _type: 'sample', _proc: proc }));
-
-            if (ptRows.length > 0) {
-                // 한 포인트 내의 유효한 근로자명을 하나 찾아 대표로 사용
-                const validWorker = ptRows.find(r => r.worker_name && String(r.worker_name).trim() !== '')?.worker_name || '';
-                ptRows.forEach((row, j) => {
-                    row._workerSpan = (j === 0) ? ptRows.length : 0;
-                    if (j === 0) row.worker_name = validWorker;
-                });
-                procRows.push(...ptRows);
-            }
+        // [A] 공정 그룹 시작/변경 체크 (연속성 기준)
+        if (!curSeg || curSeg.proc !== proc) {
+            curSeg = { proc, points: [] };
+            segments.push(curSeg);
+            curPt = null; // 공정이 바뀌면 포인트도 새로 시작
         }
 
-        groups.push({ proc, rows: procRows });
+        // [B] 포인트(근로자별 병합) 시작/변경 체크
+        const hazardRepeated = hazard !== '' && seenHazards.has(hazard);
+        const workerChanged = curPt && curPt.worker !== worker;
+
+        if (!curPt || workerChanged || hazardRepeated) {
+            curPt = { worker, rows: [] };
+            curSeg.points.push(curPt);
+            seenHazards = new Set();
+        }
+        
+        curPt.rows.push(row);
+        if (hazard !== '') seenHazards.add(hazard);
     });
 
-    noiseOnlyProcs.forEach(proc => {
-        // 시료는 없지만 소음만 있는 공정
-        const procNoises = noisesByProc[proc] || [];
-        const rows = procNoises.map(n => ({ ...n, _type: 'noise', _proc: proc, _workerSpan: 1 }));
-        groups.push({ proc, rows });
+    // 2. 최종 구조로 변환 (병합 정보 _workerSpan 포함)
+    return segments.map(seg => {
+        const flatRows = [];
+        seg.points.forEach(pt => {
+            pt.rows.forEach((row, i) => {
+                row._workerSpan = (i === 0) ? pt.rows.length : 0;
+                // 포인트의 첫 행인 경우에만 근로자명 표시를 위해 보존 (UI 렌더러에서 사용)
+                flatRows.push(row);
+            });
+        });
+        return { proc: seg.proc, rows: flatRows };
     });
-
-    // 공정명 기준으로 정렬 (주석 처리: 시료번호 순서를 유지하기 위해 가나다순 정렬을 제외함)
-    // groups.sort((a, b) => a.proc.localeCompare(b.proc, undefined, { numeric: true, sensitivity: 'base' }));
-
-    return groups;
 }
 
 // colgroup HTML 생성
@@ -669,7 +628,7 @@ async function downloadExcel() {
         }
 
         // 입력순 정렬 (DB ID 기준)
-        allSamples.sort((a, b) => (a.id || 0) - (b.id || 0));
+        allSamples.sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0));
 
         const samplingSamples = [];
         const samplingNoises = [];
