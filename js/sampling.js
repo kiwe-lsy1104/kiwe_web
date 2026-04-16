@@ -71,7 +71,7 @@ function App() {
     const [showSettings, setShowSettings] = useState(false);
     const [settingsSaveStatus, setSettingsSaveStatus] = useState(''); // '' | 'saving' | 'saved' | 'error'
     const [allHazards, setAllHazards] = useState([]);
-    const [sortType, setSortType] = useState('sample_id'); // 정렬 방식: 'sample_id'(최신순) | 'worker'(작업자순)
+    const [sortType, setSortType] = useState('input'); // 정렬 방식: 'input'(입력순) | 'sample_id'(시료번호순)
     const [idFilter, setIdFilter] = useState('all'); // ID 필터: 'all' | 'sample' (S/D) | 'blank' (SB/DB)
 
     const hotRef = useRef(null);
@@ -1095,13 +1095,13 @@ function App() {
                                 e('label', { className: "text-[11px] font-extrabold text-slate-400 block uppercase" }, "정렬 기준"),
                                 e('div', { className: 'flex bg-slate-100 p-1 rounded-xl gap-1 border border-slate-200' },
                                     e('button', {
+                                        onClick: () => setSortType('input'),
+                                        className: `px-4 py-1.5 text-[11px] font-bold rounded-lg transition-all whitespace-nowrap ${sortType === 'input' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-600'}`
+                                    }, '📝 입력순'),
+                                    e('button', {
                                         onClick: () => setSortType('sample_id'),
                                         className: `px-4 py-1.5 text-[11px] font-bold rounded-lg transition-all whitespace-nowrap ${sortType === 'sample_id' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-600'}`
-                                    }, '🔢 시료번호순'),
-                                    e('button', {
-                                        onClick: () => setSortType('worker'),
-                                        className: `px-4 py-1.5 text-[11px] font-bold rounded-lg transition-all whitespace-nowrap ${sortType === 'worker' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-600'}`
-                                    }, '🧑 작업자순')
+                                    }, '🔢 시료번호순')
                                 )
                             )
                         )

@@ -410,47 +410,22 @@ export async function loadGridData(hot, supabase, startDate, endDate, comName, u
             }
         });
 
-        if (sortType === 'worker') {
-            // ★ 작업자순: 날짜 → 사업장 → 공시료 후순위 → 근로자명 가나다순
+        if (sortType === 'sample_id') {
+            // ★ 시료번호순: 측정일자 → 시료번호(자연 정렬)
             allData.sort((a, b) => {
                 if (a.m_date !== b.m_date) return a.m_date > b.m_date ? 1 : -1;
-
-                const prioA = companyPriority[a.com_name || 'unknown'] ?? 999999;
-                const prioB = companyPriority[b.com_name || 'unknown'] ?? 999999;
-                if (prioA !== prioB) return prioA - prioB;
-
-                const comA = a.com_name || '';
-                const comB = b.com_name || '';
-                if (comA !== comB) return comA.localeCompare(comB);
-
-                // 공시료는 일반 시료 뒤로
-                const blankA = isBlankSample(a) ? 1 : 0;
-                const blankB = isBlankSample(b) ? 1 : 0;
-                if (blankA !== blankB) return blankA - blankB;
-
-                // 근로자명 가나다순
-                const wA = a.worker_name || '';
-                const wB = b.worker_name || '';
-                if (wA !== wB) return wA.localeCompare(wB, 'ko');
-
-                return getSeqNum(a.sample_id) - getSeqNum(b.sample_id);
-            });
-        } else {
-            // ★ 기본 정렬 (시료번호순): 날짜 → 시료번호(자연 정렬)
-            // 사업장명보다 시료번호 자체의 순서를 최우선으로 합니다.
-            allData.sort((a, b) => {
-                // 1. 측정일자 우선 정렬
-                if (a.m_date !== b.m_date) return a.m_date > b.m_date ? 1 : -1;
-
-                // 2. 시료번호 자연 정렬 (S-1, S-2, S-10 순서 보장)
                 const sidA = a.sample_id || '';
                 const sidB = b.sample_id || '';
-                
                 if (sidA !== sidB) {
                     return sidA.localeCompare(sidB, undefined, { numeric: true, sensitivity: 'base' });
                 }
-
-                // 3. 시료번호가 같거나 없는 경우 입력 순서(DB id 순) 유지
+                return (a.id || 9999999) - (b.id || 9999999);
+            });
+        } else {
+            // ★ 입력순 (ID순): 측정일자 → DB ID순
+            // 사용자가 입력한 순서(ID)를 최우선으로 하여 정렬합니다.
+            allData.sort((a, b) => {
+                if (a.m_date !== b.m_date) return a.m_date > b.m_date ? 1 : -1;
                 return (a.id || 9999999) - (b.id || 9999999);
             });
         }
