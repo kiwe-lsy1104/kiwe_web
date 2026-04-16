@@ -299,10 +299,8 @@ async function buildPrint() {
             allSamples = allSamples.concat(data || []);
         }
 
-        // 시료번호순 정렬 (자연 정렬: S-1, S-2, S-10 순서 보장)
-        allSamples.sort((a, b) => {
-            return String(a.sample_id || '').localeCompare(String(b.sample_id || ''), undefined, { numeric: true, sensitivity: 'base' });
-        });
+        // 입력순 정렬 (DB ID 기준) - 사용자가 대장에 입력한 순서 그대로 노출
+        allSamples.sort((a, b) => (a.id || 0) - (b.id || 0));
 
 
         // 1. 시료 데이터에서 "소음" 분리 및 일반 시료 필터링
@@ -430,13 +428,9 @@ function buildProcessGroups(samples, noises) {
         //       이를 정렬하지 않으면 포인트 분할 시 근로자 전환이 유해인자마다 발생하여
         //       금속류가 소음/용접흄과 분리되는 버그 발생
         //       정렬 후: 용접흄(1)→금속류(1)→용접흄(2)→금속류(2) → 올바른 포인트 분할 보장
-        const sortedSRows = [...sRows].sort((a, b) => {
-            const wa = String(a.worker_name || '');
-            const wb = String(b.worker_name || '');
-            if (wa !== wb) return wa.localeCompare(wb, undefined, { numeric: true, sensitivity: 'base' });
-            // 같은 근로자 내에서는 sample_id 순 유지
-            return String(a.sample_id || '').localeCompare(String(b.sample_id || ''), undefined, { numeric: true, sensitivity: 'base' });
-        });
+        // 입력순 정렬 (DB ID 기준)
+        // 근로자명으로 먼저 정렬하면 입력 순서가 뒤섞이므로, DB ID를 최우선으로 합니다.
+        const sortedSRows = [...sRows].sort((a, b) => (a.id || 0) - (b.id || 0));
 
         // 새 포인트 시작 조건: 근로자명이 다르거나, 해당 포인트 내에 이미 존재하는 유해인자가 또 나올 때
         const pointGroups = [];
@@ -674,9 +668,8 @@ async function downloadExcel() {
             allSamples = allSamples.concat(data || []);
         }
 
-        allSamples.sort((a, b) => {
-            return String(a.sample_id || '').localeCompare(String(b.sample_id || ''), undefined, { numeric: true, sensitivity: 'base' });
-        });
+        // 입력순 정렬 (DB ID 기준)
+        allSamples.sort((a, b) => (a.id || 0) - (b.id || 0));
 
         const samplingSamples = [];
         const samplingNoises = [];
