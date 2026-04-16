@@ -362,9 +362,9 @@ async function buildPrint() {
 
         const totalSamples = groups.reduce((s, g) => s + g.samples.length, 0);
         const totalNoises  = groups.reduce((s, g) => s + g.noises.length, 0);
-        const totalRawNoise = allNoises.length;
+        const totalRawNoise = finalNoises.length;
         statusMsg.style.color = '#16a34a';
-        statusMsg.textContent = `완료: ${groups.length}개 사업장+날짜 | 시료 ${totalSamples}건 | 소음 ${totalNoises}건 (조회 ${totalRawNoise}건)`;
+        statusMsg.textContent = `완료: ${groups.length}개 사업장+날짜 | 시료 ${totalSamples}건 | 소음 ${totalNoises}건`;
 
     } catch (err) {
         statusMsg.style.color = '#dc2626'; statusMsg.textContent = '오류: ' + err.message;
