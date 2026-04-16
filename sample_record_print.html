@@ -6,6 +6,7 @@
     <title>시료채취기록지 - KiWE</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700;900&display=swap');
         body { font-family: 'Noto Sans KR', 'Malgun Gothic', sans-serif; }
@@ -136,6 +137,9 @@
         </div>
         <button id="printBtn" class="px-5 py-1.5 bg-blue-600 text-white font-black rounded-xl hover:bg-blue-700 transition-all shadow-md text-sm">
             출력 미리보기
+        </button>
+        <button id="excelBtn" class="px-5 py-1.5 bg-emerald-600 text-white font-black rounded-xl hover:bg-emerald-700 transition-all shadow-md text-sm">
+            엑셀 다운로드
         </button>
         <button onclick="window.print()" class="px-5 py-1.5 bg-slate-700 text-white font-black rounded-xl hover:bg-slate-800 transition-all shadow-md text-sm">
             인쇄/PDF
@@ -641,6 +645,167 @@ function attachResizeHandlers() {
 }
 
 // 이벤트
+document.getElementById('loadComBtn').addEventListener('click', loadCompanies);
+document.getElementById('printBtn').addEventListener('click', buildPrint);
+document.getElementById('excelBtn').addEventListener('click', downloadExcel);
+
+// 엑셀 다운로드 구현
+async function downloadExcel() {
+    const start     = document.getElementById('startDate').value;
+    const end       = document.getElementById('endDate').value;
+    const comFilter = document.getElementById('comSelect').value;
+    const blankMode = document.getElementById('blankMode').value;
+    const statusMsg = document.getElementById('statusMsg');
+    
+    if (!start || !end) { alert('날짜를 입력해 주세요.'); return; }
+
+    const btn = document.getElementById('excelBtn');
+    btn.disabled = true; btn.textContent = '생성 중...';
+    statusMsg.style.color = '#2563eb'; statusMsg.textContent = '엑셀 데이터 구성 중...';
+
+    try {
+        const tables = getTableNames(start, end);
+        let allSamples = [];
+        for (const table of tables) {
+            let q = sb.from(table).select('*').gte('m_date', start).lte('m_date', end);
+            if (comFilter) q = q.eq('com_name', comFilter);
+            const { data, error } = await q;
+            if (error) throw error;
+            allSamples = allSamples.concat(data || []);
+        }
+
+        allSamples.sort((a, b) => {
+            return String(a.sample_id || '').localeCompare(String(b.sample_id || ''), undefined, { numeric: true, sensitivity: 'base' });
+        });
+
+        const samplingSamples = [];
+        const samplingNoises = [];
+        allSamples.forEach(s => {
+            if (s.common_name === '소음') {
+                samplingNoises.push({ ...s, _src: 'sampling', noise_no: s.pump_no });
+            } else {
+                samplingSamples.push(s);
+            }
+        });
+
+        let filteredSamples = samplingSamples;
+        if (blankMode === 'exclude') {
+            filteredSamples = samplingSamples.filter(s => { const t = getSampleType(s.sample_id); return t === 'S' || t === 'D'; });
+        } else if (blankMode === 'only') {
+            filteredSamples = samplingSamples.filter(s => { const t = getSampleType(s.sample_id); return t === 'SB' || t === 'DB'; });
+        }
+
+        let qNoise = sb.from('kiwe_noise_records').select('*').gte('m_date', start).lte('m_date', end);
+        if (comFilter) qNoise = qNoise.eq('com_name', comFilter);
+        const { data: noiseData } = await qNoise;
+        const allNoises = noiseData || [];
+
+        const combinedNoises = [...allNoises.map(n => ({...n, _src: 'noise_record'})), ...samplingNoises];
+        const noiseMap = new Map();
+        combinedNoises.forEach(n => {
+            const key = `${n.m_date}_${normCom(n.com_name)}_${n.work_process || ''}_${n.worker_name || ''}`;
+            if (!noiseMap.has(key)) {
+                noiseMap.set(key, n);
+            } else {
+                if (noiseMap.get(key)._src === 'sampling' && n._src === 'noise_record') {
+                    noiseMap.set(key, n);
+                }
+            }
+        });
+        const finalNoises = Array.from(noiseMap.values());
+
+        const keyMap = {};
+        filteredSamples.forEach(s => {
+            const k = buildKey(s.m_date, s.com_name);
+            if (!keyMap[k]) keyMap[k] = { com: s.com_name, date: s.m_date, samples: [], noises: [] };
+            keyMap[k].samples.push(s);
+        });
+
+        finalNoises.forEach(n => {
+            const nKey = buildKey(n.m_date, n.com_name);
+            if (keyMap[nKey]) {
+                keyMap[nKey].noises.push(n);
+            } else if (!comFilter || normCom(n.com_name) === normCom(comFilter)) {
+                if (!keyMap[nKey]) keyMap[nKey] = { com: n.com_name, date: n.m_date, samples: [], noises: [] };
+                keyMap[nKey].noises.push(n);
+            }
+        });
+
+        const groups = Object.values(keyMap)
+            .sort((a, b) => a.date !== b.date ? a.date.localeCompare(b.date) : a.com.localeCompare(b.com));
+
+        if (groups.length === 0) {
+            alert('다운로드할 데이터가 없습니다.');
+            return;
+        }
+
+        const wb = XLSX.utils.book_new();
+        const wsData = [];
+        
+        // 헤더 정의
+        const headers = ["No", "단위작업공정", "근로자명", "시료번호", "유해인자", "펌프/소음기", "시작시간", "종료시간", "비고"];
+        
+        groups.forEach(g => {
+            // 그룹 타이틀 행
+            wsData.push([`[사업장: ${g.com} | 측정일: ${g.date}]`]);
+            wsData.push(headers);
+
+            const procGroups = buildProcessGroups(g.samples, g.noises);
+            let no = 1;
+            procGroups.forEach(({ proc, rows }) => {
+                rows.forEach((row, rowIdx) => {
+                    const isNoise = row._type === 'noise';
+                    const sid = isNoise ? '' : (row.sample_id || '');
+                    const hazard = isNoise ? '소음' : (row.common_name || '');
+                    const pump = isNoise ? (row.noise_no || '') : (row.pump_no || '');
+                    
+                    wsData.push([
+                        no++,
+                        proc,
+                        row.worker_name || '',
+                        sid,
+                        hazard,
+                        pump,
+                        timeShort(row.start_time),
+                        timeShort(row.end_time),
+                        "" // 비고 (데이터가 테이블에는 없으므로 비움)
+                    ]);
+                });
+            });
+            wsData.push([]); // 그룹 간 빈 줄
+        });
+
+        const ws = XLSX.utils.aoa_to_sheet(wsData);
+        
+        // 스타일 및 너비 (선택 사항)
+        ws['!cols'] = [
+            { wch: 5 },  // No
+            { wch: 20 }, // 공정
+            { wch: 12 }, // 근로자명
+            { wch: 15 }, // 시료번호
+            { wch: 20 }, // 유해인자
+            { wch: 12 }, // 펌프
+            { wch: 10 }, // 시작
+            { wch: 10 }, // 종료
+            { wch: 20 }  // 비고
+        ];
+
+        XLSX.utils.book_append_sheet(wb, ws, "시료채취기록지");
+        
+        const fileName = `시료채취기록표_${start}${comFilter ? '_' + comFilter : ''}.xlsx`;
+        XLSX.writeFile(wb, fileName);
+
+        statusMsg.style.color = '#16a34a';
+        statusMsg.textContent = '엑셀 다운로드 완료';
+
+    } catch (err) {
+        alert('엑셀 생성 중 오류: ' + err.message);
+        console.error(err);
+    } finally {
+        btn.disabled = false; btn.textContent = '엑셀 다운로드';
+    }
+}
+
 document.getElementById('loadComBtn').addEventListener('click', loadCompanies);
 document.getElementById('printBtn').addEventListener('click', buildPrint);
 document.getElementById('resetColBtn').addEventListener('click', () => {

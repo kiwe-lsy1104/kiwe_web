@@ -436,24 +436,21 @@ export async function loadGridData(hot, supabase, startDate, endDate, comName, u
                 return getSeqNum(a.sample_id) - getSeqNum(b.sample_id);
             });
         } else {
-            // ★ 기본 정렬: 날짜 → 사업장 그룹 → 입력 순서(DB id 순)
-            // 사용자가 시료채취대장에 입력한 순서(id 순)를 그대로 유지하는 것이 기본값
-            // 공시료도 입력한 순서 안에 자연스럽게 포함됨
+            // ★ 기본 정렬 (시료번호순): 날짜 → 시료번호(자연 정렬)
+            // 사업장명보다 시료번호 자체의 순서를 최우선으로 합니다.
             allData.sort((a, b) => {
                 // 1. 측정일자 우선 정렬
                 if (a.m_date !== b.m_date) return a.m_date > b.m_date ? 1 : -1;
 
-                // 2. 사업장 그룹 우선순위 (먼저 입력한 사업장이 위에 오도록)
-                const prioA = companyPriority[a.com_name || 'unknown'] ?? 999999;
-                const prioB = companyPriority[b.com_name || 'unknown'] ?? 999999;
-                if (prioA !== prioB) return prioA - prioB;
+                // 2. 시료번호 자연 정렬 (S-1, S-2, S-10 순서 보장)
+                const sidA = a.sample_id || '';
+                const sidB = b.sample_id || '';
+                
+                if (sidA !== sidB) {
+                    return sidA.localeCompare(sidB, undefined, { numeric: true, sensitivity: 'base' });
+                }
 
-                // 3. 동일 사업장명 정렬
-                const comA = a.com_name || '';
-                const comB = b.com_name || '';
-                if (comA !== comB) return comA.localeCompare(comB);
-
-                // 4. 입력 순서(DB id 순) — 소음/일반시료/공시료 구분 없이 입력한 순서 유지
+                // 3. 시료번호가 같거나 없는 경우 입력 순서(DB id 순) 유지
                 return (a.id || 9999999) - (b.id || 9999999);
             });
         }
