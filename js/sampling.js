@@ -971,7 +971,7 @@ function App() {
             isDirtyRef.current = false;
 
             // Reload data to reflect changes (esp generated IDs)
-            loadGridData(hot, supabase, startDate, endDate, comName, user);
+            loadGridData(hot, supabase, startDate, endDate, comName, user, sortType, idFilter);
 
         } catch (err) {
             console.error(err);

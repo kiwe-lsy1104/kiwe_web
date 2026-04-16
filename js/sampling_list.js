@@ -282,7 +282,7 @@ export function initSampleGrid(container, mDate, comName, onHazardDoubleClick, o
     return hot;
 }
 
-export async function loadGridData(hot, supabase, startDate, endDate, comName, user, sortType = 'sample_id', idFilter = 'all') {
+export async function loadGridData(hot, supabase, startDate, endDate, comName, user, sortType = 'input', idFilter = 'all') {
     if (!hot || !supabase) return;
     try {
         const formatTimeHHMM = (val) => {
@@ -339,7 +339,8 @@ export async function loadGridData(hot, supabase, startDate, endDate, comName, u
                         .from(tableName)
                         .select('*')
                         .gte('m_date', startDate)
-                        .lte('m_date', endDate);
+                        .lte('m_date', endDate)
+                        .order('id', { ascending: true });
 
                     if (comName) {
                         query = query.eq('com_name', comName);
@@ -365,7 +366,8 @@ export async function loadGridData(hot, supabase, startDate, endDate, comName, u
                 .from(tableName)
                 .select('*')
                 .gte('m_date', startDate)
-                .lte('m_date', endDate);
+                .lte('m_date', endDate)
+                .order('id', { ascending: true });
 
             if (comName) {
                 query = query.eq('com_name', comName);
