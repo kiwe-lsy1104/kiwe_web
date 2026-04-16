@@ -326,47 +326,24 @@ async function buildPrint() {
             filteredSamples = samplingSamples.filter(s => { const t = getSampleType(s.sample_id); return t === 'SB' || t === 'DB'; });
         }
 
-        // 2. 소음대장 실측 데이터 조회
-        let qNoise = sb.from('kiwe_noise_records').select('*').gte('m_date', start).lte('m_date', end);
-        if (comFilter) qNoise = qNoise.eq('com_name', comFilter);
-        const { data: noiseData, error: nErr } = await qNoise;
-        if (nErr) throw nErr;
-        const allNoises = noiseData || [];
+        // 2. 소음 데이터 통합 (이제 소음대장 연동 없이 시료채취대장의 소음 데이터만 사용)
+        const finalNoises = samplingNoises;
 
-        // 3. 소음 데이터 통합 및 중복 제거
-        const combinedNoises = [...allNoises.map(n => ({...n, _src: 'noise_record'})), ...samplingNoises];
-        
-        // 중복 제거: 같은 날짜, 같은 사업장, 같은 작업자, 같은 공정이면 하나로 합침
-        const noiseMap = new Map();
-        combinedNoises.forEach(n => {
-            const key = `${n.m_date}_${normCom(n.com_name)}_${n.work_process || ''}_${n.worker_name || ''}`;
-            if (!noiseMap.has(key)) {
-                noiseMap.set(key, n);
-            } else {
-                // 이미 존재한다면 소음대장 데이터를 우선함 (결재/결과값이 있을 수 있으므로)
-                if (noiseMap.get(key)._src === 'sampling' && n._src === 'noise_record') {
-                    noiseMap.set(key, n);
-                }
-            }
-        });
-        const finalNoises = Array.from(noiseMap.values());
-
-        // 사업장+날짜 그룹화 (정규화된 회사명 키 사용)
+        // 3. 사업장+날짜 그룹화 (정규화된 회사명 키 사용)
         const keyMap = {};
         filteredSamples.forEach(s => {
             const k = buildKey(s.m_date, s.com_name);
-            if (!keyMap[k]) keyMap[k] = { com: s.com_name, date: s.m_date, samples: [], noises: [] };
+            if (!keyMap[k]) keyMap[k] = { com: s.m_date ? s.com_name : '', date: s.m_date, samples: [], noises: [] };
             keyMap[k].samples.push(s);
         });
 
-        // 소음 유입: 정규화된 회사명으로 매칭
+        // 소음 유입
         finalNoises.forEach(n => {
             const nKey = buildKey(n.m_date, n.com_name);
             if (keyMap[nKey]) {
                 keyMap[nKey].noises.push(n);
             } else if (!comFilter || normCom(n.com_name) === normCom(comFilter)) {
-                // 시료는 없지만 소음만 있는 경우도 블록 생성 (단, 검색 필터에 맞아야 함)
-                if (!keyMap[nKey]) keyMap[nKey] = { com: n.com_name, date: n.m_date, samples: [], noises: [] };
+                if (!keyMap[nKey]) keyMap[nKey] = { com: n.m_date ? n.com_name : '', date: n.m_date, samples: [], noises: [] };
                 keyMap[nKey].noises.push(n);
             }
         });
@@ -647,24 +624,8 @@ async function downloadExcel() {
             filteredSamples = samplingSamples.filter(s => { const t = getSampleType(s.sample_id); return t === 'SB' || t === 'DB'; });
         }
 
-        let qNoise = sb.from('kiwe_noise_records').select('*').gte('m_date', start).lte('m_date', end);
-        if (comFilter) qNoise = qNoise.eq('com_name', comFilter);
-        const { data: noiseData } = await qNoise;
-        const allNoises = noiseData || [];
-
-        const combinedNoises = [...allNoises.map(n => ({...n, _src: 'noise_record'})), ...samplingNoises];
-        const noiseMap = new Map();
-        combinedNoises.forEach(n => {
-            const key = `${n.m_date}_${normCom(n.com_name)}_${n.work_process || ''}_${n.worker_name || ''}`;
-            if (!noiseMap.has(key)) {
-                noiseMap.set(key, n);
-            } else {
-                if (noiseMap.get(key)._src === 'sampling' && n._src === 'noise_record') {
-                    noiseMap.set(key, n);
-                }
-            }
-        });
-        const finalNoises = Array.from(noiseMap.values());
+        // 2. 소음 데이터 통합 (시료채취대장 데이터만 사용)
+        const finalNoises = samplingNoises;
 
         const keyMap = {};
         filteredSamples.forEach(s => {
