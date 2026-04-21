@@ -276,6 +276,16 @@ export function initSampleGrid(container, mDate, comName, onHazardDoubleClick, o
                 }
             }
         },
+        // ★ 엑셀에서 다시 붙여넣을 때 \u200B 문자(물음표 등으로 보일 수 있음) 제거
+        beforePaste: (data) => {
+            for (let r = 0; r < data.length; r++) {
+                for (let c = 0; c < data[r].length; c++) {
+                    if (typeof data[r][c] === 'string') {
+                        data[r][c] = data[r][c].replace(/\u200B/g, '');
+                    }
+                }
+            }
+        },
         afterOnCellMouseDown: (ev, coords) => {
             const commonNameIdx = finalCols.findIndex(c => c.data === 'common_name');
             if (ev.detail === 2 && coords.col === commonNameIdx) {
