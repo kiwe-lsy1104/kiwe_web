@@ -263,6 +263,19 @@ export function initSampleGrid(container, mDate, comName, onHazardDoubleClick, o
             }
         },
         licenseKey: 'non-commercial-and-evaluation',
+        // ★ 엑셀 붙여넣기 시 날짜 자동 변환 방지 (25-1 -> Jan-25 방지)
+        // 폭이 없는 공백(\u200B)을 접두어로 추가하여 엑셀이 텍스트로 인식하게 합니다.
+        beforeCopy: (data) => {
+            for (let r = 0; r < data.length; r++) {
+                for (let c = 0; c < data[r].length; c++) {
+                    const val = data[r][c];
+                    // ★ 엑셀 날짜 변환 방지 패턴: 숫자-숫자, 숫자~숫자, HH:mm
+                    if (typeof val === 'string' && /^(\d+[~\-]\d+|\d{1,2}:\d{2})$/.test(val)) {
+                        data[r][c] = '\u200B' + val;
+                    }
+                }
+            }
+        },
         afterOnCellMouseDown: (ev, coords) => {
             const commonNameIdx = finalCols.findIndex(c => c.data === 'common_name');
             if (ev.detail === 2 && coords.col === commonNameIdx) {

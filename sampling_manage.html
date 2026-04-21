@@ -978,6 +978,11 @@
                 );
 
                 let content = row[key] == null ? '' : String(row[key]);
+                // ★ 엑셀 붙여넣기 시 날짜 자동 변환 방지 (시간, 온도/습도 범위 등)
+                const targetKeys = ['pump_no', 'start_time', 'end_time', 'temp', 'humidity'];
+                if (targetKeys.includes(key) && content && /^(\d+[~\-]\d+|\d{1,2}:\d{2})$/.test(content)) {
+                    content = '\u200B' + content;
+                }
                 let cellClass = `px-3 py-0 text-slate-600 border-r border-slate-50 last:border-0 overflow-hidden text-center`;
                 if (key === 'sample_id') cellClass += ' font-mono text-indigo-600 font-black text-xs';
                 if (key === 'common_name') cellClass += ' font-semibold text-slate-800';
