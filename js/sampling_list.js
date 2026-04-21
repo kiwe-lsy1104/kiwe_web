@@ -277,11 +277,23 @@ export function initSampleGrid(container, mDate, comName, onHazardDoubleClick, o
             }
         },
         // ★ 엑셀에서 다시 붙여넣을 때 \u200B 문자(물음표 등으로 보일 수 있음) 제거
+        beforeChange: (changes, source) => {
+            if (source === 'loadData') return;
+            
+            // 붙여넣기나 수정 시 제어 문자 제거
+            for (let i = 0; i < changes.length; i++) {
+                const newVal = changes[i][3];
+                if (typeof newVal === 'string') {
+                    changes[i][3] = newVal.replace(/[\u0000-\u001F\u007F-\u009F\u200B-\u200D\uFEFF]/g, '');
+                }
+            }
+        },
         beforePaste: (data) => {
             for (let r = 0; r < data.length; r++) {
                 for (let c = 0; c < data[r].length; c++) {
                     if (typeof data[r][c] === 'string') {
-                        data[r][c] = data[r][c].replace(/\u200B/g, '');
+                        // 모든 종류의 폭이 없는 공백 및 제어 문자 제거
+                        data[r][c] = data[r][c].replace(/[\u0000-\u001F\u007F-\u009F\u200B-\u200D\uFEFF]/g, '');
                     }
                 }
             }
