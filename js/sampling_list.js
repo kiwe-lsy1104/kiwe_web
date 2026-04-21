@@ -269,22 +269,24 @@ export function initSampleGrid(container, mDate, comName, onHazardDoubleClick, o
             for (let r = 0; r < data.length; r++) {
                 for (let c = 0; c < data[r].length; c++) {
                     const val = data[r][c];
-                    // ★ 엑셀 날짜 변환 방지 패턴: 숫자-숫자, 숫자~숫자, HH:mm
+                    // ★ 엑셀 날짜 변환 방지: 뒤에 공백(Space) 하나를 추가 (호환성 보장)
                     if (typeof val === 'string' && /^(\d+[~\-]\d+|\d{1,2}:\d{2})$/.test(val)) {
-                        data[r][c] = '\u200B' + val;
+                        data[r][c] = val + ' ';
                     }
                 }
             }
         },
-        // ★ 엑셀에서 다시 붙여넣을 때 \u200B 문자(물음표 등으로 보일 수 있음) 제거
+        // ★ 엑셀에서 다시 붙여넣을 때 제어문자 및 물음표(?) 제거
         beforeChange: (changes, source) => {
             if (source === 'loadData') return;
             
-            // 붙여넣기나 수정 시 제어 문자 제거
             for (let i = 0; i < changes.length; i++) {
-                const newVal = changes[i][3];
+                let newVal = changes[i][3];
                 if (typeof newVal === 'string') {
-                    changes[i][3] = newVal.replace(/[\u0000-\u001F\u007F-\u009F\u200B-\u200D\uFEFF]/g, '');
+                    // 1. 선행 물음표 제거 (인코딩 오류 방지)
+                    // 2. 모든 제어 문자 및 공백 제거(trim)
+                    newVal = newVal.replace(/^\?*/, '').trim();
+                    changes[i][3] = newVal;
                 }
             }
         },
@@ -292,8 +294,8 @@ export function initSampleGrid(container, mDate, comName, onHazardDoubleClick, o
             for (let r = 0; r < data.length; r++) {
                 for (let c = 0; c < data[r].length; c++) {
                     if (typeof data[r][c] === 'string') {
-                        // 모든 종류의 폭이 없는 공백 및 제어 문자 제거
-                        data[r][c] = data[r][c].replace(/[\u0000-\u001F\u007F-\u009F\u200B-\u200D\uFEFF]/g, '');
+                        // 붙여넣는 모든 데이터에 대해 선행 물음표 및 공백 제거
+                        data[r][c] = data[r][c].replace(/^\?*/, '').trim();
                     }
                 }
             }
