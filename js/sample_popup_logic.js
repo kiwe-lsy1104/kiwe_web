@@ -51,5 +51,5 @@ export function setupHazardSelection(gridRowRef, hotInstance, calculateSampleId,
 export function openHazardSearch(row, setRow, rowRef) {
     setRow(row);
     rowRef.current = row;
-    window.open('search.html', 'HazardSearch', 'width=1000,height=850,scrollbars=yes');
+    window.open('search.html', 'HazardSearch', 'width=1200,height=850,scrollbars=yes');
 }

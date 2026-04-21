@@ -34,18 +34,38 @@ export function initSampleGrid(container, mDate, comName, onHazardDoubleClick, o
         td.style.textOverflow = 'clip';
         td.style.fontSize = '12px'; // default
 
-        // ★ 유해인자 매칭 체크 (Mismatch Warning)
+        // ★ 유해인자 매칭 및 매체 호환성 체크 (Multi-Hazard Validation)
         if (prop === 'common_name' && value) {
             const validHazards = cellProperties.validHazards || [];
-            const text = String(value).trim();
-            // (front), (rear) 등 제거 후 기본명칭만 비교
-            const baseName = text.split(/[/(]/)[0].trim();
-            const exists = validHazards.some(h => h.common_name === text || h.common_name === baseName);
-            
-            if (validHazards.length > 0 && !exists) {
-                td.style.color = '#e11d48'; // rose-600
-                td.style.backgroundColor = '#fff1f2'; // rose-50
-                td.title = "등록되지 않은 유해인자명입니다. (접두어 'S' 고정)";
+            if (validHazards.length > 0) {
+                const parts = String(value).split('/').map(s => s.trim()).filter(Boolean);
+                const mediaSet = new Set();
+                const missing = [];
+                
+                parts.forEach(p => {
+                    const base = p.split(/[/(]/)[0].trim();
+                    const match = validHazards.find(h => h.common_name === p || h.common_name === base);
+                    if (match) {
+                        if (match.sampling_media) mediaSet.add(match.sampling_media);
+                    } else {
+                        missing.push(p);
+                    }
+                });
+
+                if (missing.length > 0) {
+                    td.style.color = '#e11d48'; // rose-600
+                    td.style.backgroundColor = '#fff1f2'; // rose-50
+                    td.title = `등록되지 않은 인자 포함: ${missing.join(', ')}`;
+                } else if (mediaSet.size > 1) {
+                    td.style.color = '#d97706'; // amber-600
+                    td.style.backgroundColor = '#fffbeb'; // amber-50
+                    td.title = `채취매체 불일치: ${Array.from(mediaSet).join(' vs ')}`;
+                } else {
+                    // 정상인 경우 스타일 초기화 (다른 셀과 동일하게)
+                    td.style.color = '';
+                    td.style.backgroundColor = '';
+                    td.title = '';
+                }
             }
         }
 

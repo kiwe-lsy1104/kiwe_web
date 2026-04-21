@@ -362,6 +362,42 @@ function App() {
                 if (rowsToProcess.size > 0) {
                     await applyBulkSampleIds(Array.from(rowsToProcess));
                 }
+
+                // 3. 유해인자 유효성 및 매체 호환성 검사 (Warning Alert)
+                const hazards = allHazardsRef.current;
+                if (!hazards || hazards.length === 0) return;
+
+                const errorMessages = [];
+                for (const [row, prop, oldVal, newVal] of changes) {
+                    if (prop === 'common_name' && newVal) {
+                        const parts = String(newVal).split('/').map(s => s.trim()).filter(Boolean);
+                        if (parts.length === 0) continue;
+
+                        const mediaSet = new Set();
+                        const missing = [];
+                        
+                        parts.forEach(p => {
+                            const base = p.split(/[/(]/)[0].trim();
+                            const match = hazards.find(h => h.common_name === p || h.common_name === base);
+                            if (match) {
+                                if (match.sampling_media) mediaSet.add(match.sampling_media);
+                            } else {
+                                missing.push(p);
+                            }
+                        });
+
+                        if (missing.length > 0) {
+                             errorMessages.push(`[${row + 1}행] 등록되지 않은 유해인자 포함: ${missing.join(', ')}`);
+                        } else if (mediaSet.size > 1) {
+                             errorMessages.push(`[${row + 1}행] 채취매체 불일치 알림\n입력된 인자들의 매체가 서로 다릅니다: ${Array.from(mediaSet).join(' vs ')}\n이 조합으로는 한 셀에 입력할 수 없습니다.`);
+                        }
+                    }
+                }
+
+                if (errorMessages.length > 0) {
+                    // 중복 알림 방지를 위해 한꺼번에 표시
+                    alert("⚠️ 유해인자 입력 경고\n\n" + errorMessages.join("\n\n"));
+                }
             });
 
             // 한글 입력을 방해하던(첫 타 영문 변환) 강제 포커스 훅 제거 완료 
@@ -425,7 +461,7 @@ function App() {
         try {
             const { data, error } = await supabase
                 .from('kiwe_hazard')
-                .select('common_name, instrument_name');
+                .select('common_name, instrument_name, sampling_media');
             if (!error && data) {
                 setAllHazards(data);
                 if (hotInstance.current) {

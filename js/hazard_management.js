@@ -240,15 +240,19 @@ export default function HazardManagement() {
         e('div', { className: "card-custom overflow-hidden" },
             e('div', { className: "overflow-x-auto" },
                 e('table', { className: "w-full text-left table-fixed" },
-                    e('thead', { className: "bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider text-xs" },
+                    e('thead', { className: "bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider text-[10px]" },
                         e('tr', null,
-                            e('th', { className: "px-3 py-3 w-[18%]" }, "물질명"),
-                            e('th', { className: "px-3 py-3 w-[14%]" }, "유해인자구분"),
-                            e('th', { className: "px-3 py-3 w-[12%]" }, "CAS No"),
-                            e('th', { className: "px-3 py-3 w-[8%]" }, "순도"),
-                            e('th', { className: "px-3 py-3 w-[20%]" }, "채취매체"),
-                            e('th', { className: "px-3 py-3 w-[13%]" }, "분석장비"),
-                            e('th', { className: "px-3 py-3 w-[15%] text-right" }, "관리")
+                            e('th', { className: "px-2 py-3 w-36" }, "인자명(국문)"),
+                            e('th', { className: "px-2 py-3 w-32" }, "법적명칭"),
+                            e('th', { className: "px-2 py-3 w-24" }, "CAS No"),
+                            e('th', { className: "px-2 py-3 w-24" }, "채취매체"),
+                            e('th', { className: "px-2 py-3 w-32" }, "노출기준"),
+                            e('th', { className: "px-2 py-3 w-16 text-center" }, "유량"),
+                            e('th', { className: "px-2 py-3 w-16 text-center" }, "Max"),
+                            e('th', { className: "px-2 py-3 w-16 text-center" }, "Min"),
+                            e('th', { className: "px-2 py-3 w-24 text-center" }, "탈착용매"),
+                            e('th', { className: "px-2 py-3 w-20 text-right" }, "자체여부"),
+                            e('th', { className: "px-2 py-3 w-32 text-right" }, "관리")
                         )
                     ),
                     e('tbody', { className: "divide-y divide-slate-100 text-sm" },
@@ -258,43 +262,48 @@ export default function HazardManagement() {
                                     "검색 결과가 없습니다."
                                 )
                             ) :
-                            filteredHazards.map((h, idx) => e('tr', {
-                                key: h.hazard_id || idx,
-                                className: "data-row hover:bg-purple-50/50 transition-colors",
-                                onDoubleClick: () => openEdit(h),
-                                title: "더블클릭하여 수정"
-                            },
-                                e('td', { className: "px-3 py-2.5 font-bold text-slate-800" },
-                                    e('span', { className: "auto-shrink", 'data-full-text': h.common_name || '-' }, h.common_name || '-')
-                                ),
-                                e('td', { className: "px-3 py-2.5 text-slate-600" },
-                                    e('span', { className: "auto-shrink", 'data-full-text': h.hazard_category || '-' }, h.hazard_category || '-')
-                                ),
-                                e('td', { className: "px-3 py-2.5 font-mono text-slate-500 text-xs" },
-                                    e('span', { className: "auto-shrink", 'data-full-text': h.cas_no || '-' }, h.cas_no || '-')
-                                ),
-                                e('td', { className: "px-3 py-2.5 text-slate-600" },
-                                    e('span', { className: "auto-shrink", 'data-full-text': h.purity || '-' }, h.purity || '-')
-                                ),
-                                e('td', { className: "px-3 py-2.5 text-slate-600 text-xs" },
-                                    e('span', { className: "text-ellipsis", 'data-full-text': h.sampling_media || '-' }, h.sampling_media || '-')
-                                ),
-                                e('td', { className: "px-3 py-2.5 text-slate-600" },
-                                    e('span', { className: "auto-shrink", 'data-full-text': h.instrument_name || '-' }, h.instrument_name || '-')
-                                ),
-                                e('td', { className: "px-3 py-2.5 text-right" },
-                                    e('div', { className: "flex gap-1.5 justify-end" },
-                                        e('button', {
-                                            onClick: (ev) => { ev.stopPropagation(); openEdit(h); },
-                                            className: "px-3 py-1 bg-blue-50 text-blue-600 font-bold rounded-lg hover:bg-blue-100 transition-colors text-xs",
-                                        }, "수정"),
-                                        e('button', {
-                                            onClick: (ev) => handleRowDelete(h, ev),
-                                            className: "px-3 py-1 bg-red-50 text-red-600 font-bold rounded-lg hover:bg-red-100 transition-colors text-xs",
-                                        }, "삭제")
+                            filteredHazards.map((h, idx) => {
+                                const limitTextParts = [];
+                                if (h.twa_ppm) limitTextParts.push(`TWA ${h.twa_ppm}ppm`);
+                                else if (h.twa_mg) limitTextParts.push(`TWA ${h.twa_mg}mg/m³`);
+                                if (h.stel_ppm) limitTextParts.push(`STEL ${h.stel_ppm}ppm`);
+                                else if (h.stel_mg) limitTextParts.push(`STEL ${h.stel_mg}mg/m³`);
+                                const limitText = limitTextParts.join(', ');
+
+                                return e('tr', {
+                                    key: h.hazard_id || idx,
+                                    className: "data-row hover:bg-purple-50/50 transition-colors cursor-pointer",
+                                    onDoubleClick: () => openEdit(h),
+                                    title: "더블클릭하여 수정"
+                                },
+                                    e('td', { className: "px-2 py-2 font-bold text-slate-800 text-[13px]" }, h.common_name || '-'),
+                                    e('td', { className: "px-2 py-2 text-slate-600 text-[10px]" }, h.legal_name || '-'),
+                                    e('td', { className: "px-2 py-2 font-mono text-slate-500 text-[10px]" }, h.cas_no || '-'),
+                                    e('td', { className: "px-2 py-2 text-slate-600 text-[10px]" }, h.sampling_media || '-'),
+                                    e('td', { className: "px-2 py-2 text-[10px] text-emerald-600 font-semibold" }, limitText || '-'),
+                                    e('td', { className: "px-2 py-2 text-slate-700 text-center text-[10px]" }, h.flow_rate || '-'),
+                                    e('td', { className: "px-2 py-2 text-slate-700 text-center font-bold text-[10px]" }, h.max_volume || '-'),
+                                    e('td', { className: "px-2 py-2 text-slate-700 text-center text-[10px]" }, h.min_volume || '-'),
+                                    e('td', { className: "px-2 py-2 text-indigo-500 text-center text-[10px]" }, h.desorption_solvent || '-'),
+                                    e('td', { className: "px-2 py-2 text-right" },
+                                        e('span', { className: `px-2 py-0.5 rounded-full text-[10px] font-black ${h.is_self === '자체분석' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}` },
+                                            h.is_self === '자체분석' ? '자체분석' : '외부의뢰'
+                                        )
+                                    ),
+                                    e('td', { className: "px-2 py-2 text-right" },
+                                        e('div', { className: "flex gap-1 justify-end" },
+                                            e('button', {
+                                                onClick: (ev) => { ev.stopPropagation(); openEdit(h); },
+                                                className: "px-2 py-1 bg-blue-50 text-blue-600 font-bold rounded hover:bg-blue-100 transition-colors text-[10px]",
+                                            }, "수정"),
+                                            e('button', {
+                                                onClick: (ev) => handleRowDelete(h, ev),
+                                                className: "px-2 py-1 bg-red-50 text-red-600 font-bold rounded hover:bg-red-100 transition-colors text-[10px]",
+                                            }, "삭제")
+                                        )
                                     )
-                                )
-                            ))
+                                );
+                            })
                     )
                 )
             )
