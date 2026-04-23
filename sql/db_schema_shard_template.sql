@@ -47,6 +47,7 @@ BEGIN
     LOOP
         EXECUTE 'ALTER TABLE ' || t || ' ADD COLUMN IF NOT EXISTS status TEXT DEFAULT ''진행중''';
         EXECUTE 'ALTER TABLE ' || t || ' ADD COLUMN IF NOT EXISTS completed_at DATE';
+        EXECUTE 'ALTER TABLE ' || t || ' ADD COLUMN IF NOT EXISTS input_seq INTEGER';
     END LOOP;
 END $$;
 */

@@ -24,6 +24,7 @@ export function initSampleGrid(container, mDate, comName, onHazardDoubleClick, o
     const baseCols = [
         { data: 'actions', label: '관리', renderer: deleteRenderer, readOnly: true, width: 50, className: 'htCenter htMiddle' },
         { data: 'id', label: 'ID', readOnly: true, width: 1, className: 'hidden' },
+        { data: 'input_seq', label: '순번', readOnly: false, width: 50, className: 'htCenter htMiddle' },
         { data: 'sample_id', label: '시료번호', readOnly: false, width: 110, className: 'htCenter htMiddle font-bold' },
     ];
 
@@ -478,14 +479,17 @@ export async function loadGridData(hot, supabase, startDate, endDate, comName, u
                 if (sidA !== sidB) {
                     return sidA.localeCompare(sidB, undefined, { numeric: true, sensitivity: 'base' });
                 }
-                return (a.id || 9999999) - (b.id || 9999999);
+                const seqA = a.input_seq ?? (a.id || 9999999);
+                const seqB = b.input_seq ?? (b.id || 9999999);
+                return seqA - seqB;
             });
         } else {
-            // ★ 입력순 (ID순): 측정일자 → DB ID순
-            // 사용자가 입력한 순서(ID)를 최우선으로 하여 정렬합니다.
+            // ★ 입력순 (순번/ID순): 측정일자 → 입력순번(input_seq) → DB ID순
             allData.sort((a, b) => {
                 if (a.m_date !== b.m_date) return a.m_date > b.m_date ? 1 : -1;
-                return (a.id || 9999999) - (b.id || 9999999);
+                const seqA = a.input_seq ?? (a.id || 9999999);
+                const seqB = b.input_seq ?? (b.id || 9999999);
+                return seqA - seqB;
             });
         }
 

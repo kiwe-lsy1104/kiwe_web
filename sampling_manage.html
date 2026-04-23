@@ -210,6 +210,7 @@
             { key: 'status', label: '완료', width: 60, source: 'sampling' },
             { key: 'corp_code', label: '공단코드', width: 80, source: 'sampling' },
             { key: 'sample_id', label: '시료번호', width: 110, source: 'sampling' },
+            { key: 'input_seq', label: '순번', width: 50, source: 'sampling' },
             { key: 'blank_sample_no', label: '공시료번호', width: 100, source: 'sampling' },
             { key: 'm_date', label: '측정일자', width: 90, source: 'sampling' },
             { key: 'com_name', label: '사업장명', width: 160, source: 'sampling' },
@@ -640,11 +641,16 @@
                     const comA = a.com_name || '';
                     const comB = b.com_name || '';
 
-                    // 같은 사업장이면 공시료 여부로 정렬 (공시료는 맨 뒤)
+                    // 같은 사업장이면 공시료 여부 → 입력순번(input_seq) → 시료번호 순으로 정렬
                     if (comA === comB) {
                         const blankA = isBlankSample(a) ? 1 : 0;
                         const blankB = isBlankSample(b) ? 1 : 0;
                         if (blankA !== blankB) return blankA - blankB;
+                        
+                        const seqA = a.input_seq ?? 999999;
+                        const seqB = b.input_seq ?? 999999;
+                        if (seqA !== seqB) return seqA - seqB;
+
                         return (a.sample_id || '').localeCompare(b.sample_id || '');
                     }
 
@@ -710,6 +716,11 @@
                                 const blankA = isBlankSampleA(a) ? 1 : 0;
                                 const blankB = isBlankSampleA(b) ? 1 : 0;
                                 if (blankA !== blankB) return blankA - blankB;
+
+                                const seqA = a.input_seq ?? 999999;
+                                const seqB = b.input_seq ?? 999999;
+                                if (seqA !== seqB) return seqA - seqB;
+
                                 return (a.sample_id || '').localeCompare(b.sample_id || '');
                             }
                             const prioA = companyPriority[comA] ?? 999999;

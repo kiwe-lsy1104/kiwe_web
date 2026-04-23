@@ -218,7 +218,14 @@ window.initScheduleTab = function () {
     function MobileScheduleUI() {
         const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
         const [currentMonth, setCurrentMonth] = useState(new Date().getMonth() + 1);
-        const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+        const getLocalDateStr = (date = new Date()) => {
+            const y = date.getFullYear();
+            const m = String(date.getMonth() + 1).padStart(2, '0');
+            const d = String(date.getDate()).padStart(2, '0');
+            return `${y}-${m}-${d}`;
+        };
+
+        const [selectedDate, setSelectedDate] = useState(getLocalDateStr());
         
         const [equipments, setEquipments] = useState([]);
         const [schedules, setSchedules] = useState([]);
@@ -251,7 +258,8 @@ window.initScheduleTab = function () {
         const loadSchedules = useCallback(async () => {
              if (!sb) return;
              const startDate = `${currentYear}-${String(currentMonth).padStart(2,'0')}-01`;
-             const endDate = new Date(currentYear, currentMonth, 0).toISOString().split('T')[0];
+             const lastDay = new Date(currentYear, currentMonth, 0).getDate();
+             const endDate = `${currentYear}-${String(currentMonth).padStart(2,'0')}-${String(lastDay).padStart(2,'0')}`;
              const { data } = await sb.from('kiwe_schedule').select('*')
                 .gte('sche_date', startDate)
                 .lte('sche_date', endDate);
@@ -340,7 +348,7 @@ window.initScheduleTab = function () {
                             if(!dObj) return e('div', { key: di, className: 'h-10 text-center flex flex-col items-center justify-center p-1' });
                             
                             const isSelected = dObj.dateStr === selectedDate;
-                            const isToday = dObj.dateStr === new Date().toISOString().split('T')[0];
+                            const isToday = dObj.dateStr === getLocalDateStr();
                             const textColor = isToday ? 'text-indigo-600 font-black' : (di===0 ? 'text-red-500' : (di===6?'text-blue-500':'text-slate-700'));
                             
                             return e('button', {

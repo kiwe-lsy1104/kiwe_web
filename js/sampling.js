@@ -18,6 +18,7 @@ const e = React.createElement;
 const STORAGE_KEY_MAIN = 'KIWE_SAMPLING_GRID_CONFIG_V6_STABLE';
 const DB_SETTINGS_KEY = 'sampling_column_config';
 const ALL_GRID_COLUMNS = [
+    { key: 'input_seq', label: '순번' },
     { key: 'm_date', label: '측정일자' },
     { key: 'com_name', label: '사업장명' },
     { key: 'work_process', label: '작업공정' },
@@ -40,9 +41,8 @@ const ALL_GRID_COLUMNS = [
     { key: 'received_by', label: '인수자/접수자' },
     { key: 'received_date', label: '인수일' }
 ];
-
 const DEFAULT_COLS = [
-    'm_date', 'com_name', 'work_process', 'worker_name', 'common_name',
+    'input_seq', 'm_date', 'com_name', 'work_process', 'worker_name', 'common_name',
     'pump_no', 'start_time', 'end_time', 'measured_min', 'shift_type',
     'work_hour', 'lunch_time', 'occurrence_type', 'temp', 'humidity',
     'condition', 'analyst', 'measured_by', 'received_by', 'received_date'
@@ -740,7 +740,10 @@ function App() {
 
                 // 조건: 유효한 데이터이면서 (미저장이거나 사용자가 저정데이터 포함을 선택했을 때)
                 if ((rowData.com_name || rowData.common_name) && (!rowData.id || includeSaved)) {
-                    // 기존 번호를 지워서 applyBulkSampleIds가 새로 생성하게 유도
+                    // 1. 입력순번(input_seq)을 화면에 보이는 순서(1, 2, 3...)로 재설정
+                    hot.setDataAtRowProp(i, 'input_seq', i + 1, 'auto');
+                    
+                    // 2. 기존 번호를 지워서 applyBulkSampleIds가 새로 생성하게 유도
                     hot.setDataAtRowProp(i, 'sample_id', null, 'auto');
                     physicalIndicesToProcess.push(physicalIdx);
                 }
@@ -851,14 +854,13 @@ function App() {
                     // Attempt to get column list from DB to be truly dynamic
                     const { data: sampleRec } = await supabase.from(tableName).select('*').limit(1);
                     const dbCols = (sampleRec && sampleRec.length > 0) ? Object.keys(sampleRec[0]) : [];
-
                     const safeColumns = [
                         'm_date', 'com_name', 'work_process', 'worker_name', 'common_name',
                         'pump_no', 'start_time', 'end_time', 'shift_type', 'work_hour',
                         'lunch_time', 'occurrence_type', 'temp', 'humidity',
                         'analyst', 'measured_by', 'received_by', 'sample_id', 'condition',
                         'received_date', 'status', 'completed_at', 'instrument_name', 'hazard_category',
-                        'is_self', 'remarks'
+                        'is_self', 'remarks', 'input_seq'
                     ];
 
                     return data.map(item => {
@@ -910,6 +912,7 @@ function App() {
                     occurrence_type: sanitizeStr(s.occurrence_type),
                     shift_type: sanitizeStr(s.shift_type),
                     condition: sanitizeStr(s.condition) || '양호',
+                    input_seq: sanitizeInt(s.input_seq)
                 };
 
                 delete rowData.actions;
