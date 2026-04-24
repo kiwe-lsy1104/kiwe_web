@@ -487,9 +487,10 @@ export async function loadGridData(hot, supabase, startDate, endDate, comName, u
             // ★ 입력순 (순번/ID순): 측정일자 → 입력순번(input_seq) → DB ID순
             allData.sort((a, b) => {
                 if (a.m_date !== b.m_date) return a.m_date > b.m_date ? 1 : -1;
-                const seqA = a.input_seq ?? (a.id || 9999999);
-                const seqB = b.input_seq ?? (b.id || 9999999);
-                return seqA - seqB;
+                const seqA = a.input_seq ?? 9999999;
+                const seqB = b.input_seq ?? 9999999;
+                if (seqA !== seqB) return seqA - seqB;
+                return (a.id || 0) - (b.id || 0);
             });
         }
 

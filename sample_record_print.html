@@ -299,8 +299,13 @@ async function buildPrint() {
             allSamples = allSamples.concat(data || []);
         }
 
-        // 입력순 정렬 (DB ID 기준) - 사용자가 대장에 입력한 순서 그대로 노출
-        allSamples.sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0));
+        // 입력순 정렬 (입력순번 우선, ID 보조)
+        allSamples.sort((a, b) => {
+            const seqA = a.input_seq ?? 9999999;
+            const seqB = b.input_seq ?? 9999999;
+            if (seqA !== seqB) return seqA - seqB;
+            return (Number(a.id) || 0) - (Number(b.id) || 0);
+        });
 
 
         // 1. 시료 데이터에서 "소음" 분리 및 일반 시료 필터링
@@ -381,8 +386,13 @@ function buildProcessGroups(samples, noises) {
         ...samples.map(s => ({ ...s, _type: 'sample' })),
         ...noises.map(n => ({ ...n, _type: 'noise' }))
     ];
-    // ID를 숫자로 변환하여 정확한 순서 보장
-    allRows.sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0));
+    // 입력순번 우선 정렬 (행 삽입 등에 따른 순번 보장)
+    allRows.sort((a, b) => {
+        const seqA = a.input_seq ?? 9999999;
+        const seqB = b.input_seq ?? 9999999;
+        if (seqA !== seqB) return seqA - seqB;
+        return (Number(a.id) || 0) - (Number(b.id) || 0);
+    });
 
     const segments = []; // { proc, points: [] } 형태
     let curSeg = null;
@@ -604,8 +614,13 @@ async function downloadExcel() {
             allSamples = allSamples.concat(data || []);
         }
 
-        // 입력순 정렬 (DB ID 기준)
-        allSamples.sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0));
+        // 입력순 정렬 (입력순번 우선, ID 보조)
+        allSamples.sort((a, b) => {
+            const seqA = a.input_seq ?? 9999999;
+            const seqB = b.input_seq ?? 9999999;
+            if (seqA !== seqB) return seqA - seqB;
+            return (Number(a.id) || 0) - (Number(b.id) || 0);
+        });
 
         const samplingSamples = [];
         const samplingNoises = [];

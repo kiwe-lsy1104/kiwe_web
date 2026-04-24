@@ -720,17 +720,52 @@ function App() {
         setComName('');
     };
 
+    const getMaxInputSeqBeforeDB = async (date) => {
+        try {
+            const tableName = getTableName(date);
+            if (!tableName) return 0;
+
+            const { data, error } = await supabase
+                .from(tableName)
+                .select('input_seq')
+                .lt('m_date', date)
+                .order('input_seq', { ascending: false })
+                .limit(1);
+
+            if (error) throw error;
+            if (data && data.length > 0) {
+                return parseInt(data[0].input_seq, 10) || 0;
+            }
+            return 0;
+        } catch (err) {
+            console.error("Error fetching max input_seq before date:", err);
+            return 0;
+        }
+    };
+
     const reassignAllSampleIds = async () => {
         const hot = hotInstance.current;
         if (!hot) return;
 
         const includeSaved = confirm('이미 저장된 데이터의 시료번호도 현재 순서대로 다시 매기시겠습니까?\n(취소를 누르면 미저장 데이터만 재계산합니다)');
 
-        // ★ 개선: 화면에 보이는 순서대로 신규 데이터의 번호를 다시 매깁니다.
+        // ★ 개선: 화면에 보이는 데이터 중 가장 빠른 날짜를 기준으로 시작 순번을 결정합니다.
         const rowCount = hot.countRows();
+        let minDate = null;
+        for (let i = 0; i < rowCount; i++) {
+            const date = hot.getDataAtRowProp(i, 'm_date');
+            if (date && (!minDate || date < minDate)) minDate = date;
+        }
+
+        let startSeq = 0;
+        if (minDate) {
+            startSeq = await getMaxInputSeqBeforeDB(minDate);
+        }
+
         const physicalIndicesToProcess = [];
 
         hot.batch(() => {
+            let currentSeq = startSeq;
             for (let i = 0; i < rowCount; i++) {
                 const physicalIdx = hot.toPhysicalRow(i);
                 if (physicalIdx === null) continue;
@@ -740,8 +775,9 @@ function App() {
 
                 // 조건: 유효한 데이터이면서 (미저장이거나 사용자가 저정데이터 포함을 선택했을 때)
                 if ((rowData.com_name || rowData.common_name) && (!rowData.id || includeSaved)) {
-                    // 1. 입력순번(input_seq)을 화면에 보이는 순서(1, 2, 3...)로 재설정
-                    hot.setDataAtRowProp(i, 'input_seq', i + 1, 'auto');
+                    currentSeq++;
+                    // 1. 입력순번(input_seq)을 계산된 순서대로 재설정
+                    hot.setDataAtRowProp(i, 'input_seq', currentSeq, 'auto');
                     
                     // 2. 기존 번호를 지워서 applyBulkSampleIds가 새로 생성하게 유도
                     hot.setDataAtRowProp(i, 'sample_id', null, 'auto');
@@ -752,7 +788,7 @@ function App() {
 
         if (physicalIndicesToProcess.length > 0) {
             await applyBulkSampleIds(physicalIndicesToProcess, includeSaved);
-            alert('시료번호가 현재 화면 순서대로 재계산되었습니다.\n[데이터 저장]을 눌러야 최종 반영됩니다.');
+            alert(`시료번호가 ${startSeq + 1}번부터 현재 화면 순서대로 재계산되었습니다.\n[데이터 저장]을 눌러야 최종 반영됩니다.`);
         } else {
             alert('재계산할 데이터가 없습니다.');
         }

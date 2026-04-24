@@ -809,6 +809,11 @@
                             const blankA = isBlankSample(a) ? 1 : 0;
                             const blankB = isBlankSample(b) ? 1 : 0;
                             if (blankA !== blankB) return blankA - blankB;
+
+                            const seqA = a.input_seq ?? 999999;
+                            const seqB = b.input_seq ?? 999999;
+                            if (seqA !== seqB) return seqA - seqB;
+
                             return (a.sample_id || '').localeCompare(b.sample_id || '');
                         }
                         const prioA = companyPriority[comA] ?? 999999;
