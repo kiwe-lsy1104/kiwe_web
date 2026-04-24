@@ -226,8 +226,8 @@ function StatsModal({ isOpen, onClose, data }) {
                         { label: '총 측정 건수', value: `${allRecords.length}건`, color: 'bg-slate-50 border-slate-200' },
                         { label: '85dB 이상', value: `${warn85.length}건`, sub: `${allRecords.length ? (warn85.length / allRecords.length * 100).toFixed(0) : 0}%`, color: 'bg-yellow-50 border-yellow-200' },
                         { label: '노출기준 초과', value: `${overLimit.length}건`, sub: `${allRecords.length ? (overLimit.length / allRecords.length * 100).toFixed(0) : 0}%`, color: 'bg-orange-50 border-orange-200' },
-                        { label: '평균/최고', value: `${avg} / ${max}`, sub: 'dB(A)', color: 'bg-sky-50 border-sky-200' },
-                        { label: '최저값', value: `${min}`, sub: 'dB(A)', color: 'bg-emerald-50 border-emerald-200' },
+                        { label: '최저/최고', value: `${min} / ${max}`, sub: 'dB(A)', color: 'bg-emerald-50 border-emerald-200' },
+                        { label: '평균값', value: `${avg}`, sub: 'dB(A)', color: 'bg-sky-50 border-sky-200' },
                     ].map((s, i) => e('div', { key: i, className: `p-4 rounded-xl border ${s.color} text-center` },
                         e('p', { className: 'text-xs font-bold text-slate-500 mb-1' }, s.label),
                         e('p', { className: 'text-lg font-black text-slate-800' }, s.value),
@@ -549,6 +549,7 @@ export function NoiseRecord({ user, supabase: supabaseProp }) {
             overLimit: withResult.filter(p => p.lim !== null && p.n > p.lim).length,
             avg: withResult.length ? (withResult.reduce((s, p) => s + p.n, 0) / withResult.length).toFixed(1) : '-',
             max: withResult.length ? Math.max(...withResult.map(p => p.n)).toFixed(1) : '-',
+            min: withResult.length ? Math.min(...withResult.map(p => p.n)).toFixed(1) : '-',
         };
     }, [filteredRows, editRows]);
 
@@ -1125,8 +1126,8 @@ export function NoiseRecord({ user, supabase: supabaseProp }) {
                 { label: '조회 건수', value: `${stats.total}건`, color: 'bg-white border-slate-200' },
                 { label: '85dB 이상', value: `${stats.warn85}건`, color: 'bg-yellow-50 border-yellow-200' },
                 { label: '노출기준 초과', value: `${stats.overLimit}건`, color: 'bg-orange-50 border-orange-200' },
+                { label: '최저/최고', value: `${stats.min} / ${stats.max} dB`, color: 'bg-emerald-50 border-emerald-200' },
                 { label: '평균 소음', value: `${stats.avg} dB`, color: 'bg-sky-50 border-sky-200' },
-                { label: '최고 소음', value: `${stats.max} dB`, color: 'bg-red-50 border-red-200' },
             ].map((s, i) => e('div', { key: i, className: `bg-white rounded-xl border ${s.color} px-4 py-2 shadow-sm flex items-center gap-3` },
                 e('span', { className: 'text-xs font-bold text-slate-400' }, s.label),
                 e('span', { className: 'text-base font-black text-slate-800' }, s.value)
