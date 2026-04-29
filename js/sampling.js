@@ -882,6 +882,63 @@ function App() {
                 return s === '' ? null : s;
             };
 
+            // ★ 저장 전 input_seq 자동 부여 ─────────────────────────────────
+            // 신규 행(id 없음) 또는 기존 행 중 input_seq가 NULL인 경우
+            // DB 전체 최댓값 기준으로 연속 순번을 부여합니다.
+            {
+                // 1. 그리드에서 현재 max input_seq 파악
+                let currentMaxSeq = 0;
+                for (const s of rawLatest) {
+                    const v = parseInt(s.input_seq);
+                    if (!isNaN(v) && v > currentMaxSeq) currentMaxSeq = v;
+                }
+
+                // 2. DB에서 전체 max input_seq 조회 (그리드에 보이는 모든 테이블 + 현재 날짜 테이블)
+                const tablesInGrid = new Set();
+                rawLatest.forEach(s => {
+                    const tName = getTableName(s.m_date || startDate);
+                    if (tName) tablesInGrid.add(tName);
+                });
+                const tCurrent = getTableName(startDate);
+                if (tCurrent) tablesInGrid.add(tCurrent);
+
+                let dbMaxSeq = 0;
+                for (const tName of tablesInGrid) {
+                    try {
+                        const { data: seqData } = await supabase
+                            .from(tName)
+                            .select('input_seq')
+                            .not('input_seq', 'is', null)
+                            .order('input_seq', { ascending: false })
+                            .limit(1);
+                        if (seqData && seqData.length > 0) {
+                            const val = parseInt(seqData[0].input_seq) || 0;
+                            if (val > dbMaxSeq) dbMaxSeq = val;
+                        }
+                    } catch (e) { /* 테이블 없으면 무시 */ }
+                }
+
+                let nextSeq = Math.max(currentMaxSeq, dbMaxSeq);
+                console.log(`[input_seq] 그리드 최대: ${currentMaxSeq}, DB 최대: ${dbMaxSeq} → 다음 순번: ${nextSeq + 1}부터 부여`);
+
+                // 3. input_seq 없는 행(신규 또는 기존 누락)에 순서대로 부여
+                const hot = hotInstance.current;
+                for (let i = 0; i < rawLatest.length; i++) {
+                    const s = rawLatest[i];
+                    if (!(s.com_name && s.common_name)) continue; // 저장 안 되는 행 스킵
+                    const hasSeq = s.input_seq !== null && s.input_seq !== undefined && s.input_seq !== '';
+                    if (!hasSeq) {
+                        nextSeq++;
+                        s.input_seq = nextSeq; // rawLatest는 HOT 내부 참조 → 직접 수정
+                        // 그리드 셀에도 반영 (UI 표시)
+                        if (hot) {
+                            hot.setDataAtRowProp(i, 'input_seq', nextSeq, 'auto');
+                        }
+                    }
+                }
+            }
+            // ─────────────────────────────────────────────────────────────────
+
             const preparedData = [];
 
             // Helper to get valid columns from the table

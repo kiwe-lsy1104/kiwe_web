@@ -479,16 +479,18 @@ export async function loadGridData(hot, supabase, startDate, endDate, comName, u
                 if (sidA !== sidB) {
                     return sidA.localeCompare(sidB, undefined, { numeric: true, sensitivity: 'base' });
                 }
-                const seqA = a.input_seq ?? (a.id || 9999999);
-                const seqB = b.input_seq ?? (b.id || 9999999);
+                // input_seq 없으면 id로 fallback (삽입 순서 유지)
+                const seqA = a.input_seq ?? a.id ?? 9999999;
+                const seqB = b.input_seq ?? b.id ?? 9999999;
                 return seqA - seqB;
             });
         } else {
             // ★ 입력순 (순번/ID순): 측정일자 → 입력순번(input_seq) → DB ID순
+            // input_seq가 NULL인 행은 id를 fallback으로 사용 (삽입 순서 유지)
             allData.sort((a, b) => {
                 if (a.m_date !== b.m_date) return a.m_date > b.m_date ? 1 : -1;
-                const seqA = a.input_seq ?? 9999999;
-                const seqB = b.input_seq ?? 9999999;
+                const seqA = a.input_seq ?? a.id ?? 9999999;
+                const seqB = b.input_seq ?? b.id ?? 9999999;
                 if (seqA !== seqB) return seqA - seqB;
                 return (a.id || 0) - (b.id || 0);
             });
