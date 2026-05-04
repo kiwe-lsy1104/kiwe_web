@@ -1321,11 +1321,11 @@ function App() {
                             e('button', { onClick: reassignAllSampleIds, className: "px-4 py-2 bg-amber-50 text-amber-600 border border-amber-200 rounded-lg font-bold hover:bg-amber-100 transition-all flex items-center gap-1 shadow-sm", title: "미저장 데이터의 시료번호를 다시 매깁니다." },
                                 e(RotateCcw, { size: 14 }), "번호 재부여"
                             ),
-                            e('button', { onClick: () => addRows(5), className: "px-4 py-2 bg-slate-500 text-white rounded-lg font-bold hover:bg-slate-600 transition-all flex items-center gap-1" },
-                                e(Plus, { size: 14 }), "5줄 추가"
-                            ),
-                            e('button', { onClick: () => addRows(10), className: "px-4 py-2 bg-slate-600 text-white rounded-lg font-bold hover:bg-slate-700 transition-all flex items-center gap-1" },
+                            e('button', { onClick: () => addRows(10), className: "px-4 py-2 bg-slate-500 text-white rounded-lg font-bold hover:bg-slate-600 transition-all flex items-center gap-1" },
                                 e(Plus, { size: 14 }), "10줄 추가"
+                            ),
+                            e('button', { onClick: () => addRows(50), className: "px-4 py-2 bg-slate-600 text-white rounded-lg font-bold hover:bg-slate-700 transition-all flex items-center gap-1" },
+                                e(Plus, { size: 14 }), "50줄 추가"
                             ),
                             e('button', { onClick: handleSubmit, disabled: loading, className: "px-6 py-2 bg-indigo-600 text-white rounded-lg font-black shadow-lg hover:bg-indigo-700 transition-all disabled:opacity-50 flex items-center gap-2" },
                                 e(Save, { size: 18 }), loading ? '저장 중...' : '데이터 저장'
