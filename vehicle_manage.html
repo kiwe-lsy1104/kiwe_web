@@ -380,15 +380,25 @@ function App() {
         
         let prevDist = 0;
         if (saved.length > 0) {
-            // 현재 달의 기록이 있으면 가장 최근 기록의 주행 후 거리를 가져옴
-            prevDist = (Number(saved[0].afterDist) || Number(saved[0].beforeDist) || 0);
+            // 현재 달의 기록이 있으면 afterDist > 0 인 가장 최근 기록 사용
+            const validLog = saved.find(l => Number(l.afterDist) > 0);
+            prevDist = validLog ? Number(validLog.afterDist) : (Number(saved[0].beforeDist) || 0);
         } else {
-            // 현재 달의 기록이 없으면 (예: 월초) DB에서 가장 마지막 기록을 가져옴
+            // 현재 달의 기록이 없으면 (예: 월초) DB에서 전체 기록 중 가장 마지막 기록을 가져옴
             prevDist = await VehicleAPI.fetchLastDist(selectedVid);
         }
 
+        // 날짜 생성: 선택된 월이 현재 월이면 오늘, 아니면 해당 월의 마지막 날
         const today = new Date();
-        const dateStr = `${currentYear}-${String(currentMonth).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+        const isCurrentMonth = (currentYear === today.getFullYear() && currentMonth === (today.getMonth() + 1));
+        let dayNum;
+        if (isCurrentMonth) {
+            dayNum = today.getDate();
+        } else {
+            // 과거/미래 월 조회 중: 해당 월의 마지막 날 사용
+            dayNum = new Date(currentYear, currentMonth, 0).getDate();
+        }
+        const dateStr = `${currentYear}-${String(currentMonth).padStart(2,'0')}-${String(dayNum).padStart(2,'0')}`;
 
         const newRow = {
             id: 'temp_' + Date.now(),

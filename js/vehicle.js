@@ -312,10 +312,9 @@ export async function fetchLastDist(vehicleId) {
     try {
         const { data, error } = await sb
             .from('kiwe_vehicle_logs')
-            .select('after_dist')
-            .eq('vehicle_id', vehicleId)
+            .select('after_dist, date, created_at')
+            .eq('vehicle_id', String(vehicleId).trim())
             .order('date', { ascending: false })
-            .order('after_dist', { ascending: false })
             .order('created_at', { ascending: false })
             .limit(1);
         
