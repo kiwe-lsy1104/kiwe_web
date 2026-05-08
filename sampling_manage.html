@@ -607,58 +607,15 @@
                     );
                 }
 
-                // 공시료 판별 함수
-                const isBlankSample = (item) =>
-                    (item.worker_name || '').includes('공시료') ||
-                    (item.sample_id || '').startsWith('DB') ||
-                    (item.sample_id || '').startsWith('SB');
-
-                // 1. 사업장별 최소 시료번호(SEQ) 계산 (공시료 제외, com_name 원본 사용)
-                const companyPriority = {};
-                const getSeqNum = (id) => {
-                    if (!id) return 999999;
-                    const parts = id.split('-');
-                    if (parts.length < 2) return 999999;
-                    const seq = parseInt(parts[parts.length - 1], 10);
-                    return isNaN(seq) ? 999999 : seq;
-                };
-
-                enriched.forEach(item => {
-                    if (isBlankSample(item)) return; // 공시료는 우선순위 계산에서 제외
-                    const com = item.com_name || '';
-                    const seq = getSeqNum(item.sample_id);
-                    if (!companyPriority[com] || seq < companyPriority[com]) {
-                        companyPriority[com] = seq;
-                    }
-                });
-
                 enriched.sort((a, b) => {
-                    // 1순위: 측정일자 정렬
                     const dateComp = (a.m_date || '').localeCompare(b.m_date || '');
                     if (dateComp !== 0) return sortOrder === 'desc' ? -dateComp : dateComp;
 
-                    // 사업장 그룹별 우선순위 (com_name 원본 그대로 비교, (주) 제거 안 함)
-                    const comA = a.com_name || '';
-                    const comB = b.com_name || '';
+                    const seqA = a.input_seq ?? 999999;
+                    const seqB = b.input_seq ?? 999999;
+                    if (seqA !== seqB) return seqA - seqB;
 
-                    // 같은 사업장이면 공시료 여부 → 입력순번(input_seq) → 시료번호 순으로 정렬
-                    if (comA === comB) {
-                        const blankA = isBlankSample(a) ? 1 : 0;
-                        const blankB = isBlankSample(b) ? 1 : 0;
-                        if (blankA !== blankB) return blankA - blankB;
-                        
-                        const seqA = a.input_seq ?? 999999;
-                        const seqB = b.input_seq ?? 999999;
-                        if (seqA !== seqB) return seqA - seqB;
-
-                        return (a.sample_id || '').localeCompare(b.sample_id || '');
-                    }
-
-                    // 공시료의 사업장 우선순위: 해당 공시료가 속하는 사업장의 우선순위를 따름
-                    const prioA = companyPriority[comA] ?? 999999;
-                    const prioB = companyPriority[comB] ?? 999999;
-                    if (prioA !== prioB) return prioA - prioB;
-                    return comA.localeCompare(comB);
+                    return (a.sample_id || '').localeCompare(b.sample_id || '', undefined, { numeric: true, sensitivity: 'base' });
                 });
                 return enriched;
             };
@@ -687,46 +644,15 @@
                         alert(`${toAdd.length.toLocaleString()}건이 하단에 추가되었습니다.`);
                         const merged = [...prev, ...toAdd];
 
-                        // 공통 정렬 로직 적용
-                        const isBlankSampleA = (item) =>
-                            (item.worker_name || '').includes('공시료') ||
-                            (item.sample_id || '').startsWith('DB') ||
-                            (item.sample_id || '').startsWith('SB');
-                        const companyPriority = {};
-                        const getSeqNum = (id) => {
-                            if (!id) return 999999;
-                            const parts = id.split('-');
-                            if (parts.length < 2) return 999999;
-                            const seq = parseInt(parts[parts.length - 1], 10);
-                            return isNaN(seq) ? 999999 : seq;
-                        };
-                        merged.forEach(item => {
-                            if (isBlankSampleA(item)) return;
-                            const com = item.com_name || '';
-                            const seq = getSeqNum(item.sample_id);
-                            if (!companyPriority[com] || seq < companyPriority[com]) companyPriority[com] = seq;
-                        });
-
                         merged.sort((a, b) => {
                             const dateComp = (a.m_date || '').localeCompare(b.m_date || '');
                             if (dateComp !== 0) return sortOrder === 'desc' ? -dateComp : dateComp;
-                            const comA = a.com_name || '';
-                            const comB = b.com_name || '';
-                            if (comA === comB) {
-                                const blankA = isBlankSampleA(a) ? 1 : 0;
-                                const blankB = isBlankSampleA(b) ? 1 : 0;
-                                if (blankA !== blankB) return blankA - blankB;
 
-                                const seqA = a.input_seq ?? 999999;
-                                const seqB = b.input_seq ?? 999999;
-                                if (seqA !== seqB) return seqA - seqB;
+                            const seqA = a.input_seq ?? 999999;
+                            const seqB = b.input_seq ?? 999999;
+                            if (seqA !== seqB) return seqA - seqB;
 
-                                return (a.sample_id || '').localeCompare(b.sample_id || '');
-                            }
-                            const prioA = companyPriority[comA] ?? 999999;
-                            const prioB = companyPriority[comB] ?? 999999;
-                            if (prioA !== prioB) return prioA - prioB;
-                            return comA.localeCompare(comB);
+                            return (a.sample_id || '').localeCompare(b.sample_id || '', undefined, { numeric: true, sensitivity: 'base' });
                         });
                         return merged;
                     });
@@ -781,45 +707,15 @@
             useEffect(() => {
                 setData(prev => {
                     const next = [...prev];
-                    const isBlankSample = (item) =>
-                        (item.worker_name || '').includes('공시료') ||
-                        (item.sample_id || '').startsWith('DB') ||
-                        (item.sample_id || '').startsWith('SB');
-                    const companyPriority = {};
-                    const getSeqNum = (id) => {
-                        if (!id) return 999999;
-                        const parts = id.split('-');
-                        if (parts.length < 2) return 999999;
-                        const seq = parseInt(parts[parts.length - 1], 10);
-                        return isNaN(seq) ? 999999 : seq;
-                    };
-                    next.forEach(item => {
-                        if (isBlankSample(item)) return;
-                        const com = item.com_name || '';
-                        const seq = getSeqNum(item.sample_id);
-                        if (!companyPriority[com] || seq < companyPriority[com]) companyPriority[com] = seq;
-                    });
-
                     next.sort((a, b) => {
                         const dateComp = (a.m_date || '').localeCompare(b.m_date || '');
                         if (dateComp !== 0) return sortOrder === 'desc' ? -dateComp : dateComp;
-                        const comA = a.com_name || '';
-                        const comB = b.com_name || '';
-                        if (comA === comB) {
-                            const blankA = isBlankSample(a) ? 1 : 0;
-                            const blankB = isBlankSample(b) ? 1 : 0;
-                            if (blankA !== blankB) return blankA - blankB;
 
-                            const seqA = a.input_seq ?? 999999;
-                            const seqB = b.input_seq ?? 999999;
-                            if (seqA !== seqB) return seqA - seqB;
+                        const seqA = a.input_seq ?? 999999;
+                        const seqB = b.input_seq ?? 999999;
+                        if (seqA !== seqB) return seqA - seqB;
 
-                            return (a.sample_id || '').localeCompare(b.sample_id || '');
-                        }
-                        const prioA = companyPriority[comA] ?? 999999;
-                        const prioB = companyPriority[comB] ?? 999999;
-                        if (prioA !== prioB) return prioA - prioB;
-                        return comA.localeCompare(comB);
+                        return (a.sample_id || '').localeCompare(b.sample_id || '', undefined, { numeric: true, sensitivity: 'base' });
                     });
                     return next;
                 });
