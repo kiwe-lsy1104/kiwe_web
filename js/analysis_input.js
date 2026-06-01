@@ -79,9 +79,16 @@ export default function AnalysisInput({
             let sData = results.flatMap(r => r.data || []);
 
             // 3. 유량 데이터
-            const { data: flowData } = await supabase.from('kiwe_flow').select('m_date,pump_no,total_avg').gte('m_date', startDate).lte('m_date', endDate);
+            const mDates = [...new Set(sData.map(s => s.m_date).filter(Boolean))];
+            let flowData = [];
+            if (mDates.length > 0) {
+                const { data } = await supabase.from('kiwe_flow')
+                    .select('m_date, pump_no, total_avg')
+                    .in('m_date', mDates);
+                flowData = data || [];
+            }
             const flowMap = new Map();
-            flowData?.forEach(f => flowMap.set(`${f.m_date}_${f.pump_no}`, parseFloat(f.total_avg) || 0));
+            flowData.forEach(f => flowMap.set(`${f.m_date}_${f.pump_no}`, parseFloat(f.total_avg) || 0));
 
             // 4. 가공 (중량분석 제외, 유해인자별 행 분리)
             const processed = [];

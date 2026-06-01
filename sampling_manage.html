@@ -523,9 +523,17 @@
                     })
                 );
                 const rawData = rawArrays.flat();
+ 
+                const mDates = [...new Set(rawData.map(s => s.m_date).filter(Boolean))];
+                let flowData = [];
+                if (mDates.length > 0) {
+                    const { data } = await supabase.from('kiwe_flow')
+                        .select('m_date, pump_no, total_avg')
+                        .in('m_date', mDates);
+                    flowData = data || [];
+                }
 
-                const [flowRes, hazardRes, analystRes, labRes] = await Promise.all([
-                    supabase.from('kiwe_flow').select('m_date, pump_no, total_avg').gte('m_date', sd).lte('m_date', ed),
+                const [hazardRes, analystRes, labRes] = await Promise.all([
                     supabase.from('kiwe_hazard').select('*'),
                     supabase.from('kiwe_users').select('user_name').eq('job_title', '분석책임자').maybeSingle(),
                     supabase.from('kiwe_partners').select('partner_name').eq('is_default_lab', true).maybeSingle()
@@ -536,7 +544,7 @@
 
                 const hazardMap = new Map((hazardRes.data || []).map(h => [h.common_name, h]));
                 const flowMap = new Map();
-                (flowRes.data || []).forEach(f => {
+                flowData.forEach(f => {
                     if (f.m_date && f.pump_no) flowMap.set(`${f.m_date}_${f.pump_no}`, f.total_avg);
                 });
 

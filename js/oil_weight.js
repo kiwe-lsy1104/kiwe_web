@@ -302,9 +302,17 @@ function App() {
             ));
             const rawAll = sResults.flatMap(r => r.data || []);
 
-            const { data: flowData } = await supabase.from('kiwe_flow').select('m_date, pump_no, total_avg').gte('m_date', startDate).lte('m_date', endDate);
+            // 2. Flow
+            const mDates = [...new Set(rawAll.map(s => s.m_date).filter(Boolean))];
+            let flowData = [];
+            if (mDates.length > 0) {
+                const { data } = await supabase.from('kiwe_flow')
+                    .select('m_date, pump_no, total_avg')
+                    .in('m_date', mDates);
+                flowData = data || [];
+            }
             const flowMap = new Map();
-            flowData?.forEach(f => flowMap.set(`${f.m_date}_${f.pump_no}`, parseFloat(f.total_avg) || 0));
+            flowData.forEach(f => flowMap.set(`${f.m_date}_${f.pump_no}`, parseFloat(f.total_avg) || 0));
 
             const { data: hazardInfo } = await supabase.from('kiwe_hazard').select('common_name, twa_mg').eq('common_name', selectedHazard).maybeSingle();
             const _tlv = hazardInfo?.twa_mg || 0;

@@ -231,14 +231,22 @@ export function ExternalRequestManager({ supabase, sessionData }) {
             );
             const rawData = rawArrays.flat();
 
-            const [flowRes, hazardRes] = await Promise.all([
-                supabase.from('kiwe_flow').select('m_date, pump_no, total_avg').gte('m_date', startDate).lte('m_date', endDate),
+            const [hazardRes] = await Promise.all([
                 supabase.from('kiwe_hazard').select('*')
             ]);
 
+            const mDates = [...new Set(rawData.map(s => s.m_date).filter(Boolean))];
+            let flowData = [];
+            if (mDates.length > 0) {
+                const { data } = await supabase.from('kiwe_flow')
+                    .select('m_date, pump_no, total_avg')
+                    .in('m_date', mDates);
+                flowData = data || [];
+            }
+
             const hazardMap = new Map((hazardRes.data || []).map(h => [h.common_name, h]));
             const flowMap = new Map();
-            (flowRes.data || []).forEach(f => {
+            flowData.forEach(f => {
                 if (f.m_date && f.pump_no) flowMap.set(`${f.m_date}_${f.pump_no}`, f.total_avg);
             });
 

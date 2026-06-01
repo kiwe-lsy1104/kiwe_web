@@ -202,16 +202,6 @@ export function AnalysisExtraction({
             const defaultAnalyst = analystRes.data?.user_name || '-';
             const defaultLab = labRes.data?.partner_name || '-';
 
-            // 2. Fetch Flow Data
-            const { data: flowData, error: flowErr } = await supabase.from('kiwe_flow').select('m_date, pump_no, total_avg').gte('m_date', startDate).lte('m_date', endDate);
-            const flowMap = new Map();
-            if (!flowErr && flowData) {
-                flowData.forEach(f => {
-                    if (f.m_date && f.pump_no) flowMap.set(`${f.m_date}_${f.pump_no}`, f.total_avg);
-                });
-            }
-
-            // 3. Fetch Sampling Data
             const tableList = getTableList(startDate, endDate);
             const samplingQueries = tableList.map(async (tableName) => {
                 const { data, error } = await supabase.from(tableName).select('*').gte('m_date', startDate).lte('m_date', endDate);
@@ -224,6 +214,19 @@ export function AnalysisExtraction({
             if (rawSampling.length > 0) {
                 Object.keys(rawSampling[0]).forEach(k => samplingKeys.add(k));
             }
+
+            const mDates = [...new Set(rawSampling.map(s => s.m_date).filter(Boolean))];
+            let flowData = [];
+            if (mDates.length > 0) {
+                const { data, error: flowErr } = await supabase.from('kiwe_flow')
+                    .select('m_date, pump_no, total_avg')
+                    .in('m_date', mDates);
+                if (!flowErr && data) flowData = data;
+            }
+            const flowMap = new Map();
+            flowData.forEach(f => {
+                if (f.m_date && f.pump_no) flowMap.set(`${f.m_date}_${f.pump_no}`, f.total_avg);
+            });
 
             // 4. Dynamic Column and Source Detection
             const allKeysSet = new Set([...samplingKeys, ...hazardKeys, 'remark1', 'remark2', 'collection_time', 'avg_flow', 'air_volume', 'analyzer']);

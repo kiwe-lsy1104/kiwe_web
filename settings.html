@@ -429,6 +429,17 @@
                 return Object.entries(groups).map(([name, data]) => ({ name, ...data }));
             }, [agencies]);
 
+            // 총 지정개소(5인 미만 + 5인 이상) 계산
+            const totals = useMemo(() => {
+                let under5 = 0;
+                let over5 = 0;
+                officeSummaries.forEach(s => {
+                    under5 += Number(s.currentUnder5) || 0;
+                    over5 += Number(s.currentOver5) || 0;
+                });
+                return { under5, over5, total: under5 + over5 };
+            }, [officeSummaries]);
+
             const handleRenew = (officeName) => {
                 const latest = officeSummaries.find(s => s.name === officeName);
                 setFormData({
@@ -493,14 +504,32 @@
             };
 
             return e('div', { className: "max-w-7xl mx-auto space-y-8" },
-                e('div', { className: "flex justify-between items-end px-2" },
+                e('div', { className: "flex flex-col md:flex-row justify-between items-start md:items-center gap-4 px-2" },
                     e('div', { className: "space-y-2" },
                         e('h2', { className: "text-3xl font-black text-slate-800" }, "지정현황 관리"),
                         e('p', { className: "text-slate-500 font-bold text-lg" }, "평가원 지정 상태 및 연간 측정 한도 이력을 통합 관리합니다.")
                     ),
+                    // 총 지정개소 요약 카드
+                    e('div', { className: "flex items-center gap-4 bg-slate-50 border border-slate-200/60 rounded-2xl p-4 shadow-sm min-w-[280px]" },
+                        e('div', { className: "p-3 bg-blue-100 text-blue-600 rounded-xl" },
+                            e('svg', { className: "w-6 h-6", fill: "none", stroke: "currentColor", viewBox: "0 0 24 24" },
+                                e('path', { strokeLinecap: "round", strokeLinejoin: "round", strokeWidth: "2.5", d: "M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" })
+                            )
+                        ),
+                        e('div', { className: "space-y-0.5" },
+                            e('p', { className: "text-[10px] font-black text-slate-400 uppercase tracking-widest" }, "총 지정개소"),
+                            e('div', { className: "flex items-baseline gap-1" },
+                                e('span', { className: "text-2xl font-black text-slate-800" }, totals.total.toLocaleString()),
+                                e('span', { className: "text-xs font-bold text-slate-400" }, "건")
+                            ),
+                            e('p', { className: "text-[10px] font-extrabold text-slate-500" }, 
+                                `5인 미만: ${totals.under5.toLocaleString()}건 | 5인 이상: ${totals.over5.toLocaleString()}건`
+                            )
+                        )
+                    ),
                     e('button', { 
                         onClick: () => handleRenew('안산'), 
-                        className: "bg-blue-600 text-white px-8 py-3 rounded-2xl font-black hover:bg-blue-700 shadow-xl transition-all transform hover:-translate-y-1 flex items-center gap-2" 
+                        className: "bg-blue-600 text-white px-8 py-3.5 rounded-2xl font-black hover:bg-blue-700 shadow-xl shadow-blue-100 hover:shadow-2xl transition-all transform hover:-translate-y-1 flex items-center gap-2" 
                     }, "신규 지정/변경 등록")
                 ),
 
