@@ -1244,12 +1244,10 @@ function RecordsManagement() {
     };
 
     const downloadBackup = () => {
-        const data = JSON.stringify(records, null, 2);
-        const blob = new Blob([data], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url; a.download = 'kiwe_records_backup_' + new Date().toISOString().split('T')[0] + '.json';
-        a.click();
+        const ws = XLSX.utils.json_to_sheet(records);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Records Backup");
+        XLSX.writeFile(wb, 'kiwe_records_backup_' + new Date().toISOString().split('T')[0] + '.xlsx');
     };
 
     const filteredRecords = records.filter(rec => {
