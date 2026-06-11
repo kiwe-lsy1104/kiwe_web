@@ -308,7 +308,7 @@
                             e('span', { className: "text-2xl font-black text-slate-800" }, `${stats.totalCount.toLocaleString()}건`)
                         ),
                         e('div', { className: "bg-emerald-50 p-6 rounded-2xl shadow-sm border border-emerald-100 flex flex-col justify-center min-h-[120px] opacity-90" },
-                            e('span', { className: "text-xs font-bold text-emerald-600 block mb-2" }, "총 매출 (청구+지원금)"),
+                            e('span', { className: "text-xs font-bold text-emerald-600 block mb-2" }, "총 매출 (청구+미청구+지원금)"),
                             e('span', { className: "text-2xl font-black text-emerald-800" }, `${stats.totalSales.toLocaleString()}원`)
                         ),
                         e('div', { className: "bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-center min-h-[120px] opacity-80" },
@@ -316,7 +316,7 @@
                             e('span', { className: "text-2xl font-black text-slate-800" }, `${stats.billed.toLocaleString()}원`)
                         ),
                         e('div', { onClick: () => openModal('unbilled'), className: "p-6 rounded-2xl shadow-sm border bg-amber-50 border-amber-100 transition-all cursor-pointer hover:-translate-y-1" },
-                            e('span', { className: "text-xs font-bold text-amber-500 block mb-2" }, "미청구"),
+                            e('span', { className: "text-xs font-bold text-amber-500 block mb-2" }, "미청구 (계산서 미발행)"),
                             e('span', { className: "text-2xl font-black text-amber-600" }, `${stats.unbilled.toLocaleString()}원`)
                         ),
                         // 2행
