@@ -712,7 +712,7 @@ function UnpaidManagementTab({ records, companies }) {
                 e('span', { className: "text-2xl font-black text-emerald-800" }, `${stats.totalSales.toLocaleString()}원`)
             ),
             e('div', { className: "bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-center opacity-80" },
-                e('span', { className: "text-xs font-bold text-slate-400 block mb-2" }, "총 청구"),
+                e('span', { className: "text-xs font-bold text-slate-400 block mb-2" }, "총 청구 (발행완료)"),
                 e('span', { className: "text-2xl font-black text-slate-800" }, `${stats.billed.toLocaleString()}원`)
             ),
             e('div', { onClick: () => openModal('unbilled'), className: "p-6 rounded-2xl shadow-sm border bg-amber-50 border-amber-100 transition-all cursor-pointer hover:-translate-y-1" },
