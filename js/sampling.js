@@ -720,23 +720,47 @@ function App() {
         setComName('');
     };
 
-    const getMaxInputSeqBeforeDB = async (date) => {
+    const getMaxInputSeqBeforeDB = async (date, excludeIds = []) => {
         try {
             const tableName = getTableName(date);
             if (!tableName) return 0;
 
-            const { data, error } = await supabase
+            // 1. 해당 날짜 이전(lt)의 최대 input_seq 조회
+            let maxSeq = 0;
+            const { data: beforeData, error: beforeError } = await supabase
                 .from(tableName)
                 .select('input_seq')
                 .lt('m_date', date)
                 .order('input_seq', { ascending: false })
                 .limit(1);
 
-            if (error) throw error;
-            if (data && data.length > 0) {
-                return parseInt(data[0].input_seq, 10) || 0;
+            if (beforeError) throw beforeError;
+            if (beforeData && beforeData.length > 0) {
+                maxSeq = parseInt(beforeData[0].input_seq, 10) || 0;
             }
-            return 0;
+
+            // 2. 해당 날짜(eq)이면서 그리드에 있는 ID들을 제외한 다른 데이터의 최대 input_seq 조회
+            let queryOnDate = supabase
+                .from(tableName)
+                .select('input_seq')
+                .eq('m_date', date)
+                .order('input_seq', { ascending: false });
+
+            const validExclude = excludeIds.filter(id => id && !String(id).startsWith('temp_'));
+            if (validExclude.length > 0) {
+                queryOnDate = queryOnDate.not('id', 'in', `(${validExclude.join(',')})`);
+            }
+
+            const { data: onDateData, error: onDateError } = await queryOnDate.limit(1);
+            if (onDateError) throw onDateError;
+            if (onDateData && onDateData.length > 0) {
+                const onDateMax = parseInt(onDateData[0].input_seq, 10) || 0;
+                if (onDateMax > maxSeq) {
+                    maxSeq = onDateMax;
+                }
+            }
+
+            return maxSeq;
         } catch (err) {
             console.error("Error fetching max input_seq before date:", err);
             return 0;
@@ -752,14 +776,18 @@ function App() {
         // ★ 개선: 화면에 보이는 데이터 중 가장 빠른 날짜를 기준으로 시작 순번을 결정합니다.
         const rowCount = hot.countRows();
         let minDate = null;
+        const idsInGrid = [];
         for (let i = 0; i < rowCount; i++) {
             const date = hot.getDataAtRowProp(i, 'm_date');
             if (date && (!minDate || date < minDate)) minDate = date;
+
+            const id = hot.getDataAtRowProp(i, 'id');
+            if (id) idsInGrid.push(id);
         }
 
         let startSeq = 0;
         if (minDate) {
-            startSeq = await getMaxInputSeqBeforeDB(minDate);
+            startSeq = await getMaxInputSeqBeforeDB(minDate, idsInGrid);
         }
 
         const physicalIndicesToProcess = [];
@@ -932,7 +960,10 @@ function App() {
                         s.input_seq = nextSeq; // rawLatest는 HOT 내부 참조 → 직접 수정
                         // 그리드 셀에도 반영 (UI 표시)
                         if (hot) {
-                            hot.setDataAtRowProp(i, 'input_seq', nextSeq, 'auto');
+                            const visualRow = hot.toVisualRow(i);
+                            if (visualRow !== null) {
+                                hot.setDataAtRowProp(visualRow, 'input_seq', nextSeq, 'auto');
+                            }
                         }
                     }
                 }
