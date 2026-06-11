@@ -884,13 +884,17 @@ function RecordsManagement() {
             while (curr <= e) {
                 const year = curr.getFullYear();
                 const half = (curr.getMonth() + 1) <= 6 ? 1 : 2;
-                tabs.add(`kiwe_sampling_${year}_${half}`);
+                if (year >= 2026) {
+                    tabs.add(`kiwe_sampling_${year}_${half}`);
+                }
                 curr.setMonth(curr.getMonth() + 6);
                 curr.setDate(1);
             }
             const ey = e.getFullYear();
             const eh = (e.getMonth() + 1) <= 6 ? 1 : 2;
-            tabs.add(`kiwe_sampling_${ey}_${eh}`);
+            if (ey >= 2026) {
+                tabs.add(`kiwe_sampling_${ey}_${eh}`);
+            }
             return Array.from(tabs);
         };
 

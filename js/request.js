@@ -171,15 +171,22 @@ export function ExternalRequestManager({ supabase, sessionData }) {
     const getTableList = (start, end) => {
         if (!start || !end) return [];
         const tables = new Set();
-        tables.add(getTableName(start));
+        const addIfValid = (dateStr) => {
+            if (!dateStr) return;
+            const d = new Date(dateStr);
+            if (d.getFullYear() >= 2026) {
+                tables.add(getTableName(dateStr));
+            }
+        };
+        addIfValid(start);
         let cur = new Date(start);
         const endD = new Date(end);
         while (cur <= endD) {
-            tables.add(getTableName(cur.toISOString().split('T')[0]));
+            addIfValid(cur.toISOString().split('T')[0]);
             cur.setMonth(cur.getMonth() + 6);
         }
-        tables.add(getTableName(end));
-        return Array.from(tables);
+        addIfValid(end);
+        return Array.from(tables).filter(Boolean);
     };
 
     const calculateMinutes = (start, end, lunchTime) => {

@@ -570,12 +570,16 @@ export function NoiseRecord({ user, supabase: supabaseProp }) {
                 while (curr <= endDateObj) {
                     const year = curr.getFullYear();
                     const half = curr.getMonth() + 1 <= 6 ? 1 : 2;
-                    tables.add(`kiwe_sampling_${year}_${half}`);
+                    if (year >= 2026) {
+                        tables.add(`kiwe_sampling_${year}_${half}`);
+                    }
                     curr.setMonth(curr.getMonth() + 6);
                 }
                 const ey = endDateObj.getFullYear();
                 const eh = endDateObj.getMonth() + 1 <= 6 ? 1 : 2;
-                tables.add(`kiwe_sampling_${ey}_${eh}`);
+                if (ey >= 2026) {
+                    tables.add(`kiwe_sampling_${ey}_${eh}`);
+                }
                 return Array.from(tables);
             };
 
