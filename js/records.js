@@ -660,8 +660,9 @@ function UnpaidManagementTab({ records, companies }) {
             acc.noReport += !r.report_date ? 1 : 0;
             acc.totalSubsidy += r.is_funded === '대상' ? subsidy : 0;
             acc.unpaidSubsidy += (r.is_funded === '대상' && !r.subsidy_date) ? subsidy : 0;
+            acc.totalSales += amt + (r.is_funded === '대상' ? subsidy : 0);
             return acc;
-        }, { totalCount: statsBaseData.length, billed: 0, unbilled: 0, unpaid: 0, noReport: 0, totalSubsidy: 0, unpaidSubsidy: 0 });
+        }, { totalCount: statsBaseData.length, billed: 0, unbilled: 0, unpaid: 0, noReport: 0, totalSubsidy: 0, unpaidSubsidy: 0, totalSales: 0 });
     }, [statsBaseData]);
 
     const filteredTableData = useMemo(() => {
@@ -706,17 +707,17 @@ function UnpaidManagementTab({ records, companies }) {
                 e('span', { className: "text-xs font-bold block mb-2 text-slate-400" }, "조회된 기록"),
                 e('span', { className: "text-2xl font-black text-slate-800" }, `${stats.totalCount.toLocaleString()}건`)
             ),
+            e('div', { className: "bg-emerald-50 p-6 rounded-2xl shadow-sm border border-emerald-100 flex flex-col justify-center opacity-90" },
+                e('span', { className: "text-xs font-bold text-emerald-600 block mb-2" }, "총 매출 (청구+지원금)"),
+                e('span', { className: "text-2xl font-black text-emerald-800" }, `${stats.totalSales.toLocaleString()}원`)
+            ),
             e('div', { className: "bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-center opacity-80" },
                 e('span', { className: "text-xs font-bold text-slate-400 block mb-2" }, "총 청구"),
-                e('span', { className: "text-2xl font-black text-slate-800" }, `${(stats.billed / 10000).toLocaleString()}만`)
+                e('span', { className: "text-2xl font-black text-slate-800" }, `${stats.billed.toLocaleString()}원`)
             ),
             e('div', { onClick: () => openModal('unbilled'), className: "p-6 rounded-2xl shadow-sm border bg-amber-50 border-amber-100 transition-all cursor-pointer hover:-translate-y-1" },
                 e('span', { className: "text-xs font-bold text-amber-500 block mb-2" }, "미청구"),
-                e('span', { className: "text-2xl font-black text-amber-600" }, `${(stats.unbilled / 10000).toLocaleString()}만`)
-            ),
-            e('div', { onClick: () => openModal('unpaid'), className: "p-6 rounded-2xl shadow-sm border bg-rose-50 border-rose-100 transition-all cursor-pointer hover:-translate-y-1" },
-                e('span', { className: "text-xs font-bold text-rose-400 block mb-2" }, "사업장 미수금"),
-                e('span', { className: "text-2xl font-black text-rose-600" }, `${(stats.unpaid / 10000).toLocaleString()}만`)
+                e('span', { className: "text-2xl font-black text-amber-600" }, `${stats.unbilled.toLocaleString()}원`)
             )
         ),
         e('div', { className: "grid grid-cols-4 gap-6 mb-8" },
@@ -726,14 +727,15 @@ function UnpaidManagementTab({ records, companies }) {
             ),
             e('div', { className: "bg-blue-50 p-6 rounded-2xl shadow-sm border border-blue-100 flex flex-col justify-center opacity-80" },
                 e('span', { className: "text-xs font-bold text-blue-400 block mb-2" }, "총 지원금 금액"),
-                e('span', { className: "text-2xl font-black text-blue-600" }, `${(stats.totalSubsidy / 10000).toLocaleString()}만`)
+                e('span', { className: "text-2xl font-black text-blue-600" }, `${stats.totalSubsidy.toLocaleString()}원`)
             ),
-            e('div', { className: "bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-center items-center text-center opacity-50" },
-                e('span', { className: "text-xs font-extrabold text-slate-400 px-2" }, "미수금 제로를 향하여! 🚀")
+            e('div', { onClick: () => openModal('unpaid'), className: "p-6 rounded-2xl shadow-sm border bg-rose-50 border-rose-100 transition-all cursor-pointer hover:-translate-y-1" },
+                e('span', { className: "text-xs font-bold text-rose-400 block mb-2" }, "사업장 미수금"),
+                e('span', { className: "text-2xl font-black text-rose-600" }, `${stats.unpaid.toLocaleString()}원`)
             ),
             e('div', { onClick: () => openModal('unpaidSubsidy'), className: "p-6 rounded-2xl shadow-sm border bg-purple-50 border-purple-100 transition-all cursor-pointer hover:-translate-y-1" },
                 e('span', { className: "text-xs font-bold text-purple-400 block mb-2" }, "지원금 미수금액"),
-                e('span', { className: "text-2xl font-black text-purple-600" }, `${(stats.unpaidSubsidy / 10000).toLocaleString()}만`)
+                e('span', { className: "text-2xl font-black text-purple-600" }, `${stats.unpaidSubsidy.toLocaleString()}원`)
             )
         ),
         e('div', { className: "bg-white p-4 rounded-2xl shadow-sm border border-slate-200 flex flex-wrap gap-4 items-center mb-6" },
