@@ -387,29 +387,51 @@ export async function loadGridData(hot, supabase, startDate, endDate, comName, u
             return Array.from(tables);
         };
 
+        const fetchAllRows = async (tableName, start, end, com) => {
+            let results = [];
+            let from = 0;
+            const limit = 1000;
+            let hasMore = true;
+            while (hasMore) {
+                let q = supabase
+                    .from(tableName)
+                    .select('*')
+                    .order('id', { ascending: true })
+                    .range(from, from + limit - 1);
+                
+                if (start) {
+                    q = q.gte('m_date', start);
+                }
+                if (end) {
+                    q = q.lte('m_date', end);
+                }
+                if (com) {
+                    q = q.eq('com_name', com);
+                }
+
+                const { data, error } = await q;
+                if (error) throw error;
+                if (data && data.length > 0) {
+                    results = results.concat(data);
+                    if (data.length < limit) {
+                        hasMore = false;
+                    } else {
+                        from += limit;
+                    }
+                } else {
+                    hasMore = false;
+                }
+            }
+            return results;
+        };
+
         let allData = [];
 
         if (startDate && endDate) {
             const tableList = getTableList(startDate, endDate);
             const queries = tableList.map(async (tableName) => {
                 try {
-                    let query = supabase
-                        .from(tableName)
-                        .select('*')
-                        .gte('m_date', startDate)
-                        .lte('m_date', endDate)
-                        .order('id', { ascending: true });
-
-                    if (comName) {
-                        query = query.eq('com_name', comName);
-                    }
-
-                    const { data, error } = await query;
-                    if (error) {
-                        console.warn(`테이블 ${tableName} 조회 실패:`, error.message);
-                        return [];
-                    }
-                    return data || [];
+                    return await fetchAllRows(tableName, startDate, endDate, comName);
                 } catch (err) {
                     console.warn(`테이블 ${tableName} 조회 오류:`, err);
                     return [];
@@ -420,22 +442,10 @@ export async function loadGridData(hot, supabase, startDate, endDate, comName, u
             allData = results.flat();
         } else if (startDate) {
             const tableName = getTableName(startDate);
-            let query = supabase
-                .from(tableName)
-                .select('*')
-                .gte('m_date', startDate)
-                .lte('m_date', endDate)
-                .order('id', { ascending: true });
-
-            if (comName) {
-                query = query.eq('com_name', comName);
-            }
-
-            const { data, error } = await query;
-            if (error) {
-                console.warn(`테이블 ${tableName} 조회 실패:`, error.message);
-            } else if (data) {
-                allData = allData.concat(data);
+            try {
+                allData = await fetchAllRows(tableName, startDate, endDate, comName);
+            } catch (err) {
+                console.warn(`테이블 ${tableName} 조회 실패:`, err.message);
             }
         }
 

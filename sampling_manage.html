@@ -513,12 +513,40 @@
 
             // ── 데이터 Enrichment 공통 로직 ──
             const buildEnriched = async (sd, ed, kw, tabId) => {
+                const fetchAllFromTable = async (tn, startDate, endDate) => {
+                    let results = [];
+                    let from = 0;
+                    const limit = 1000;
+                    let hasMore = true;
+                    while (hasMore) {
+                        const { data, error } = await supabase
+                            .from(tn)
+                            .select('*')
+                            .gte('m_date', startDate)
+                            .lte('m_date', endDate)
+                            .order('id', { ascending: true })
+                            .range(from, from + limit - 1);
+                        if (error) throw error;
+                        if (data && data.length > 0) {
+                            results = results.concat(data);
+                            if (data.length < limit) {
+                                hasMore = false;
+                            } else {
+                                from += limit;
+                            }
+                        } else {
+                            hasMore = false;
+                        }
+                    }
+                    return results;
+                };
+
                 const tableList = getTableList(sd, ed);
                 const rawArrays = await Promise.all(
                     tableList.map(async tn => {
                         try {
-                            const { data: d, error } = await supabase.from(tn).select('*').gte('m_date', sd).lte('m_date', ed);
-                            return error ? [] : (d || []);
+                            const d = await fetchAllFromTable(tn, sd, ed);
+                            return d || [];
                         } catch { return []; }
                     })
                 );
@@ -527,10 +555,30 @@
                 const mDates = [...new Set(rawData.map(s => s.m_date).filter(Boolean))];
                 let flowData = [];
                 if (mDates.length > 0) {
-                    const { data } = await supabase.from('kiwe_flow')
-                        .select('m_date, pump_no, total_avg')
-                        .in('m_date', mDates);
-                    flowData = data || [];
+                    let from = 0;
+                    const limit = 1000;
+                    let hasMore = true;
+                    while (hasMore) {
+                        const { data, error } = await supabase.from('kiwe_flow')
+                            .select('m_date, pump_no, total_avg')
+                            .in('m_date', mDates)
+                            .order('id', { ascending: true })
+                            .range(from, from + limit - 1);
+                        if (error) {
+                            console.warn("kiwe_flow 조회 실패:", error.message);
+                            break;
+                        }
+                        if (data && data.length > 0) {
+                            flowData = flowData.concat(data);
+                            if (data.length < limit) {
+                                hasMore = false;
+                            } else {
+                                from += limit;
+                            }
+                        } else {
+                            hasMore = false;
+                        }
+                    }
                 }
 
                 const [hazardRes, analystRes, labRes] = await Promise.all([

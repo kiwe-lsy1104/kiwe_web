@@ -822,6 +822,60 @@ function App() {
         }
     };
 
+    const downloadExcel = () => {
+        const hot = hotInstance.current;
+        if (!hot) return;
+
+        const colCount = hot.countCols();
+        const headers = [];
+        const keys = [];
+
+        for (let i = 0; i < colCount; i++) {
+            const prop = hot.colToProp(i);
+            if (prop === 'actions' || prop === 'id') continue;
+            
+            let label = hot.getColHeader(i);
+            headers.push(label);
+            keys.push(prop);
+        }
+
+        const rowCount = hot.countRows();
+        const exportRows = [];
+        exportRows.push(headers);
+
+        for (let r = 0; r < rowCount; r++) {
+            const physicalRowIdx = hot.toPhysicalRow(r);
+            if (physicalRowIdx === null) continue;
+            const row = hot.getSourceDataAtRow(physicalRowIdx);
+            if (!row) continue;
+            if (!row.com_name && !row.common_name && !row.sample_id) continue;
+
+            const rowData = [];
+            keys.forEach((key) => {
+                if (key === null) {
+                    rowData.push(r + 1);
+                } else if (key === 'status') {
+                    rowData.push(row[key] === '완료' ? '완료' : '');
+                } else {
+                    rowData.push(row[key] ?? '');
+                }
+            });
+            exportRows.push(rowData);
+        }
+
+        if (exportRows.length <= 1) {
+            alert('다운로드할 데이터가 없습니다.');
+            return;
+        }
+
+        const wb = XLSX.utils.book_new();
+        const ws = XLSX.utils.aoa_to_sheet(exportRows);
+        XLSX.utils.book_append_sheet(wb, ws, '시료채취기록대장');
+
+        const fileName = `시료채취기록대장_${startDate}_${endDate}.xlsx`;
+        XLSX.writeFile(wb, fileName);
+    };
+
     const handleSubmit = async () => {
         const hot = hotInstance.current;
         if (!hot) return;
@@ -1348,6 +1402,9 @@ function App() {
                         e('div', { className: "flex gap-2" },
                             e('button', { onClick: () => setShowSettings(!showSettings), className: "px-4 py-2 bg-white text-indigo-600 border border-indigo-200 rounded-lg font-bold hover:bg-indigo-50 transition-all flex items-center gap-1 shadow-sm" },
                                 e(Settings, { size: 14 }), "컬럼설정"
+                            ),
+                            e('button', { onClick: downloadExcel, className: "px-4 py-2 bg-emerald-600 text-white rounded-lg font-bold hover:bg-emerald-700 transition-all flex items-center gap-1 shadow-sm", title: "현재 화면의 기록대장을 엑셀 파일로 다운로드합니다." },
+                                e(Download, { size: 14 }), "엑셀 다운로드"
                             ),
                             e('button', { onClick: reassignAllSampleIds, className: "px-4 py-2 bg-amber-50 text-amber-600 border border-amber-200 rounded-lg font-bold hover:bg-amber-100 transition-all flex items-center gap-1 shadow-sm", title: "미저장 데이터의 시료번호를 다시 매깁니다." },
                                 e(RotateCcw, { size: 14 }), "번호 재부여"

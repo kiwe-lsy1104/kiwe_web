@@ -160,6 +160,37 @@ const SUPABASE_URL = 'https://jztrnwchgxymknjvsbkl.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_Z8oriOCik8fZlnAMgznUMg_IhmmFQ33';
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
+async function fetchAllFromTable(table, selectFields, start, end, comFilter = null) {
+    let allData = [];
+    let from = 0;
+    const limit = 1000;
+    let hasMore = true;
+    while (hasMore) {
+        let q = sb.from(table)
+            .select(selectFields)
+            .gte('m_date', start)
+            .lte('m_date', end)
+            .order('id', { ascending: true })
+            .range(from, from + limit - 1);
+        if (comFilter) {
+            q = q.eq('com_name', comFilter);
+        }
+        const { data, error } = await q;
+        if (error) throw error;
+        if (data && data.length > 0) {
+            allData = allData.concat(data);
+            if (data.length < limit) {
+                hasMore = false;
+            } else {
+                from += limit;
+            }
+        } else {
+            hasMore = false;
+        }
+    }
+    return allData;
+}
+
 // 컬럼 너비 관리
 const COL_KEY = 'KIWE_SAMPLE_PRINT_COL_WIDTHS_V2';
 // No, 단위작업공정, 근로자명, 시료번호, 유해인자, 펌프/소음기, 유량, 시작, 종료, 비고
@@ -260,7 +291,7 @@ async function loadCompanies() {
         const tables = getTableNames(start, end);
         const companies = new Set();
         for (const table of tables) {
-            const { data } = await sb.from(table).select('com_name').gte('m_date', start).lte('m_date', end);
+            const data = await fetchAllFromTable(table, 'com_name', start, end);
             (data || []).forEach(r => r.com_name && companies.add(r.com_name));
         }
         const sel = document.getElementById('comSelect');
@@ -292,10 +323,7 @@ async function buildPrint() {
         const tables = getTableNames(start, end);
         let allSamples = [];
         for (const table of tables) {
-            let q = sb.from(table).select('*').gte('m_date', start).lte('m_date', end);
-            if (comFilter) q = q.eq('com_name', comFilter);
-            const { data, error } = await q;
-            if (error) throw error;
+            const data = await fetchAllFromTable(table, '*', start, end, comFilter);
             allSamples = allSamples.concat(data || []);
         }
 
@@ -611,10 +639,7 @@ async function downloadExcel() {
         const tables = getTableNames(start, end);
         let allSamples = [];
         for (const table of tables) {
-            let q = sb.from(table).select('*').gte('m_date', start).lte('m_date', end);
-            if (comFilter) q = q.eq('com_name', comFilter);
-            const { data, error } = await q;
-            if (error) throw error;
+            const data = await fetchAllFromTable(table, '*', start, end, comFilter);
             allSamples = allSamples.concat(data || []);
         }
 
