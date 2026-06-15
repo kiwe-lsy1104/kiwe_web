@@ -562,7 +562,7 @@
                         const { data, error } = await supabase.from('kiwe_flow')
                             .select('m_date, pump_no, total_avg')
                             .in('m_date', mDates)
-                            .order('id', { ascending: true })
+                            .order('flow_id', { ascending: true })
                             .range(from, from + limit - 1);
                         if (error) {
                             console.warn("kiwe_flow 조회 실패:", error.message);
