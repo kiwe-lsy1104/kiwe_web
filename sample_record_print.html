@@ -327,12 +327,8 @@ async function buildPrint() {
             allSamples = allSamples.concat(data || []);
         }
 
-        // 입력순 정렬 (사업장명 → 입력순번 우선, ID 보조)
+        // 입력순 정렬 (입력순번 우선, ID 보조)
         allSamples.sort((a, b) => {
-            const comA = a.com_name || '';
-            const comB = b.com_name || '';
-            if (comA !== comB) return comA.localeCompare(comB);
-
             const seqA = a.input_seq ?? 9999999;
             const seqB = b.input_seq ?? 9999999;
             if (seqA !== seqB) return seqA - seqB;

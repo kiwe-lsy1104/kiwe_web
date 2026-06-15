@@ -667,10 +667,6 @@
                     const dateComp = (a.m_date || '').localeCompare(b.m_date || '');
                     if (dateComp !== 0) return sortOrder === 'desc' ? -dateComp : dateComp;
 
-                    const comA = a.com_name || '';
-                    const comB = b.com_name || '';
-                    if (comA !== comB) return comA.localeCompare(comB);
-
                     const seqA = a.input_seq ?? 999999;
                     const seqB = b.input_seq ?? 999999;
                     if (seqA !== seqB) return seqA - seqB;
@@ -707,10 +703,6 @@
                         merged.sort((a, b) => {
                             const dateComp = (a.m_date || '').localeCompare(b.m_date || '');
                             if (dateComp !== 0) return sortOrder === 'desc' ? -dateComp : dateComp;
-
-                            const comA = a.com_name || '';
-                            const comB = b.com_name || '';
-                            if (comA !== comB) return comA.localeCompare(comB);
 
                             const seqA = a.input_seq ?? 999999;
                             const seqB = b.input_seq ?? 999999;
@@ -774,10 +766,6 @@
                     next.sort((a, b) => {
                         const dateComp = (a.m_date || '').localeCompare(b.m_date || '');
                         if (dateComp !== 0) return sortOrder === 'desc' ? -dateComp : dateComp;
-
-                        const comA = a.com_name || '';
-                        const comB = b.com_name || '';
-                        if (comA !== comB) return comA.localeCompare(comB);
 
                         const seqA = a.input_seq ?? 999999;
                         const seqB = b.input_seq ?? 999999;

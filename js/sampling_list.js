@@ -500,14 +500,10 @@ export async function loadGridData(hot, supabase, startDate, endDate, comName, u
                 return seqA - seqB;
             });
         } else {
-            // ★ 입력순 (순번/ID순): 측정일자 → 사업장명(com_name) → 입력순번(input_seq) → DB ID순
+            // ★ 입력순 (순번/ID순): 측정일자 → 입력순번(input_seq) → DB ID순
             // input_seq가 NULL인 행은 id를 fallback으로 사용 (삽입 순서 유지)
             allData.sort((a, b) => {
                 if (a.m_date !== b.m_date) return a.m_date > b.m_date ? 1 : -1;
-
-                const comA = a.com_name || '';
-                const comB = b.com_name || '';
-                if (comA !== comB) return comA.localeCompare(comB);
 
                 const seqA = a.input_seq ?? a.id ?? 9999999;
                 const seqB = b.input_seq ?? b.id ?? 9999999;
