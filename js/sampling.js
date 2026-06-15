@@ -8,7 +8,7 @@ import {
     Clock, Thermometer, Droplets, User, Building2, Calendar, Home, RotateCcw, HelpCircle
 } from 'https://esm.sh/lucide-react@0.263.1';
 import { supabase, checkAuth } from './config.js';
-import { initSampleGrid, loadGridData } from './sampling_list.js';
+import { initSampleGrid, loadGridData } from './sampling_list.js?v=1.0.1';
 import { setupHazardSelection, openHazardSearch } from './sample_popup_logic.js';
 import HazardManagement from './hazard_management.js';
 import { NoiseRecord } from './noise_record.js';
