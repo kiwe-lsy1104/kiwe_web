@@ -207,11 +207,24 @@ export function openPrintPreview(hdr, items, mgmtFee, itemsTotal, sub, disc, vat
         </tr>
     `;
 
+    // 특기사항 및 안내(notes)의 텍스트 길이에 따라 하단 푸터가 차지하는 높이를 동적으로 추정하여 페이징 조절
+    const notesText = hdr.notes || getDefaultNotes(hdr.quote_type, hdr.support_type) || '';
+    const lineCount = notesText.split('\n').reduce((acc, line) => {
+        // 한 줄당 대략 65글자 기준으로 자동 줄바꿈 계산
+        return acc + Math.max(1, Math.ceil(line.length / 65));
+    }, 0);
+    
+    // 기본 특기사항의 높이를 약 28mm(3줄 기준)로 잡고, 추가되는 높이 계산
+    const notesHeightMm = 15 + (lineCount * 4.2);
+    const extraNotesHeightMm = Math.max(0, notesHeightMm - 28);
+    const rowHeightMm = isYongYeok ? 9.5 : 7.2;
+    const rowsToReduce = Math.ceil(extraNotesHeightMm / rowHeightMm);
+
     // 페이징 처리: 페이지 위치에 따라 수용 가능한 최대 행수 동적 할당
     // 10mm 여백(상하) 기준 최적화된 행 수 (여유 공간 확보)
-    const P1_WITH_FOOTER = isYongYeok ? 5 : 14;  // 1페이지 (합계 포함) - 15에서 14로 하향 (여백 10mm 기준)
+    const P1_WITH_FOOTER = Math.max(0, (isYongYeok ? 5 : 14) - rowsToReduce);  // 1페이지 (합계 포함)
     const P1_NO_FOOTER = isYongYeok ? 15 : 21; // 1페이지 (합계 미포함)
-    const PN_WITH_FOOTER = isYongYeok ? 18 : 29; // 이후페이지 (합계 포함)
+    const PN_WITH_FOOTER = Math.max(0, (isYongYeok ? 18 : 29) - rowsToReduce); // 이후페이지 (합계 포함)
     const PN_NO_FOOTER = isYongYeok ? 25 : 35; // 이후페이지 (합계 미포함)
 
     let remainingItems = [...items];
@@ -544,19 +557,25 @@ export function openPrintPreview(hdr, items, mgmtFee, itemsTotal, sub, disc, vat
                 : isYongYeok ? `<div style="font-weight:bold; margin-bottom:1.5mm; font-size:9pt;">1. 인건비 (계속)</div>`
                     : `<div style="font-weight:bold; margin-bottom:1.5mm; font-size:9pt;">2. 분석수수료 (계속)</div>`);
 
+        const showTable = chunkItems.length > 0;
+        const tableTitleHtml = showTable ? tableTitle : '';
+        const tableHtml = showTable ? `
+            <div>
+                <table class="bold-border content-table">
+                    <thead>${THEAD}</thead>
+                    <tbody>
+                        ${tbodyHtml}
+                        ${paddingHtml}
+                    </tbody>
+                </table>
+            </div>
+        ` : '';
+
         return `
             <div class="kiwe-page" id="page-${pageIdx}">
                 ${page1HeaderHtml}
-                ${tableTitle}
-                <div>
-                    <table class="bold-border content-table">
-                        <thead>${THEAD}</thead>
-                        <tbody>
-                            ${tbodyHtml}
-                            ${paddingHtml}
-                        </tbody>
-                    </table>
-                </div>
+                ${tableTitleHtml}
+                ${tableHtml}
                 ${footerHtml}
             </div>
         `;
