@@ -387,7 +387,7 @@ export async function loadGridData(hot, supabase, startDate, endDate, comName, u
             return Array.from(tables);
         };
 
-        const fetchAllRows = async (tableName, start, end, com) => {
+        const fetchAllRows = async (tableName, start, end) => {
             let results = [];
             let from = 0;
             const limit = 1000;
@@ -404,9 +404,6 @@ export async function loadGridData(hot, supabase, startDate, endDate, comName, u
                 }
                 if (end) {
                     q = q.lte('m_date', end);
-                }
-                if (com) {
-                    q = q.eq('com_name', com);
                 }
 
                 const { data, error } = await q;
@@ -431,7 +428,7 @@ export async function loadGridData(hot, supabase, startDate, endDate, comName, u
             const tableList = getTableList(startDate, endDate);
             const queries = tableList.map(async (tableName) => {
                 try {
-                    return await fetchAllRows(tableName, startDate, endDate, comName);
+                    return await fetchAllRows(tableName, startDate, endDate);
                 } catch (err) {
                     console.warn(`테이블 ${tableName} 조회 오류:`, err);
                     return [];
@@ -443,10 +440,22 @@ export async function loadGridData(hot, supabase, startDate, endDate, comName, u
         } else if (startDate) {
             const tableName = getTableName(startDate);
             try {
-                allData = await fetchAllRows(tableName, startDate, endDate, comName);
+                allData = await fetchAllRows(tableName, startDate, endDate);
             } catch (err) {
                 console.warn(`테이블 ${tableName} 조회 실패:`, err.message);
             }
+        }
+
+        // ★ 통합 검색 필터링 (사업장명, 근로자명, 유해인자, 작업공정)
+        if (comName && comName.trim() !== '') {
+            const query = comName.trim().toLowerCase();
+            allData = allData.filter(item => {
+                const com = (item.com_name || '').toLowerCase();
+                const worker = (item.worker_name || '').toLowerCase();
+                const hazard = (item.common_name || '').toLowerCase();
+                const process = (item.work_process || '').toLowerCase();
+                return com.includes(query) || worker.includes(query) || hazard.includes(query) || process.includes(query);
+            });
         }
 
         // 1. 공시료 여부 판별 헬퍼

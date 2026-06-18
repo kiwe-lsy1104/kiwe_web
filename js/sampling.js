@@ -416,7 +416,13 @@ function App() {
                         hot.setDataAtRowProp(row, 'measured_by', currentUser.user_name);
                     }
                     if (currentMDate) hot.setDataAtRowProp(row, 'm_date', currentMDate);
-                    if (currentComName) hot.setDataAtRowProp(row, 'com_name', currentComName);
+                    // 검색어가 유효한 사업장명일 경우에만 사업장 자동 입력 (근로자/유해인자 검색 시 자동입력 제외)
+                    if (currentComName) {
+                        const isRealCompany = companies.some(c => c.com_name === currentComName);
+                        if (isRealCompany) {
+                            hot.setDataAtRowProp(row, 'com_name', currentComName);
+                        }
+                    }
 
                     // 교대형태, 실근로시간, 점심시간, 발생형태 자동입력 해제 요청으로 제거
                     hot.setDataAtRowProp(row, 'condition', '양호');
@@ -1090,8 +1096,8 @@ function App() {
                     ...s,
                     m_date: s.m_date || startDate,
                     // ★ 개선: 신규 행(id 없음)일 때만 현재 검색 필터의 사업장명 자동 입력
-                    // 기존 데이터의 사업장명을 수정하거나 지웠을 때 검색 필터값이 덮어씌워지는 현상 방지
-                    com_name: (s.id ? s.com_name : (s.com_name || comName)).replace(/\(주\)/g, '㈜').trim(),
+                    // 검색어가 유효한 사업장명일 경우에만 자동 입력하며, 기존 데이터의 사업장명을 수정하거나 지웠을 때 검색 필터값이 덮어씌워지는 현상 방지
+                    com_name: (s.id ? s.com_name : (s.com_name || (companies.some(c => c.com_name === comName) ? comName : ''))).replace(/\(주\)/g, '㈜').trim(),
                     // 시간 HH:mm 포맷
                     start_time: formatTimeHHMM(s.start_time),
                     end_time: formatTimeHHMM(s.end_time),
@@ -1265,13 +1271,13 @@ function App() {
                         ),
                         e('div', { className: "flex-1 flex items-end gap-3" },
                             e('div', { className: "flex-1 relative" },
-                                e('label', { className: "text-[11px] font-extrabold text-slate-400 mb-1 block uppercase" }, "사업장명 (Search)"),
+                                e('label', { className: "text-[11px] font-extrabold text-slate-400 mb-1 block uppercase" }, "통합 검색 (사업장/근로자/유해인자)"),
                                 e('div', { className: "relative flex gap-2" },
                                     e('div', { className: "relative flex-1" },
                                         e(Building2, { className: "absolute left-3 top-1/2 -translate-y-1/2 text-slate-400", size: 16 }),
                                         e('input', {
                                             type: "text",
-                                            placeholder: "사업장 검색...",
+                                            placeholder: "검색어 입력 (사업장, 근로자, 유해인자, 공정 등)...",
                                             className: "input-standard pl-10 h-[42px]",
                                             value: comName,
                                             onChange: (ev) => { setComName(ev.target.value); setShowCompanyList(true); },
