@@ -627,7 +627,14 @@ function App() {
                 let currentSeq = Math.max(dbMax, gridMax);
 
                 hot.batch(() => {
-                    info.rows.sort((a, b) => a - b).forEach(rowIdx => {
+                    // 화면에 보여지는 Visual Row 순서대로 정렬하여 시료번호 부여 (정렬 꼬임 방지)
+                    info.rows.sort((a, b) => {
+                        const visA = hot.toVisualRow(a);
+                        const visB = hot.toVisualRow(b);
+                        if (visA === null) return 1;
+                        if (visB === null) return -1;
+                        return visA - visB;
+                    }).forEach(rowIdx => {
                         currentSeq++;
                         const newId = `${fullPrefix}${String(currentSeq).padStart(4, '0')}`;
                         const visualRow = hot.toVisualRow(rowIdx);
@@ -880,17 +887,22 @@ function App() {
         const hot = hotInstance.current;
         if (!hot) return;
 
-        // ★ 저장 전 체크: 시료번호가 빠진 신규 행이 있다면 자동 부여 시도
+        // ★ 저장 전 체크: 신규 행(id 없음)들의 시료번호를 화면 순서대로 처음부터 재정렬하여 부여
+        // 입력 도중 빈 칸을 건너뛰었거나 뒤늦게 채우면서 꼬였을 수 있으므로 신규 행의 시료번호를 다시 매깁니다.
         const raw = hot.getSourceData();
-        const missingIds = [];
+        const newRowPhysicalIndices = [];
         for (let i = 0; i < raw.length; i++) {
-            if (!raw[i].id && (raw[i].com_name && raw[i].common_name) && !raw[i].sample_id) {
+            if (!raw[i].id && (raw[i].com_name && raw[i].common_name)) {
                 const physicalIdx = hot.toPhysicalRow(i);
-                if (physicalIdx !== null) missingIds.push(physicalIdx);
+                if (physicalIdx !== null) {
+                    // 기존에 화면상에서 임시 할당된 시료번호가 있다면 null로 밀고 새로 계산하게 함
+                    hot.setDataAtRowProp(i, 'sample_id', null, 'auto');
+                    newRowPhysicalIndices.push(physicalIdx);
+                }
             }
         }
-        if (missingIds.length > 0) {
-            await applyBulkSampleIds(missingIds);
+        if (newRowPhysicalIndices.length > 0) {
+            await applyBulkSampleIds(newRowPhysicalIndices, true);
         }
 
         const rawLatest = hot.getSourceData();
@@ -1003,21 +1015,23 @@ function App() {
                 let nextSeq = Math.max(currentMaxSeq, dbMaxSeq);
                 console.log(`[input_seq] 그리드 최대: ${currentMaxSeq}, DB 최대: ${dbMaxSeq} → 다음 순번: ${nextSeq + 1}부터 부여`);
 
-                // 3. input_seq 없는 행(신규 또는 기존 누락)에 순서대로 부여
+                // 3. input_seq 없는 행(신규 또는 기존 누락)에 visual 순서대로 부여하여 정렬 꼬임 방지
                 const hot = hotInstance.current;
-                for (let i = 0; i < rawLatest.length; i++) {
-                    const s = rawLatest[i];
-                    if (!(s.com_name && s.common_name)) continue; // 저장 안 되는 행 스킵
-                    const hasSeq = s.input_seq !== null && s.input_seq !== undefined && s.input_seq !== '';
-                    if (!hasSeq) {
-                        nextSeq++;
-                        s.input_seq = nextSeq; // rawLatest는 HOT 내부 참조 → 직접 수정
-                        // 그리드 셀에도 반영 (UI 표시)
-                        if (hot) {
-                            const visualRow = hot.toVisualRow(i);
-                            if (visualRow !== null) {
-                                hot.setDataAtRowProp(visualRow, 'input_seq', nextSeq, 'auto');
-                            }
+                if (hot) {
+                    const rowCount = hot.countRows();
+                    for (let v = 0; v < rowCount; v++) {
+                        const physicalIdx = hot.toPhysicalRow(v);
+                        if (physicalIdx === null) continue;
+                        const s = rawLatest[physicalIdx];
+                        if (!s) continue;
+                        if (!(s.com_name && s.common_name)) continue; // 저장 안 되는 행 스킵
+                        
+                        const hasSeq = s.input_seq !== null && s.input_seq !== undefined && s.input_seq !== '';
+                        if (!hasSeq) {
+                            nextSeq++;
+                            s.input_seq = nextSeq; // rawLatest는 HOT 내부 참조 → 직접 수정
+                            // 그리드 셀에도 반영 (UI 표시)
+                            hot.setDataAtRowProp(v, 'input_seq', nextSeq, 'auto');
                         }
                     }
                 }
