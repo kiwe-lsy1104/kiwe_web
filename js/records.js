@@ -498,7 +498,7 @@ function RecordModal({
                                                     ),
                                                     e('div', { className: "flex justify-between items-center mt-1 text-[11px] font-bold" },
                                                         e('span', { className: "text-slate-500" }, `${q.year}년 ${q.half_year} [${typeStr}${isSupport ? '/지원' : ''}]`),
-                                                        e('span', { className: "text-indigo-600 font-mono" }, `실금액: ${(q.actual_amount || 0).toLocaleString()}원`)
+                                                        e('span', { className: "text-indigo-600 font-mono" }, `청구금액: ${(q.total_amount || 0).toLocaleString()}원` + (q.actual_amount ? ` (실: ${q.actual_amount.toLocaleString()}원)` : ''))
                                                     )
                                                 );
                                             })
@@ -1080,7 +1080,6 @@ function RecordsManagement() {
             let updated = { ...prev, [field]: value };
             if (['is_funded', 'is_new', 'actual_amt'].includes(field)) {
                 updated.subsidy = calculateSupport(updated);
-                updated.billing_amt = updated.actual_amt - updated.subsidy;
             }
             if (['end_date', 'noise_cycle'].includes(field)) {
                 updated.next_noise_date = calculateNextDate(updated.end_date, updated.noise_cycle);
