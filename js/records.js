@@ -103,11 +103,63 @@ function RecordModal({
 }) {
     const [companySearchTerm, setCompanySearchTerm] = useState('');
     const [showCompanyDropdown, setShowCompanyDropdown] = useState(false);
+    const [quotations, setQuotations] = useState([]);
+    const [loadingQuotes, setLoadingQuotes] = useState(false);
+    const [showQuoteDropdown, setShowQuoteDropdown] = useState(false);
 
     useEffect(() => {
         if (formData.com_name) setCompanySearchTerm(formData.com_name);
         else setCompanySearchTerm('');
     }, [formData.com_name]);
+
+    useEffect(() => {
+        if (!selectedCompany) {
+            setQuotations([]);
+            return;
+        }
+
+        async function fetchQuotations() {
+            setLoadingQuotes(true);
+            try {
+                const cleanName = selectedCompany.com_name.replace(/\(주\)|㈜|\s/g, '');
+                const { data, error } = await supabase
+                    .from('kiwe_quotations')
+                    .select('id, quote_no, quote_date, client_name, actual_amount, total_amount, support_amount, year, half_year, support_type')
+                    .ilike('client_name', `%${cleanName}%`)
+                    .order('quote_date', { ascending: false });
+
+                if (error) throw error;
+                
+                const normalize = (s) => (s || '').replace(/\(주\)|㈜|\s/g, '');
+                const targetNorm = normalize(selectedCompany.com_name);
+                const matched = (data || []).filter(q => {
+                    const qNorm = normalize(q.client_name);
+                    return qNorm.includes(targetNorm) || targetNorm.includes(qNorm);
+                });
+                
+                setQuotations(matched);
+            } catch (err) {
+                console.error('견적서 로드 실패:', err);
+                setQuotations([]);
+            } finally {
+                setLoadingQuotes(false);
+            }
+        }
+
+        fetchQuotations();
+    }, [selectedCompany]);
+
+    const handleQuoteSelect = (q) => {
+        const isFunded = q.support_type && q.support_type !== '일반' && q.support_type !== '계약' ? '대상' : '비대상';
+        setFormData(prev => ({
+            ...prev,
+            actual_amt: Number(q.actual_amount) || 0,
+            subsidy: Number(q.support_amount) || 0,
+            billing_amt: Number(q.total_amount) || 0,
+            is_funded: isFunded
+        }));
+        setShowQuoteDropdown(false);
+    };
 
     if (!isOpen) return null;
 
@@ -415,6 +467,43 @@ function RecordModal({
                                 "3. 주기 및 지원 현황"
                             ),
                             e('div', { className: "space-y-4" },
+                                selectedCompany && e('div', { className: "relative space-y-1" },
+                                    e('label', { className: "text-[12px] font-extrabold text-indigo-600 ml-1 flex justify-between items-center" }, 
+                                        e('span', null, "연계 견적서 선택"),
+                                        loadingQuotes && e('span', { className: "text-[10px] text-slate-400 animate-pulse" }, "조회 중...")
+                                    ),
+                                    e('button', {
+                                        type: "button",
+                                        onClick: () => setShowQuoteDropdown(prev => !prev),
+                                        onBlur: () => setTimeout(() => setShowQuoteDropdown(false), 200),
+                                        className: "w-full px-3 py-2 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 rounded-lg text-xs font-bold text-indigo-700 text-left flex justify-between items-center transition-colors"
+                                    },
+                                        e('span', null, "견적서를 선택하여 자동 입력..."),
+                                        e('span', { className: "text-[10px] bg-indigo-200 text-indigo-800 px-1.5 py-0.5 rounded-full" }, `${quotations.length}건`)
+                                    ),
+                                    showQuoteDropdown && e('div', { className: "absolute z-50 w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl max-h-48 overflow-y-auto" },
+                                        quotations.length === 0 ?
+                                            e('div', { className: "px-4 py-3 text-xs text-slate-400 text-center font-bold" }, "연계된 견적서가 없습니다.") :
+                                            quotations.map(q => {
+                                                const typeStr = q.quote_type === '일반' ? '측정' : q.quote_type;
+                                                const isSupport = q.support_type && q.support_type !== '일반' && q.support_type !== '계약';
+                                                return e('div', {
+                                                    key: q.id,
+                                                    onMouseDown: () => handleQuoteSelect(q),
+                                                    className: "px-4 py-2 hover:bg-indigo-50 cursor-pointer text-xs border-b border-slate-50 last:border-0"
+                                                },
+                                                    e('div', { className: "flex justify-between items-center" },
+                                                        e('span', { className: "font-black text-slate-700 font-mono" }, q.quote_no || `No. ${q.id}`),
+                                                        e('span', { className: "text-[10px] text-slate-400 font-mono" }, q.quote_date)
+                                                    ),
+                                                    e('div', { className: "flex justify-between items-center mt-1 text-[11px] font-bold" },
+                                                        e('span', { className: "text-slate-500" }, `${q.year}년 ${q.half_year} [${typeStr}${isSupport ? '/지원' : ''}]`),
+                                                        e('span', { className: "text-indigo-600 font-mono" }, `실금액: ${(q.actual_amount || 0).toLocaleString()}원`)
+                                                    )
+                                                );
+                                            })
+                                    )
+                                ),
                                 e('div', { className: "space-y-1" },
                                     e('label', { className: "text-[12px] font-extrabold text-slate-600 ml-1" }, "지원 여부"),
                                     e('select', { value: formData.is_funded, onChange: (ev) => handleRecordChange('is_funded', ev.target.value), className: "w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-center font-bold" },
@@ -991,6 +1080,7 @@ function RecordsManagement() {
             let updated = { ...prev, [field]: value };
             if (['is_funded', 'is_new', 'actual_amt'].includes(field)) {
                 updated.subsidy = calculateSupport(updated);
+                updated.billing_amt = updated.actual_amt - updated.subsidy;
             }
             if (['end_date', 'noise_cycle'].includes(field)) {
                 updated.next_noise_date = calculateNextDate(updated.end_date, updated.noise_cycle);
