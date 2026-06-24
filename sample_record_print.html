@@ -135,6 +135,19 @@
                 <option value="only">공시료만</option>
             </select>
         </div>
+        <div>
+            <label class="block text-xs font-bold text-slate-500 mb-1">페이지당 행 수</label>
+            <select id="rowsPerPage" class="px-3 py-1.5 border border-slate-200 rounded-lg text-sm font-bold outline-none focus:ring-2 focus:ring-blue-300 bg-slate-50">
+                <option value="12">12행</option>
+                <option value="13">13행</option>
+                <option value="14">14행</option>
+                <option value="15" selected>15행 (기본)</option>
+                <option value="16">16행</option>
+                <option value="17">17행</option>
+                <option value="18">18행</option>
+                <option value="20">20행</option>
+            </select>
+        </div>
         <button id="printBtn" class="px-5 py-1.5 bg-blue-600 text-white font-black rounded-xl hover:bg-blue-700 transition-all shadow-md text-sm">
             출력 미리보기
         </button>
@@ -474,96 +487,214 @@ function buildColgroup() {
     ).join('') + '</colgroup>';
 }
 
-// 블록 렌더링
-function renderBlock(g, isFirst) {
-    const procGroups = buildProcessGroups(g.samples, g.noises);
-
-    let tableBody = '';
-    let no = 1;
-    procGroups.forEach(({ proc, rows }) => {
-        rows.forEach((row, i) => {
-            const isNoise = row._type === 'noise';
-            const isFirst_ = i === 0;
-
-            // 시료번호 칸
-            let sidHtml = isNoise
-                ? ''
-                : `<span class="${getSidClass(getSampleType(row.sample_id))}">${esc(row.sample_id)}</span>`;
-
-            const hazard = isNoise ? `<span class="sid-noise">소음</span>` : esc(row.common_name);
-            const pump   = isNoise ? esc(row.noise_no) : esc(row.pump_no);
-            const worker = esc(row.worker_name);
-            const rowCls = isNoise ? 'row-noise' : '';
-            // 근로자명 칸: _workerSpan>0이면 렌더, 0이면 건너뜀(이전 행에 병합됨)
-            const workerCell = row._workerSpan === 0
-                ? ''
-                : row._workerSpan > 1
-                    ? `<td style="text-align:center" rowspan="${row._workerSpan}">${worker}</td>`
-                    : `<td style="text-align:center">${worker}</td>`;
-
-            tableBody += `<tr class="${rowCls}">
-                <td style="text-align:center">${no++}</td>
-                ${isFirst_ ? `<td class="proc-cell" rowspan="${rows.length}">${esc(proc)}</td>` : ''}
-                ${workerCell}
-                <td style="text-align:center">${sidHtml}</td>
-                <td>${hazard}</td>
-                <td style="text-align:center">${pump}</td>
-                <td></td>
-                <td style="text-align:center">${timeShort(row.start_time)}</td>
-                <td style="text-align:center">${timeShort(row.end_time)}</td>
-                ${isFirst_ ? `<td rowspan="${rows.length}"></td>` : ''}
-            </tr>`;
-        });
+// 페이지네이션 함수: 공정 그룹 내의 근로자 블록이 페이지 경계에서 잘리지 않도록 페이지 분할
+function paginateProcGroups(procGroups, maxRowsPerPage = 15) {
+    const pages = [];
+    
+    // 1. 공정 그룹 내 행들을 근로자 블록 단위로 묶어서 평탄화
+    const allWorkerBlocks = [];
+    procGroups.forEach(pg => {
+        const rows = pg.rows;
+        let i = 0;
+        while (i < rows.length) {
+            const startRow = rows[i];
+            const span = startRow._workerSpan || 1;
+            const blockRows = rows.slice(i, i + span);
+            allWorkerBlocks.push({
+                proc: pg.proc,
+                rows: blockRows
+            });
+            i += span;
+        }
     });
 
-    if (!tableBody) tableBody = `<tr><td colspan="10" style="text-align:center;color:#6b7280;padding:8px;">데이터 없음</td></tr>`;
+    let currentPageBlocks = [];
+    let currentRowsCount = 0;
 
-    const breakCls = isFirst ? '' : 'print-break';
-    return `
-    <div class="${breakCls} paper">
-        <div style="display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:5px; border-bottom:2.5px solid #1e40af; padding-bottom:5px;">
-            <div>
-                <div style="font-size:15pt; font-weight:400; color:#000; letter-spacing:-0.5px; margin-bottom:4px;">시 료 채 취 기 록 지</div>
-                <div style="font-size:10.5pt; font-weight:400; color:#000; display:flex; gap:16px; align-items:center;">
-                    <span><strong>사업장:</strong> ${esc(g.com)}</span>
-                    <span style="color:#94a3b8;">|</span>
-                    <span><strong>측정일:</strong> ${esc(g.date)}</span>
-                    <span style="color:#94a3b8;">|</span>
-                    <span style="font-size:8.5pt;color:#1d4ed8;font-weight:900;">■ S 시료</span>
-                    <span style="font-size:8.5pt;color:#b45309;font-weight:900;">■ D 분진</span>
-                    <span style="font-size:8.5pt;color:#15803d;font-weight:900;">■ 소음</span>
+    // 현재 수집된 블록들을 하나의 페이지로 빌드
+    function commitPage() {
+        if (currentPageBlocks.length === 0) return;
+        
+        const pageProcGroups = [];
+        let currentProcGroup = null;
+        
+        currentPageBlocks.forEach(block => {
+            if (!currentProcGroup || currentProcGroup.proc !== block.proc) {
+                currentProcGroup = {
+                    proc: block.proc,
+                    rows: []
+                };
+                pageProcGroups.push(currentProcGroup);
+            }
+            block.rows.forEach((r, idx) => {
+                const rowCopy = { ...r };
+                // 각 페이지 내에서의 rowspan 재계산
+                rowCopy._workerSpan = (idx === 0) ? block.rows.length : 0;
+                currentProcGroup.rows.push(rowCopy);
+            });
+        });
+        
+        pages.push(pageProcGroups);
+        currentPageBlocks = [];
+        currentRowsCount = 0;
+    }
+
+    // 2. 각 블록을 페이지별로 분배 (근로자 단위 안잘리게)
+    allWorkerBlocks.forEach(block => {
+        const blockSize = block.rows.length;
+        
+        if (currentRowsCount + blockSize <= maxRowsPerPage) {
+            // 현재 페이지에 들어가는 경우
+            currentPageBlocks.push(block);
+            currentRowsCount += blockSize;
+        } else {
+            // 들어가지 않는 경우 기존 페이지 커밋
+            if (currentRowsCount > 0) {
+                commitPage();
+            }
+            
+            // 만약 단일 근로자 블록 크기가 페이지 한도를 초과할 경우 어쩔 수 없이 분할
+            if (blockSize > maxRowsPerPage) {
+                let remainingRows = [...block.rows];
+                while (remainingRows.length > 0) {
+                    const chunk = remainingRows.slice(0, maxRowsPerPage);
+                    currentPageBlocks.push({
+                        proc: block.proc,
+                        rows: chunk
+                    });
+                    currentRowsCount = chunk.length;
+                    remainingRows = remainingRows.slice(maxRowsPerPage);
+                    
+                    if (remainingRows.length > 0 || currentRowsCount === maxRowsPerPage) {
+                        commitPage();
+                    }
+                }
+            } else {
+                // 새 페이지에 할당
+                currentPageBlocks.push(block);
+                currentRowsCount = blockSize;
+            }
+        }
+    });
+
+    commitPage();
+    
+    if (pages.length === 0) {
+        pages.push([]);
+    }
+    
+    return pages;
+}
+
+// 블록 렌더링 (페이지별 다중 .paper 블록 반환)
+function renderBlock(g, isFirstGroup) {
+    const procGroups = buildProcessGroups(g.samples, g.noises);
+    
+    // UI에서 설정된 페이지당 행 수 가져오기 (기본값 15)
+    const maxRows = parseInt(document.getElementById('rowsPerPage')?.value || '15', 10);
+    const pages = paginateProcGroups(procGroups, maxRows);
+
+    let html = '';
+    let globalNo = 1;
+    const absolutePageCount = pages.length;
+
+    pages.forEach((pageProcGroups, pageIdx) => {
+        // 첫 번째 그룹의 첫 페이지만 breakCls 없음 (전체 문서의 첫 페이지이므로)
+        const isAbsoluteFirstPage = isFirstGroup && pageIdx === 0;
+        const breakCls = isAbsoluteFirstPage ? '' : 'print-break';
+        
+        let tableBody = '';
+        pageProcGroups.forEach(({ proc, rows }) => {
+            rows.forEach((row, i) => {
+                const isNoise = row._type === 'noise';
+                const isFirst_ = i === 0;
+
+                // 시료번호 칸
+                let sidHtml = isNoise
+                    ? ''
+                    : `<span class="${getSidClass(getSampleType(row.sample_id))}">${esc(row.sample_id)}</span>`;
+
+                const hazard = isNoise ? `<span class="sid-noise">소음</span>` : esc(row.common_name);
+                const pump   = isNoise ? esc(row.noise_no) : esc(row.pump_no);
+                const worker = esc(row.worker_name);
+                const rowCls = isNoise ? 'row-noise' : '';
+                
+                // 근로자명 칸: _workerSpan>0이면 렌더, 0이면 건너뜀(이전 행에 병합됨)
+                const workerCell = row._workerSpan === 0
+                    ? ''
+                    : row._workerSpan > 1
+                        ? `<td style="text-align:center" rowspan="${row._workerSpan}">${worker}</td>`
+                        : `<td style="text-align:center">${worker}</td>`;
+
+                tableBody += `<tr class="${rowCls}">
+                    <td style="text-align:center">${globalNo++}</td>
+                    ${isFirst_ ? `<td class="proc-cell" rowspan="${rows.length}">${esc(proc)}</td>` : ''}
+                    ${workerCell}
+                    <td style="text-align:center">${sidHtml}</td>
+                    <td>${hazard}</td>
+                    <td style="text-align:center">${pump}</td>
+                    <td></td>
+                    <td style="text-align:center">${timeShort(row.start_time)}</td>
+                    <td style="text-align:center">${timeShort(row.end_time)}</td>
+                    ${isFirst_ ? `<td rowspan="${rows.length}"></td>` : ''}
+                </tr>`;
+            });
+        });
+
+        if (!tableBody) {
+            tableBody = `<tr><td colspan="10" style="text-align:center;color:#6b7280;padding:8px;">데이터 없음</td></tr>`;
+        }
+
+        const pageNumText = absolutePageCount > 1 ? ` (${pageIdx + 1}/${absolutePageCount} page)` : '';
+
+        html += `
+        <div class="${breakCls} paper">
+            <div style="display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:5px; border-bottom:2.5px solid #1e40af; padding-bottom:5px;">
+                <div>
+                    <div style="font-size:15pt; font-weight:400; color:#000; letter-spacing:-0.5px; margin-bottom:4px;">시 료 채 취 기 록 지<span style="font-size:10.5pt; color:#64748b; font-weight:bold; margin-left:8px;">${pageNumText}</span></div>
+                    <div style="font-size:10.5pt; font-weight:400; color:#000; display:flex; gap:16px; align-items:center;">
+                        <span><strong>사업장:</strong> ${esc(g.com)}</span>
+                        <span style="color:#94a3b8;">|</span>
+                        <span><strong>측정일:</strong> ${esc(g.date)}</span>
+                        <span style="color:#94a3b8;">|</span>
+                        <span style="font-size:8.5pt;color:#1d4ed8;font-weight:900;">■ S 시료</span>
+                        <span style="font-size:8.5pt;color:#b45309;font-weight:900;">■ D 분진</span>
+                        <span style="font-size:8.5pt;color:#15803d;font-weight:900;">■ 소음</span>
+                    </div>
+                </div>
+                <div style="display:flex;gap:12px;align-items:center;font-size:9.5pt;font-weight:400;color:#000;border:1px solid #cbd5e1;border-radius:6px;padding:5px 12px;background:#fff;">
+                    <span>온도&nbsp;<span style="display:inline-block;border-bottom:1px solid #000;min-width:65px;">&nbsp;</span>℃</span>
+                    <span>습도&nbsp;<span style="display:inline-block;border-bottom:1px solid #000;min-width:65px;">&nbsp;</span>%</span>
                 </div>
             </div>
-            <div style="display:flex;gap:12px;align-items:center;font-size:9.5pt;font-weight:400;color:#000;border:1px solid #cbd5e1;border-radius:6px;padding:5px 12px;background:#fff;">
-                <span>온도&nbsp;<span style="display:inline-block;border-bottom:1px solid #000;min-width:65px;">&nbsp;</span>℃</span>
-                <span>습도&nbsp;<span style="display:inline-block;border-bottom:1px solid #000;min-width:65px;">&nbsp;</span>%</span>
+            <div style="font-size:7.5pt;color:#64748b;margin-bottom:4px;font-weight:600;">
+                시료 ${g.samples.length}건${g.noises.length > 0 ? ` 쨌 소음 ${g.noises.length}건` : ''}
             </div>
-        </div>
-        <div style="font-size:7.5pt;color:#64748b;margin-bottom:4px;font-weight:600;">
-            시료 ${g.samples.length}건${g.noises.length > 0 ? ` 쨌 소음 ${g.noises.length}건` : ''}
-        </div>
-        <table class="rec">
-            ${buildColgroup()}
-            <thead>
-                <tr>
-                    <th>No</th>
-                    <th>단위작업공정</th>
-                    <th>근로자명</th>
-                    <th>시료번호</th>
-                    <th>유해인자</th>
-                    <th>펌프/소음기</th>
-                    <th style="font-size:7.5pt;">유량 1차      2차      3차 (L/min)</th>
-                    <th>시작시간</th>
-                    <th>종료시간</th>
-                    <th>비고</th>
-                </tr>
-            </thead>
-            <tbody>${tableBody}</tbody>
-        </table>
-        <div style="text-align:right;font-size:7pt;color:#94a3b8;margin-top:4px;">
-            출력일: ${new Date().toLocaleDateString('ko-KR')} 쨌 한국작업환경평가원(주)
-        </div>
-    </div>`;
+            <table class="rec">
+                ${buildColgroup()}
+                <thead>
+                    <tr>
+                        <th>No</th>
+                        <th>단위작업공정</th>
+                        <th>근로자명</th>
+                        <th>시료번호</th>
+                        <th>유해인자</th>
+                        <th>펌프/소음기</th>
+                        <th style="font-size:7.5pt;">유량 1차      2차      3차 (L/min)</th>
+                        <th>시작시간</th>
+                        <th>종료시간</th>
+                        <th>비고</th>
+                    </tr>
+                </thead>
+                <tbody>${tableBody}</tbody>
+            </table>
+            <div style="text-align:right;font-size:7pt;color:#94a3b8;margin-top:4px;">
+                출력일: ${new Date().toLocaleDateString('ko-KR')} 쨌 한국작업환경평가원(주)
+            </div>
+        </div>`;
+    });
+
+    return html;
 }
 
 // 컬럼 드래그 리사이즈

@@ -15,6 +15,13 @@ const e = React.createElement;
 const isCompleteStatus = (status) =>
     status === 1 || status === '1' || status === '완료' || status === 'completed';
 
+// 유해인자명을 '/'로 분리하고 괄호 앞부분(front/rear 등)을 제거하여 개별 물질명 배열 반환
+// 예: '아세톤/톨루엔(front)' → ['아세톤', '톨루엔']
+const extractSubstances = (commonName) => {
+    if (!commonName) return [];
+    return commonName.split('/').map(s => s.split('(')[0].trim()).filter(Boolean);
+};
+
 // ==== Components: AnalysisStatusBadge ====
 function AnalysisStatusBadge({ total, completed, onClick, size = 'sm' }) {
     if (total === 0) return null;
@@ -29,6 +36,37 @@ function AnalysisStatusBadge({ total, completed, onClick, size = 'sm' }) {
     },
         e(isAllComplete ? CheckCircle2 : ListFilter, { size: size === 'lg' ? 18 : 12 }),
         `${completed} / ${total} 완료`
+    );
+}
+
+// ==== Components: BlankSampleBadge ====
+function BlankSampleBadge({ blankData, onClick, size = 'sm' }) {
+    if (!blankData || blankData.regularSubstances.length === 0) return null;
+    const { blanks, missingSubstances } = blankData;
+    const isOk = missingSubstances.length === 0 && blanks.length >= 2;
+    const hasAny = blanks.length > 0;
+
+    let colorClass, label, IconComp;
+    if (isOk) {
+        colorClass = 'bg-teal-50 text-teal-600 border-teal-200 hover:bg-teal-100';
+        label = `공시료 ${blanks.length}건`;
+        IconComp = CheckCircle2;
+    } else if (hasAny) {
+        colorClass = 'bg-orange-50 text-orange-600 border-orange-200 hover:bg-orange-100';
+        label = `공시료 ${blanks.length}건↓`;
+        IconComp = AlertTriangle;
+    } else {
+        colorClass = 'bg-red-50 text-red-600 border-red-200 hover:bg-red-100';
+        label = '공시료 없음';
+        IconComp = AlertTriangle;
+    }
+
+    return e('button', {
+        onClick: (ev) => { ev.stopPropagation(); if (onClick) onClick(); },
+        className: `flex items-center gap-1 px-2 py-0.5 rounded-full font-black transition-all border ${colorClass} ${size === 'lg' ? 'text-sm px-4 py-1.5' : 'text-[10px]'}`
+    },
+        e(IconComp, { size: size === 'lg' ? 18 : 12 }),
+        label
     );
 }
 
@@ -78,6 +116,111 @@ function IncompleteSamplesModal({ isOpen, onClose, record, samples }) {
             ),
             e('div', { className: "p-4 border-t bg-slate-50 flex justify-end" },
                 e('button', { onClick: onClose, className: "px-6 py-2 bg-slate-700 text-white font-bold rounded-xl hover:bg-slate-800 transition-all" }, "확인")
+            )
+        )
+    );
+}
+
+// ==== Components: BlankSampleModal ====
+function BlankSampleModal({ isOpen, onClose, record, blankData }) {
+    if (!isOpen || !blankData) return null;
+    const { blanks, regularSubstances, substanceCoverage, missingSubstances } = blankData;
+    const isOk = missingSubstances.length === 0 && blanks.length >= 2;
+
+    return e('div', { className: 'fixed inset-0 z-[70] flex items-center justify-center p-4' },
+        e('div', { className: 'absolute inset-0 bg-slate-900/60 backdrop-blur-sm', onClick: onClose }),
+        e('div', { className: 'bg-white rounded-3xl shadow-2xl w-full max-w-3xl max-h-[85vh] z-20 overflow-hidden flex flex-col animate-in fade-in zoom-in duration-200' },
+            e('div', { className: 'p-6 border-b flex items-center justify-between bg-slate-50' },
+                e('div', null,
+                    e('h2', { className: 'text-xl font-black text-slate-800 flex items-center gap-2' },
+                        e(AlertTriangle, { size: 24, className: isOk ? 'text-teal-500' : 'text-red-500' }),
+                        '공시료(Blank Sample) 현황'
+                    ),
+                    e('p', { className: 'text-sm text-slate-500 font-bold mt-1' }, record.com_name,
+                        e('span', { className: 'ml-2 text-slate-400 font-normal' }, record.start_date && record.end_date ? `(${record.start_date} ~ ${record.end_date})` : '')
+                    )
+                ),
+                e('button', { onClick: onClose, className: 'p-2 hover:bg-slate-200 rounded-lg text-slate-400' }, e(X, { size: 24 }))
+            ),
+            e('div', { className: 'flex-1 overflow-y-auto p-6 space-y-6' },
+                isOk
+                    ? e('div', { className: 'p-4 bg-teal-50 border border-teal-200 rounded-2xl flex items-center gap-3' },
+                        e(CheckCircle2, { size: 20, className: 'text-teal-500 flex-shrink-0' }),
+                        e('p', { className: 'text-teal-800 font-black' }, `모든 유해인자에 공시료 2건 이상 입력 완료 (총 ${blanks.length}건)`)
+                    )
+                    : e('div', { className: 'p-4 bg-red-50 border border-red-200 rounded-2xl' },
+                        e('p', { className: 'text-red-700 font-black flex items-center gap-2 mb-2' },
+                            e(AlertTriangle, { size: 16 }), '공시료 입력 부족 — 아래 유해인자를 확인하세요'
+                        ),
+                        missingSubstances.length > 0
+                            ? e('ul', { className: 'space-y-1' },
+                                missingSubstances.map((m, i) =>
+                                    e('li', { key: i, className: 'text-sm text-red-600 font-bold' },
+                                        `・ ${m.substance}: 현재 ${m.count}건 (2건 필요)`
+                                    )
+                                )
+                            )
+                            : e('p', { className: 'text-sm text-red-600 font-bold' },
+                                `・ 공시료 행 자체가 ${blanks.length}건 (2건 필요)`
+                            )
+                    ),
+                regularSubstances.length > 0 && e('div', null,
+                    e('h3', { className: 'text-sm font-black text-slate-600 mb-3 flex items-center gap-2' },
+                        e('div', { className: 'w-1 h-4 bg-indigo-500 rounded-full' }),
+                        '유해인자별 공시료 커버리지'
+                    ),
+                    e('div', { className: 'rounded-xl overflow-hidden border border-slate-200' },
+                        e('table', { className: 'w-full text-sm' },
+                            e('thead', { className: 'bg-slate-50 text-xs font-bold text-slate-400 uppercase' },
+                                e('tr', null,
+                                    e('th', { className: 'p-3 text-left' }, '유해인자'),
+                                    e('th', { className: 'p-3 text-center' }, '공시료 건수'),
+                                    e('th', { className: 'p-3 text-center' }, '상태')
+                                )
+                            ),
+                            e('tbody', { className: 'divide-y text-sm' },
+                                regularSubstances.map((substance, i) => {
+                                    const count = substanceCoverage[substance] || 0;
+                                    const ok = count >= 2;
+                                    return e('tr', { key: i, className: ok ? '' : 'bg-red-50' },
+                                        e('td', { className: 'p-3 font-bold text-slate-700' }, substance),
+                                        e('td', { className: 'p-3 text-center font-mono font-bold' + (ok ? ' text-teal-600' : ' text-red-600') }, `${count}건`),
+                                        e('td', { className: 'p-3 text-center' },
+                                            ok
+                                                ? e('span', { className: 'px-2 py-0.5 bg-teal-100 text-teal-700 text-xs font-black rounded-full' }, '✓ 충족')
+                                                : e('span', { className: 'px-2 py-0.5 bg-red-100 text-red-700 text-xs font-black rounded-full' }, `${2 - count}건 부족`)
+                                        )
+                                    );
+                                })
+                            )
+                        )
+                    )
+                ),
+                e('div', null,
+                    e('h3', { className: 'text-sm font-black text-slate-600 mb-3 flex items-center gap-2' },
+                        e('div', { className: 'w-1 h-4 bg-amber-500 rounded-full' }),
+                        `입력된 공시료 (${blanks.length}건)`
+                    ),
+                    blanks.length === 0
+                        ? e('div', { className: 'text-center py-8 text-slate-400 font-bold' }, '입력된 공시료가 없습니다. 시료채취기록대장에서 공시료를 입력해주세요.')
+                        : e('div', { className: 'space-y-2' },
+                            blanks.map((b, i) =>
+                                e('div', { key: i, className: 'p-3 bg-amber-50 border border-amber-100 rounded-xl' },
+                                    e('div', { className: 'flex items-center justify-between' },
+                                        e('div', { className: 'flex items-center gap-2 flex-wrap' },
+                                            e('span', { className: 'text-xs font-black text-amber-700 bg-amber-100 px-2 py-0.5 rounded' }, b.sample_id || 'ID없음'),
+                                            e('span', { className: 'text-sm font-bold text-slate-700' }, b.common_name || '-')
+                                        ),
+                                        e('span', { className: 'text-xs text-slate-400 font-bold flex-shrink-0 ml-2' }, b.m_date)
+                                    )
+                                )
+                            )
+                        )
+                )
+            ),
+            e('div', { className: 'p-4 border-t bg-slate-50 flex justify-between items-center' },
+                e('a', { href: 'sampling.html', target: '_blank', className: 'text-xs font-bold text-indigo-600 hover:underline' }, '→ 시료채취기록대장에서 공시료 입력'),
+                e('button', { onClick: onClose, className: 'px-6 py-2 bg-slate-700 text-white font-bold rounded-xl hover:bg-slate-800 transition-all' }, '확인')
             )
         )
     );
@@ -900,6 +1043,9 @@ function RecordsManagement() {
     const [analysisStatuses, setAnalysisStatuses] = useState({}); // { [recordId]: { total, completed, samples } }
     const [isIncompleteModalOpen, setIsIncompleteModalOpen] = useState(false);
     const [selectedStatusRecord, setSelectedStatusRecord] = useState(null);
+    const [blankSampleCounts, setBlankSampleCounts] = useState({}); // { [recordId]: { blanks, regularSubstances, substanceCoverage, missingSubstances, isOk } }
+    const [isBlankModalOpen, setIsBlankModalOpen] = useState(false);
+    const [selectedBlankRecord, setSelectedBlankRecord] = useState(null);
 
     const [searchTerm, setSearchTerm] = useState('');
     const [sortOrder, setSortOrder] = useState('desc'); // 'desc' (최신순) or 'asc' (과거순)
@@ -952,9 +1098,10 @@ function RecordsManagement() {
             setAgencies(resAgencies.data || []);
             setUsers(resUsers.data || []);
 
-            // Fetch analysis statuses for these records
+            // Fetch analysis statuses and blank sample counts for these records
             if (resRecords.data) {
                 fetchAnalysisStatuses(resRecords.data);
+                fetchBlankSampleCounts(resRecords.data);
             }
         } catch (err) { alert('데이터를 불러오는데 실패했습니다.'); }
         finally { setLoading(false); }
@@ -1044,6 +1191,203 @@ function RecordsManagement() {
             }
         }
         setAnalysisStatuses(statusMap);
+    }
+
+    // ==== 공시료(Blank Sample) 카운트 조회 ====
+    async function fetchBlankSampleCounts(recordList) {
+        if (!recordList || recordList.length === 0) return;
+
+        const blankMap = {}; // { [recordId]: { blanks: [], regularSubstances: Set } }
+
+        const getTables = (start, end) => {
+            const tabs = new Set();
+            if (!start || !end) return [];
+            const s = new Date(start);
+            const eDate = new Date(end);
+            let curr = new Date(s);
+            while (curr <= eDate) {
+                const year = curr.getFullYear();
+                const half = (curr.getMonth() + 1) <= 6 ? 1 : 2;
+                if (year >= 2026) tabs.add(`kiwe_sampling_${year}_${half}`);
+                curr.setMonth(curr.getMonth() + 6);
+                curr.setDate(1);
+            }
+            const ey = eDate.getFullYear();
+            const eh = (eDate.getMonth() + 1) <= 6 ? 1 : 2;
+            if (ey >= 2026) tabs.add(`kiwe_sampling_${ey}_${eh}`);
+            return Array.from(tabs);
+        };
+
+        const tablesToQuery = new Set();
+        recordList.forEach(r => {
+            if (r.work_type === '측정' || !r.work_type) {
+                getTables(r.start_date, r.end_date).forEach(t => tablesToQuery.add(t));
+            }
+        });
+
+        const normalize = (val) => (val || '').replace(/\(주\)|㈜|\s/g, '');
+
+        for (const tableName of tablesToQuery) {
+            try {
+                const comNames = [...new Set(recordList
+                    .filter(r => r.work_type === '측정' || !r.work_type)
+                    .map(r => r.com_name))];
+                const CHUNK_SIZE = 30;
+                for (let i = 0; i < comNames.length; i += CHUNK_SIZE) {
+                    const chunk = comNames.slice(i, i + CHUNK_SIZE);
+                    const { data, error } = await supabase
+                        .from(tableName)
+                        .select('com_name, m_date, worker_name, common_name, sample_id')
+                        .in('com_name', chunk);
+
+                    if (error) {
+                        if (error.code === '42P01' || error.message?.includes('not found') || error.status === 404) {
+                            console.warn(`[BlankCheck] Shard ${tableName} missing, skipping.`);
+                            break;
+                        }
+                        console.error(`[BlankCheck] Error from ${tableName}:`, error);
+                        continue;
+                    }
+
+                    if (data) {
+                        data.forEach(sample => {
+                            if (sample.common_name === '소음') return; // 소음 제외
+                            const normSampleName = normalize(sample.com_name);
+
+                            recordList.forEach(r => {
+                                if (r.work_type && r.work_type !== '측정') return;
+                                const normRecordName = normalize(r.com_name);
+                                if (normRecordName !== normSampleName) return;
+                                if (!sample.m_date || sample.m_date < r.start_date || sample.m_date > r.end_date) return;
+
+                                if (!blankMap[r.id]) blankMap[r.id] = { blanks: [], regularSubstances: new Set() };
+
+                                const isBlank = sample.worker_name && sample.worker_name.includes('공시료');
+                                if (isBlank) {
+                                    blankMap[r.id].blanks.push(sample);
+                                } else {
+                                    // 혼합유기화합물 등 '/'로 구분된 복수 물질을 개별 등록
+                                    extractSubstances(sample.common_name).forEach(s => blankMap[r.id].regularSubstances.add(s));
+                                }
+                            });
+                        });
+                    }
+                }
+            } catch (err) {
+                console.error(`[BlankCheck] Table ${tableName} unexpected error:`, err);
+            }
+        }
+
+        // 물질별 커버리지 계산
+        const result = {};
+        Object.entries(blankMap).forEach(([recId, d]) => {
+            const { blanks, regularSubstances } = d;
+            const substanceCoverage = {};
+
+            regularSubstances.forEach(substance => {
+                let count = 0;
+                blanks.forEach(blank => {
+                    // 공시료의 common_name에서 해당 물질이 포함되는지 확인 (정확한 개별 물질 매칭)
+                    if (extractSubstances(blank.common_name).includes(substance)) count++;
+                });
+                substanceCoverage[substance] = count;
+            });
+
+            const missingSubstances = Object.entries(substanceCoverage)
+                .filter(([, count]) => count < 2)
+                .map(([substance, count]) => ({ substance, count }));
+
+            result[recId] = {
+                blanks,
+                regularSubstances: Array.from(regularSubstances),
+                substanceCoverage,
+                missingSubstances,
+                isOk: regularSubstances.size > 0 && missingSubstances.length === 0 && blanks.length >= 2
+            };
+        });
+
+        setBlankSampleCounts(result);
+    }
+
+    // 신규 기록 저장 시: 특정 사업장+기간의 공시료 현황을 실시간 조회 (DB 직접 조회)
+    async function checkBlankSamplesForRecord(comName, startDate, endDate) {
+        if (!comName || !startDate || !endDate) return null;
+
+        const getTables = (start, end) => {
+            const tabs = new Set();
+            if (!start || !end) return [];
+            const s = new Date(start);
+            const eDate = new Date(end);
+            let curr = new Date(s);
+            while (curr <= eDate) {
+                const year = curr.getFullYear();
+                const half = (curr.getMonth() + 1) <= 6 ? 1 : 2;
+                if (year >= 2026) tabs.add(`kiwe_sampling_${year}_${half}`);
+                curr.setMonth(curr.getMonth() + 6);
+                curr.setDate(1);
+            }
+            const ey = eDate.getFullYear();
+            const eh = (eDate.getMonth() + 1) <= 6 ? 1 : 2;
+            if (ey >= 2026) tabs.add(`kiwe_sampling_${ey}_${eh}`);
+            return Array.from(tabs);
+        };
+
+        const normalize = (val) => (val || '').replace(/\(주\)|㈜|\s/g, '');
+        const tables = getTables(startDate, endDate);
+        const normComName = normalize(comName);
+        const blanks = [];
+        const regularSubstances = new Set();
+
+        for (const tableName of tables) {
+            try {
+                const { data, error } = await supabase
+                    .from(tableName)
+                    .select('com_name, m_date, worker_name, common_name, sample_id')
+                    .gte('m_date', startDate)
+                    .lte('m_date', endDate);
+
+                if (error) {
+                    if (error.code === '42P01') continue;
+                    console.error('[BlankCheck Single]', error);
+                    continue;
+                }
+                if (data) {
+                    data.forEach(sample => {
+                        if (sample.common_name === '소음') return;
+                        if (normalize(sample.com_name) !== normComName) return;
+                        const isBlank = sample.worker_name && sample.worker_name.includes('공시료');
+                        if (isBlank) {
+                            blanks.push(sample);
+                        } else {
+                            extractSubstances(sample.common_name).forEach(s => regularSubstances.add(s));
+                        }
+                    });
+                }
+            } catch (err) {
+                console.error('[BlankCheck Single] error:', err);
+            }
+        }
+
+        const substanceCoverage = {};
+        regularSubstances.forEach(substance => {
+            let count = 0;
+            blanks.forEach(blank => {
+                if (extractSubstances(blank.common_name).includes(substance)) count++;
+            });
+            substanceCoverage[substance] = count;
+        });
+
+        const missingSubstances = Object.entries(substanceCoverage)
+            .filter(([, count]) => count < 2)
+            .map(([substance, count]) => ({ substance, count }));
+
+        return {
+            blanks,
+            regularSubstances: Array.from(regularSubstances),
+            substanceCoverage,
+            missingSubstances,
+            isOk: regularSubstances.size > 0 && missingSubstances.length === 0 && blanks.length >= 2
+        };
     }
 
     const handleCompanySelect = (company) => {
@@ -1239,6 +1583,33 @@ function RecordsManagement() {
                     if (!confirm(`분석 미완료 시료가 존재합니다 (${status.completed}/${status.total} 완료).\n진행하시겠습니까?`)) {
                         setLoading(false);
                         return;
+                    }
+                }
+            }
+
+            // ★ 공시료(Blank Sample) 입력 검증
+            if (recordToSave.work_type === '측정' || !recordToSave.work_type) {
+                let blankData = null;
+                if (editingId) {
+                    blankData = blankSampleCounts[editingId];
+                } else {
+                    // 신규 저장 시: 입력된 사업장+기간으로 실시간 조회
+                    blankData = await checkBlankSamplesForRecord(
+                        recordToSave.com_name, recordToSave.start_date, recordToSave.end_date
+                    );
+                }
+
+                if (blankData && blankData.regularSubstances.length > 0) {
+                    const hasMissing = blankData.missingSubstances.length > 0 || blankData.blanks.length < 2;
+                    if (hasMissing) {
+                        const missingLines = blankData.missingSubstances.length > 0
+                            ? blankData.missingSubstances.map(m => `  ・ ${m.substance}: ${m.count}건 (2건 필요)`).join('\n')
+                            : `  ・ 공시료 행: ${blankData.blanks.length}건 (2건 필요)`;
+                        const msg = `⚠️ 공시료(Blank Sample) 입력 부족!\n\n${missingLines}\n\n시료채취기록대장에서 공시료를 추가 입력 후 저장하세요.\n그래도 저장하시겠습니까?`;
+                        if (!confirm(msg)) {
+                            setLoading(false);
+                            return;
+                        }
                     }
                 }
             }
@@ -1606,6 +1977,13 @@ function RecordsManagement() {
                                                         setIsIncompleteModalOpen(true);
                                                     }
                                                 }),
+                                                (rec.work_type === '측정' || !rec.work_type) && blankSampleCounts[rec.id] && e(BlankSampleBadge, {
+                                                    blankData: blankSampleCounts[rec.id],
+                                                    onClick: () => {
+                                                        setSelectedBlankRecord(rec);
+                                                        setIsBlankModalOpen(true);
+                                                    }
+                                                }),
                                                 rec.report_date && e('span', { className: "px-2 py-0.5 bg-emerald-100 text-emerald-700 text-[10px] font-black rounded w-fit" }, "보고완료"),
                                                 rec.deposit_date && e('span', { className: "px-2 py-0.5 bg-blue-100 text-blue-700 text-[10px] font-black rounded w-fit" }, "사업장 완")
                                             )
@@ -1667,6 +2045,12 @@ function RecordsManagement() {
                 onClose: () => setIsIncompleteModalOpen(false),
                 record: selectedStatusRecord || {},
                 samples: (selectedStatusRecord && analysisStatuses[selectedStatusRecord.id]?.samples) || []
+            }),
+            e(BlankSampleModal, {
+                isOpen: isBlankModalOpen,
+                onClose: () => setIsBlankModalOpen(false),
+                record: selectedBlankRecord || {},
+                blankData: selectedBlankRecord ? blankSampleCounts[selectedBlankRecord.id] : null
             }))
     );
 }
