@@ -1152,26 +1152,31 @@ function App() {
             // ★ 공시료 누락 체크 (측정기록카드와 동일한 경고 제공)
             const blankCheckGroup = {};
             preparedData.forEach(row => {
-                const hazard = (row.common_name || '').trim();
-                if (!hazard) return;
+                const text = (row.common_name || '').trim();
+                if (!text) return;
                 
-                // 소음, 조도 등 공시료 불필요 항목 제외
-                if (hazard.includes('소음') || hazard.includes('조도')) return;
+                // ★ 수정: 멀티 유해인자('/') 및 부가설명('(')을 분리하여 기본 명칭으로 매칭 (records.js의 충족 로직과 동일하게)
+                const hazards = text.split('/').map(s => s.split('(')[0].trim()).filter(Boolean);
                 
-                const mDate = row.m_date || startDate;
-                const comName = row.com_name || '';
-                const key = `${mDate}|${comName}|${hazard}`;
-                
-                if (!blankCheckGroup[key]) {
-                    blankCheckGroup[key] = { hasSample: false, hasBlank: false };
-                }
-                
-                const isBlank = row.worker_name && row.worker_name.includes('공시료');
-                if (isBlank) {
-                    blankCheckGroup[key].hasBlank = true;
-                } else {
-                    blankCheckGroup[key].hasSample = true;
-                }
+                hazards.forEach(hazard => {
+                    // 소음, 조도 등 공시료 불필요 항목 제외
+                    if (hazard.includes('소음') || hazard.includes('조도')) return;
+                    
+                    const mDate = row.m_date || startDate;
+                    const comName = row.com_name || '';
+                    const key = `${mDate}|${comName}|${hazard}`;
+                    
+                    if (!blankCheckGroup[key]) {
+                        blankCheckGroup[key] = { hasSample: false, hasBlank: false };
+                    }
+                    
+                    const isBlank = row.worker_name && row.worker_name.includes('공시료');
+                    if (isBlank) {
+                        blankCheckGroup[key].hasBlank = true;
+                    } else {
+                        blankCheckGroup[key].hasSample = true;
+                    }
+                });
             });
 
             const missingBlanks = [];
