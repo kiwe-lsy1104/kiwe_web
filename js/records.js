@@ -889,7 +889,7 @@ function UnpaidManagementTab({ records, companies }) {
             acc.billed += r.billing_date ? amt : 0;
             acc.unbilled += !r.billing_date ? amt : 0;
             acc.unpaid += (r.billing_date && !r.deposit_date) ? amt : 0;
-            acc.noReport += !r.report_date ? 1 : 0;
+            acc.noReport += (!r.report_date && r.work_type === '측정') ? 1 : 0;
             acc.totalSubsidy += r.is_funded === '대상' ? subsidy : 0;
             acc.unpaidSubsidy += (r.is_funded === '대상' && !r.subsidy_date) ? subsidy : 0;
             acc.totalSales += amt + (r.is_funded === '대상' ? subsidy : 0);
@@ -927,7 +927,7 @@ function UnpaidManagementTab({ records, companies }) {
         if (type === 'all') { items = enrich(statsBaseData); title = '조회된 기록 목록'; }
         else if (type === 'unbilled') { items = enrich(statsBaseData.filter(r => !r.billing_date)); title = '미청구 목록'; }
         else if (type === 'unpaid') { items = enrich(statsBaseData.filter(r => r.billing_date && !r.deposit_date)); title = '사업장 미수금 목록'; }
-        else if (type === 'noReport') { items = enrich(statsBaseData.filter(r => !r.report_date)); title = '전산미보고 목록'; }
+        else if (type === 'noReport') { items = enrich(statsBaseData.filter(r => !r.report_date && r.work_type === '측정')); title = '전산미보고 목록'; }
         else if (type === 'unpaidSubsidy') { items = enrich(statsBaseData.filter(r => r.is_funded === '대상' && !r.subsidy_date)); title = '지원금 미수금액 목록'; }
 
         setModal({ isOpen: true, title, items });
@@ -1770,7 +1770,7 @@ function RecordsManagement() {
     const officeFilterOptions = ['안산', '경기', '평택', '서울서부', '기타'];
 
     const stats = useMemo(() => {
-        const unreported = filteredRecords.filter(r => r.end_date && !r.report_date).length;
+        const unreported = filteredRecords.filter(r => r.end_date && !r.report_date && r.work_type === '측정').length;
 
         let serialInfo = { h_all: 0, h_o5: 0, y_all: 0, y_o5: 0, label: '조건을 선택하세요' };
         if (officeFilter !== '전체') {
@@ -2038,7 +2038,7 @@ function RecordsManagement() {
             e(UnreportedModal, {
                 isOpen: isUnreportedModalOpen,
                 onClose: () => setIsUnreportedModalOpen(false),
-                unreportedRecords: filteredRecords.filter(r => r.end_date && !r.report_date)
+                unreportedRecords: filteredRecords.filter(r => r.end_date && !r.report_date && r.work_type === '측정')
             }),
             e(IncompleteSamplesModal, {
                 isOpen: isIncompleteModalOpen,
