@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="ko">
 
 <head>
@@ -83,6 +83,7 @@
             { title: '일정 및 장비 관리', desc: '스케줄 및 장비 예약', icon: 'calendar-days', color: 'bg-orange-500', path: 'schedule.html' },
             { title: '분석결과통보서', desc: '유기화합물 및 전체 보고서', icon: 'file-spreadsheet', color: 'bg-violet-600', path: 'analysis_unified.html' },
             { title: '시료통계관리', desc: '분석 현황 조회 및 인쇄', icon: 'bar-chart-3', color: 'bg-indigo-500', path: 'sampling_manage.html' },
+            { title: '시료채취기록대장 (하반기 통합)', desc: '유량보정 통합 · 공시료 자동 체크', icon: 'flask-conical', color: 'bg-purple-600', path: 'sampling_new.html', badge: 'NEW' },
             { title: '평가원 관리 및 설정', desc: '직원 권한 및 시스템 설정', icon: 'settings', color: 'bg-slate-700', path: 'settings.html', adminOnly: true },
         ];
 
@@ -192,6 +193,9 @@
                             e('p', { className: "text-slate-400 font-medium" }, item.desc),
                             item.id === 'plan' && e('div', { className: "absolute top-6 right-6 bg-blue-50 text-blue-600 px-3 py-1 rounded-full text-xs font-black border border-blue-100" },
                                 `이번 달 예정: ${planCount}건`
+                            ),
+                            item.badge && e('div', { className: "absolute top-6 right-6 bg-purple-50 text-purple-600 px-3 py-1 rounded-full text-xs font-black border border-purple-200 animate-pulse" },
+                                item.badge
                             )
                         )
                     )

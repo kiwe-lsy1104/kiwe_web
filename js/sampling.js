@@ -410,25 +410,29 @@ function App() {
                 const currentComName = comNameRef.current;
                 const currentReceiver = receiverDefaultRef.current;
 
-                for (let i = 0; i < amount; i++) {
-                    const row = index + i;
-                    if (currentUser) {
-                        hot.setDataAtRowProp(row, 'measured_by', currentUser.user_name);
-                    }
-                    if (currentMDate) hot.setDataAtRowProp(row, 'm_date', currentMDate);
-                    // 검색어가 유효한 사업장명일 경우에만 사업장 자동 입력 (근로자/유해인자 검색 시 자동입력 제외)
-                    if (currentComName) {
-                        const isRealCompany = companies.some(c => c.com_name === currentComName);
-                        if (isRealCompany) {
-                            hot.setDataAtRowProp(row, 'com_name', currentComName);
+                // ★ 성능 최적화: hot.batch()로 모든 setDataAtRowProp 호출을 묶어
+                //   10행/50행 추가 시 단 1번만 렌더링 (기존: n행 × 5~6회 = 최대 300번 렌더)
+                hot.batch(() => {
+                    for (let i = 0; i < amount; i++) {
+                        const row = index + i;
+                        if (currentUser) {
+                            hot.setDataAtRowProp(row, 'measured_by', currentUser.user_name);
                         }
-                    }
+                        if (currentMDate) hot.setDataAtRowProp(row, 'm_date', currentMDate);
+                        // 검색어가 유효한 사업장명일 경우에만 사업장 자동 입력 (근로자/유해인자 검색 시 자동입력 제외)
+                        if (currentComName) {
+                            const isRealCompany = companies.some(c => c.com_name === currentComName);
+                            if (isRealCompany) {
+                                hot.setDataAtRowProp(row, 'com_name', currentComName);
+                            }
+                        }
 
-                    // 교대형태, 실근로시간, 점심시간, 발생형태 자동입력 해제 요청으로 제거
-                    hot.setDataAtRowProp(row, 'condition', '양호');
-                    hot.setDataAtRowProp(row, 'received_by', currentReceiver);
-                    if (currentMDate) hot.setDataAtRowProp(row, 'received_date', currentMDate);
-                }
+                        // 교대형태, 실근로시간, 점심시간, 발생형태 자동입력 해제 요청으로 제거
+                        hot.setDataAtRowProp(row, 'condition', '양호');
+                        hot.setDataAtRowProp(row, 'received_by', currentReceiver);
+                        if (currentMDate) hot.setDataAtRowProp(row, 'received_date', currentMDate);
+                    }
+                });
             });
 
             loadSmartData();
