@@ -1831,8 +1831,8 @@ function RecordsManagement() {
                         className: `px-4 py-1.5 rounded-lg text-sm font-bold transition-all flex items-center gap-2 ${activeTab === 'records' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`
                     }, e(ClipboardList, { size: 16 }), "측정기록"),
                     isAdmin && e('button', {
-                        onClick: () => setActiveTab('unpaid'),
-                        className: `px-4 py-1.5 rounded-lg text-sm font-bold transition-all flex items-center gap-2 ${activeTab === 'unpaid' ? 'bg-white text-rose-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`
+                        onClick: () => window.location.href = 'accounts.html',
+                        className: `px-4 py-1.5 rounded-lg text-sm font-bold transition-all flex items-center gap-2 text-slate-500 hover:text-slate-700`
                     }, e(CreditCard, { size: 16 }), "미수금 현황")
                 ),
                 e('button', { onClick: downloadBackup, className: "px-4 py-2 text-sm font-semibold text-indigo-600 hover:bg-indigo-50 border border-indigo-100 rounded-lg flex items-center gap-2" }, e(DownloadIcon, { size: 18 }), " [백업다운] "),
