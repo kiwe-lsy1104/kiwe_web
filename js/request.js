@@ -243,19 +243,37 @@ export function ExternalRequestManager({ supabase, sessionData }) {
             ]);
 
             const mDates = [...new Set(rawData.map(s => s.m_date).filter(Boolean))];
-            let flowData = [];
-            if (mDates.length > 0) {
-                const { data } = await supabase.from('kiwe_flow')
-                    .select('m_date, pump_no, total_avg')
-                    .in('m_date', mDates);
-                flowData = data || [];
-            }
 
-            const hazardMap = new Map((hazardRes.data || []).map(h => [h.common_name, h]));
+            // ── 유량 자체 계산 (kiwe_flow 의존성 제거) ──
             const flowMap = new Map();
-            flowData.forEach(f => {
-                if (f.m_date && f.pump_no) flowMap.set(`${f.m_date}_${f.pump_no}`, f.total_avg);
+            rawData.forEach(r => {
+                if (r.m_date && r.pump_no) {
+                    const pf1 = parseFloat(r.pre_flow_1), pf2 = parseFloat(r.pre_flow_2), pf3 = parseFloat(r.pre_flow_3);
+                    const pof1 = parseFloat(r.post_flow_1), pof2 = parseFloat(r.post_flow_2), pof3 = parseFloat(r.post_flow_3);
+                    
+                    let preCount = 0, preSum = 0;
+                    if (!isNaN(pf1)) { preSum += pf1; preCount++; }
+                    if (!isNaN(pf2)) { preSum += pf2; preCount++; }
+                    if (!isNaN(pf3)) { preSum += pf3; preCount++; }
+                    const preAvg = preCount > 0 ? (preSum / preCount) : null;
+
+                    let postCount = 0, postSum = 0;
+                    if (!isNaN(pof1)) { postSum += pof1; postCount++; }
+                    if (!isNaN(pof2)) { postSum += pof2; postCount++; }
+                    if (!isNaN(pof3)) { postSum += pof3; postCount++; }
+                    const postAvg = postCount > 0 ? (postSum / postCount) : null;
+
+                    if (preAvg !== null || postAvg !== null) {
+                        let totalAvg = 0;
+                        if (preAvg !== null && postAvg !== null) totalAvg = (preAvg + postAvg) / 2;
+                        else if (preAvg !== null) totalAvg = preAvg;
+                        else if (postAvg !== null) totalAvg = postAvg;
+
+                        flowMap.set(`${r.m_date}_${r.pump_no}`, Number(totalAvg.toFixed(3)));
+                    }
+                }
             });
+            const hazardMap = new Map((hazardRes.data || []).map(h => [h.common_name, h]));
 
             const blankMap = new Map();
             rawData.forEach(row => {

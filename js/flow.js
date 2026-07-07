@@ -155,29 +155,127 @@ async function fetchData() {
     const endStr = document.getElementById('endDate')?.value;
     const pumpTerm = document.getElementById('pumpFilter')?.value;
 
-    let query = supabase.from('kiwe_flow')
-        .select('*')
-        .order('m_date', { ascending: true }) // Ascending Date
-        .order('pump_no', { ascending: true }); // Ascending Pump No
+    const getTableName = (dateStr) => {
+        if (!dateStr) return null;
+        const d = new Date(dateStr);
+        return `kiwe_sampling_${d.getFullYear()}_${d.getMonth() + 1 <= 6 ? 1 : 2}`;
+    };
 
+    const getTableList = (start, end) => {
+        if (!start || !end) return [];
+        const tables = new Set();
+        tables.add(getTableName(start));
+        let cur = new Date(start);
+        const endD = new Date(end);
+        while (cur <= endD) {
+            tables.add(getTableName(cur.toISOString().split('T')[0]));
+            cur.setMonth(cur.getMonth() + 6);
+        }
+        tables.add(getTableName(end));
+        return Array.from(tables);
+    };
+
+    // 1. Fetch kiwe_flow metadata
+    let query = supabase.from('kiwe_flow').select('*').order('m_date', { ascending: true }).order('pump_no', { ascending: true });
     if (startStr) query = query.gte('m_date', startStr);
     if (endStr) query = query.lte('m_date', endStr);
     if (pumpTerm) query = query.ilike('pump_no', `%${pumpTerm}%`);
+    const { data: flowData, error: flowErr } = await query;
 
-    const { data, error } = await query;
-
-    if (error) {
-        console.error('Fetch error:', error);
-        alert('데이터 조회 중 오류가 발생했습니다: ' + (error.message || '알 수 없는 오류'));
+    if (flowErr) {
+        console.error('Fetch error:', flowErr);
+        alert('데이터 조회 중 오류가 발생했습니다: ' + (flowErr.message || '알 수 없는 오류'));
         renderGrid([]);
         return;
     }
 
-    let finalData = data || [];
+    // 2. Fetch kiwe_sampling data
+    const tableList = getTableList(startStr || new Date().toISOString().split('T')[0], endStr || new Date().toISOString().split('T')[0]);
+    const rawArrays = await Promise.all(
+        tableList.map(async tn => {
+            try {
+                let q = supabase.from(tn).select('m_date, pump_no, pre_flow_1, pre_flow_2, pre_flow_3, post_flow_1, post_flow_2, post_flow_3').not('pump_no', 'is', null);
+                if (startStr) q = q.gte('m_date', startStr);
+                if (endStr) q = q.lte('m_date', endStr);
+                if (pumpTerm) q = q.ilike('pump_no', `%${pumpTerm}%`);
+                const { data } = await q;
+                return data || [];
+            } catch { return []; }
+        })
+    );
+    const rawData = rawArrays.flat();
 
-    // No more empty rows logic here. Just render what we got.
+    // 3. Aggregate sampling data by m_date + pump_no
+    const samplingMap = new Map();
+    rawData.forEach(r => {
+        const p1 = parseFloat(r.pre_flow_1), p2 = parseFloat(r.pre_flow_2), p3 = parseFloat(r.pre_flow_3);
+        const po1 = parseFloat(r.post_flow_1), po2 = parseFloat(r.post_flow_2), po3 = parseFloat(r.post_flow_3);
+        const hasData = !isNaN(p1) || !isNaN(p2) || !isNaN(p3) || !isNaN(po1) || !isNaN(po2) || !isNaN(po3);
+        
+        const key = `${r.m_date}_${r.pump_no}`;
+        // 유효한 유량값이 있는 행을 우선 저장하거나, 없더라도 펌프번호가 있으면 기록
+        if (!samplingMap.has(key) || hasData) {
+            samplingMap.set(key, { ...r });
+        }
+    });
+
+    // 4. Merge!
+    const finalMap = new Map();
+    samplingMap.forEach((samp, key) => {
+        finalMap.set(key, { m_date: samp.m_date, pump_no: samp.pump_no, ...samp });
+    });
+    (flowData || []).forEach(f => {
+        const key = `${f.m_date}_${f.pump_no}`;
+        if (finalMap.has(key)) {
+            const ext = finalMap.get(key);
+            // 시료대장(sampling) 데이터가 flow보다 우선 (유량값에 한해)
+            finalMap.set(key, {
+                ...f, ...ext,
+                calibrator_no: f.calibrator_no, calibrator_person: f.calibrator_person,
+                pre_cal_date: f.pre_cal_date, post_cal_date: f.post_cal_date,
+                flow_id: f.flow_id 
+            });
+        } else {
+            // 시료대장에 없는 펌프지만 유량보정대장에는 있는 경우 (과거 데이터 등)
+            finalMap.set(key, f);
+        }
+    });
+
+    const finalData = Array.from(finalMap.values()).sort((a,b) => {
+        if(a.m_date !== b.m_date) return (a.m_date || '').localeCompare(b.m_date || '');
+        return (a.pump_no || '').localeCompare(b.pump_no || '');
+    });
+
+    // 5. Calculate averages on the fly
+    finalData.forEach(row => {
+        const pf1 = parseFloat(row.pre_flow_1), pf2 = parseFloat(row.pre_flow_2), pf3 = parseFloat(row.pre_flow_3);
+        const pof1 = parseFloat(row.post_flow_1), pof2 = parseFloat(row.post_flow_2), pof3 = parseFloat(row.post_flow_3);
+        
+        let preCount = 0, preSum = 0;
+        if (!isNaN(pf1)) { preSum += pf1; preCount++; }
+        if (!isNaN(pf2)) { preSum += pf2; preCount++; }
+        if (!isNaN(pf3)) { preSum += pf3; preCount++; }
+        row.pre_avg = preCount > 0 ? Number((preSum / preCount).toFixed(3)) : null;
+
+        let postCount = 0, postSum = 0;
+        if (!isNaN(pof1)) { postSum += pof1; postCount++; }
+        if (!isNaN(pof2)) { postSum += pof2; postCount++; }
+        if (!isNaN(pof3)) { postSum += pof3; postCount++; }
+        row.post_avg = postCount > 0 ? Number((postSum / postCount).toFixed(3)) : null;
+
+        if (row.pre_avg !== null || row.post_avg !== null) {
+            let totalAvg = 0;
+            if (row.pre_avg !== null && row.post_avg !== null) totalAvg = (row.pre_avg + row.post_avg) / 2;
+            else if (row.pre_avg !== null) totalAvg = row.pre_avg;
+            else if (row.post_avg !== null) totalAvg = row.post_avg;
+            row.total_avg = Number(totalAvg.toFixed(3));
+        } else {
+            row.total_avg = null;
+        }
+    });
+
     renderGrid(finalData);
-    isDirty = false; // Reset dirty state after fetch
+    isDirty = false;
 }
 
 function renderGrid(data) {
@@ -253,11 +351,42 @@ function renderGrid(data) {
         return td;
     };
 
+    // Add event listeners for new buttons
+    document.getElementById('excelBtn')?.addEventListener('click', () => {
+        if (!hot) return;
+        const exportPlugin = hot.getPlugin('exportFile');
+        exportPlugin.downloadFile('csv', {
+            bom: true,
+            columnDelimiter: ',',
+            columnHeaders: true,
+            exportHiddenColumns: true,
+            exportHiddenRows: true,
+            fileExtension: 'csv',
+            filename: '유량보정대장_[YYYY]-[MM]-[DD]',
+            mimeType: 'text/csv',
+            rowDelimiter: '\r\n',
+            rowHeaders: true
+        });
+        // Note: CSV export is built-in. For XLSX, we can use SheetJS since we added it to flow.html.
+        const hotData = hot.getData();
+        const headers = hot.getColHeader();
+        const wsData = [headers, ...hotData];
+        const ws = XLSX.utils.aoa_to_sheet(wsData);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "유량보정대장");
+        const todayStr = new Date().toISOString().split('T')[0];
+        XLSX.writeFile(wb, `유량보정대장_${todayStr}.xlsx`);
+    });
+
+    document.getElementById('printBtn')?.addEventListener('click', () => {
+        window.print();
+    });
+
     hot = new Handsontable(container, {
         data: displayData,
         readOnly: mode === 'view',
         colHeaders: [
-            '연번', '관리', '측정일자', '펌프번호', '보정기', '전유량보정일자',
+            '연번', '관리', '측정일자', '펌프번호', '보정기', '보정자', '전유량보정일자',
             '전-1회', '전-2회', '전-3회', '전평균',
             '후유량보정일자',
             '후-1회', '후-2회', '후-3회', '후평균',
@@ -269,17 +398,18 @@ function renderGrid(data) {
             { data: 'm_date', type: 'date', dateFormat: 'YYYY-MM-DD', renderer: autoShrinkRenderer, width: 95, className: centerClass },
             { data: 'pump_no', type: 'text', width: 75, className: centerClass },
             { data: 'calibrator_no', type: 'numeric', width: 60, className: centerClass },
+            { data: 'calibrator_person', type: 'text', width: 70, className: centerClass },
             { data: 'pre_cal_date', type: 'date', dateFormat: 'YYYY-MM-DD', renderer: autoShrinkRenderer, width: 95, className: centerClass },
-            { data: 'pre_flow_1', type: 'numeric', numericFormat: { pattern: '0.000' }, width: 65, className: centerClass },
-            { data: 'pre_flow_2', type: 'numeric', numericFormat: { pattern: '0.000' }, width: 65, className: centerClass },
-            { data: 'pre_flow_3', type: 'numeric', numericFormat: { pattern: '0.000' }, width: 65, className: centerClass },
-            { data: 'pre_avg', type: 'numeric', numericFormat: { pattern: '0.000' }, readOnly: true, width: 75, className: centerClass },
+            { data: 'pre_flow_1', type: 'numeric', numericFormat: { pattern: '0.000' }, readOnly: true, width: 65, className: centerClass + ' bg-slate-50' },
+            { data: 'pre_flow_2', type: 'numeric', numericFormat: { pattern: '0.000' }, readOnly: true, width: 65, className: centerClass + ' bg-slate-50' },
+            { data: 'pre_flow_3', type: 'numeric', numericFormat: { pattern: '0.000' }, readOnly: true, width: 65, className: centerClass + ' bg-slate-50' },
+            { data: 'pre_avg', type: 'numeric', numericFormat: { pattern: '0.000' }, readOnly: true, width: 75, className: centerClass + ' font-bold bg-slate-100' },
             { data: 'post_cal_date', type: 'date', dateFormat: 'YYYY-MM-DD', renderer: autoShrinkRenderer, width: 95, className: centerClass },
-            { data: 'post_flow_1', type: 'numeric', numericFormat: { pattern: '0.000' }, width: 65, className: centerClass },
-            { data: 'post_flow_2', type: 'numeric', numericFormat: { pattern: '0.000' }, width: 65, className: centerClass },
-            { data: 'post_flow_3', type: 'numeric', numericFormat: { pattern: '0.000' }, width: 65, className: centerClass },
-            { data: 'post_avg', type: 'numeric', numericFormat: { pattern: '0.000' }, readOnly: true, width: 75, className: centerClass },
-            { data: 'total_avg', type: 'numeric', numericFormat: { pattern: '0.000' }, readOnly: true, renderer: autoShrinkRenderer, width: 120, className: 'htCenter htMiddle font-bold text-indigo-700' }
+            { data: 'post_flow_1', type: 'numeric', numericFormat: { pattern: '0.000' }, readOnly: true, width: 65, className: centerClass + ' bg-slate-50' },
+            { data: 'post_flow_2', type: 'numeric', numericFormat: { pattern: '0.000' }, readOnly: true, width: 65, className: centerClass + ' bg-slate-50' },
+            { data: 'post_flow_3', type: 'numeric', numericFormat: { pattern: '0.000' }, readOnly: true, width: 65, className: centerClass + ' bg-slate-50' },
+            { data: 'post_avg', type: 'numeric', numericFormat: { pattern: '0.000' }, readOnly: true, width: 75, className: centerClass + ' font-bold bg-slate-100' },
+            { data: 'total_avg', type: 'numeric', numericFormat: { pattern: '0.000' }, readOnly: true, renderer: autoShrinkRenderer, width: 120, className: 'htCenter htMiddle font-bold text-indigo-700 bg-indigo-50/50' }
         ],
         wordWrap: false,
         rowHeaders: false,
@@ -423,31 +553,15 @@ async function saveData(silent = false) {
     const validData = rawData
         .filter(r => r.m_date && r.pump_no)
         .map(r => {
-            const cleaned = { ...r };
-            delete cleaned.actions; // Remove actions column data
-
-            // Don't delete flow_id, we might need it? 
-            // Actually, keep it. Upsert will ignore it if we don't map it, but we use onConflict: m_date, pump_no.
-            // If flow_id exists, it might conflict if not careful? 
-            // Postgres UPSERT behavior: 
-            // If onConflict target is met (duplicate m_date+pump_no), it UPDATES.
-            // If flow_id is present in the payload but doesn't match the existing row's PK?
-            // Safer to REMOVE flow_id from payload for upsert-by-logic, unless we are sure it matches.
-            // WE map back IPs after save. So flow_id in grid matches DB.
-            // But if we change pump_no of an existing row -> new key -> Insert -> old row stays?
-            // "Upsert partial": If I change Date of a row, it becomes a new row effectively if I don't use PK.
-            // But User wants "Duplicate Check" by Date+Pump.
-            // So:
-            // 1. If I have flow_id, I should ideally update by flow_id?
-            // 2. But user logic is "Date + Pump" define the unique row.
-            // Let's stick to "delete flow_id from payload" and let onConflict handle it.
-            delete cleaned.flow_id;
-
-            const numFields = ['calibrator_no', 'pre_flow_1', 'pre_flow_2', 'pre_flow_3', 'pre_avg', 'post_flow_1', 'post_flow_2', 'post_flow_3', 'post_avg', 'total_avg'];
-            numFields.forEach(f => {
-                if (cleaned[f] === '' || cleaned[f] === undefined) cleaned[f] = null;
-                else cleaned[f] = parseFloat(cleaned[f]);
-            });
+            const cleaned = {
+                m_date: r.m_date,
+                pump_no: r.pump_no,
+                calibrator_no: (r.calibrator_no === '' || r.calibrator_no === undefined || r.calibrator_no === null) ? null : parseFloat(r.calibrator_no),
+                calibrator_person: r.calibrator_person || null,
+                pre_cal_date: r.pre_cal_date || null,
+                post_cal_date: r.post_cal_date || null,
+                // 주의: flow_id를 넣지 않아 onConflict로 매핑되게 함. 유량 데이터는 kiwe_sampling에서 관리하므로 여기서 저장하지 않음.
+            };
             return cleaned;
         });
 
@@ -473,41 +587,28 @@ async function saveData(silent = false) {
         return;
     }
 
-    // 3. Flow Accuracy Validation (Warnings)
-    if (!silent) {
-        const warnings = getFlowWarnings(validData);
-        if (warnings.length > 0) {
-            const msg = `[데이터 정확성 경고]\n다음 항목들이 기준 오차를 초과했습니다. 그대로 저장하시겠습니까?\n\n${warnings.join('\n')}`;
-            if (!confirm(msg)) return;
-        }
-    }
-
     try {
-        // 4. Upsert with select() to get back IDs
+        // 3. Upsert with select() to get back IDs
         const { data: savedRows, error } = await supabase
             .from('kiwe_flow')
             .upsert(validData, { onConflict: 'm_date, pump_no' })
-            .select(); // Critical: Fetch back the data including flow_id
+            .select(); 
 
         if (error) throw error;
 
-        // 4. Map returned IDs back to the grid (Update source data directly)
         if (savedRows && savedRows.length > 0) {
-            // Create a lookup map for faster access: "date_pump" -> rowData
             const savedMap = new Map();
             savedRows.forEach(row => {
                 savedMap.set(`${row.m_date}_${row.pump_no}`, row);
             });
 
-            // Iterate over the grid's source data and update flow_id where matches found
-            // We iterate rawData (the reference held by Handsontable) to ensure consistency
             let updatedCount = 0;
             hot.getSourceData().forEach(gridRow => {
                 if (gridRow.m_date && gridRow.pump_no) {
                     const key = `${gridRow.m_date}_${gridRow.pump_no}`;
                     if (savedMap.has(key)) {
                         const saved = savedMap.get(key);
-                        gridRow.flow_id = saved.flow_id; // Map the ID
+                        gridRow.flow_id = saved.flow_id; 
                         updatedCount++;
                     }
                 }
@@ -515,15 +616,12 @@ async function saveData(silent = false) {
             console.log(`Updated flow_id for ${updatedCount} rows.`);
         }
 
-        isDirty = false; // Reset dirty state on success
+        isDirty = false; 
         if (!silent) {
             alert('유량보정대장이 성공적으로 저장되었습니다.');
             await fetchData();
         } else {
-            // In silent mode (auto-save), maybe just log or show small toast?
             console.log('Auto-save successful');
-            // We do NOT fetch in auto-save to avoid disrupting user input (cursor jump)
-            // But we MUST update the dirty flag
         }
 
     } catch (err) {
