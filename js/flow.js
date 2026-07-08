@@ -189,7 +189,7 @@ async function fetchData() {
         return;
     }
 
-    // 2. Fetch kiwe_sampling data
+    // 2. Fetch kiwe_sampling data (with flow values)
     const tableList = getTableList(startStr || new Date().toISOString().split('T')[0], endStr || new Date().toISOString().split('T')[0]);
     const rawArrays = await Promise.all(
         tableList.map(async tn => {
@@ -205,21 +205,19 @@ async function fetchData() {
     );
     const rawData = rawArrays.flat();
 
-    // 3. Aggregate sampling data by m_date + pump_no
+    // 3. Aggregate sampling data by m_date + pump_no (flow values from sampling take priority)
     const samplingMap = new Map();
     rawData.forEach(r => {
         const p1 = parseFloat(r.pre_flow_1), p2 = parseFloat(r.pre_flow_2), p3 = parseFloat(r.pre_flow_3);
         const po1 = parseFloat(r.post_flow_1), po2 = parseFloat(r.post_flow_2), po3 = parseFloat(r.post_flow_3);
         const hasData = !isNaN(p1) || !isNaN(p2) || !isNaN(p3) || !isNaN(po1) || !isNaN(po2) || !isNaN(po3);
-        
         const key = `${r.m_date}_${r.pump_no}`;
-        // 유효한 유량값이 있는 행을 우선 저장하거나, 없더라도 펌프번호가 있으면 기록
         if (!samplingMap.has(key) || hasData) {
             samplingMap.set(key, { ...r });
         }
     });
 
-    // 4. Merge!
+    // 4. Merge: sampling data provides flow values, kiwe_flow provides calibration metadata
     const finalMap = new Map();
     samplingMap.forEach((samp, key) => {
         finalMap.set(key, { m_date: samp.m_date, pump_no: samp.pump_no, ...samp });
@@ -228,12 +226,12 @@ async function fetchData() {
         const key = `${f.m_date}_${f.pump_no}`;
         if (finalMap.has(key)) {
             const ext = finalMap.get(key);
-            // 시료대장(sampling) 데이터가 flow보다 우선 (유량값에 한해)
+            // 시료대장의 유량값이 우선, kiwe_flow의 보정 메타데이터만 덮어씀
             finalMap.set(key, {
                 ...f, ...ext,
                 calibrator_no: f.calibrator_no, calibrator_person: f.calibrator_person,
                 pre_cal_date: f.pre_cal_date, post_cal_date: f.post_cal_date,
-                flow_id: f.flow_id 
+                flow_id: f.flow_id
             });
         } else {
             // 시료대장에 없는 펌프지만 유량보정대장에는 있는 경우 (과거 데이터 등)
@@ -560,7 +558,7 @@ async function saveData(silent = false) {
                 calibrator_person: r.calibrator_person || null,
                 pre_cal_date: r.pre_cal_date || null,
                 post_cal_date: r.post_cal_date || null,
-                // 주의: flow_id를 넣지 않아 onConflict로 매핑되게 함. 유량 데이터는 kiwe_sampling에서 관리하므로 여기서 저장하지 않음.
+                // 주의: 유량값(pre/post flow)은 kiwe_sampling에서 관리하므로 kiwe_flow에는 저장하지 않음
             };
             return cleaned;
         });

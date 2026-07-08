@@ -229,6 +229,7 @@ function initSampleGridNew(container, mDate, comName, onHazardDoubleClick, onDel
         'post_flow_1':     { data: 'post_flow_1', label: '후유량\n1차', renderer: flowRenderer, type: 'numeric', width: 58, className: 'htCenter htMiddle' },
         'post_flow_2':     { data: 'post_flow_2', label: '후유량\n2차', renderer: flowRenderer, type: 'numeric', width: 58, className: 'htCenter htMiddle' },
         'post_flow_3':     { data: 'post_flow_3', label: '후유량\n3차', renderer: flowRenderer, type: 'numeric', width: 58, className: 'htCenter htMiddle' },
+
     };
 
     const baseCols = [
@@ -1309,7 +1310,8 @@ function App() {
                     e('button', { onClick: () => handleTabChange(1), className: "text-sm font-bold pb-1 transition-all " + (activeTab === 1 ? 'tab-active' : 'text-slate-400 hover:text-slate-600') }, "📋 시료채취기록대장"),
                     e('button', { onClick: () => handleTabChange(2), className: "text-sm font-bold pb-1 transition-all " + (activeTab === 2 ? 'tab-active' : 'text-slate-400 hover:text-slate-600') }, "⚗️ 유해인자 설정"),
                     e('button', { onClick: () => handleTabChange(3), className: "text-sm font-bold pb-1 transition-all " + (activeTab === 3 ? 'tab-active' : 'text-slate-400 hover:text-slate-600') }, "📊 시료대장(통계)"),
-                    e('button', { onClick: () => handleTabChange(4), className: "text-sm font-bold pb-1 transition-all " + (activeTab === 4 ? 'tab-active' : 'text-slate-400 hover:text-slate-600') }, "🎧 소음대장"),
+                    e('button', { onClick: () => handleTabChange(4), className: "text-sm font-bold pb-1 transition-all " + (activeTab === 4 ? 'tab-active' : 'text-slate-400 hover:text-slate-600') }, "🔊 소음대장"),
+                    e('button', { onClick: () => handleTabChange(5), className: "text-sm font-bold pb-1 transition-all " + (activeTab === 5 ? 'tab-active' : 'text-slate-400 hover:text-slate-600') }, "💧 유량보정대장"),
                     e('a', {
                         href: "#",
                         onClick: (ev) => { ev.preventDefault(); window.open('sample_record_print.html', 'samplePrint', 'width=1400,height=900,resizable=yes,scrollbars=yes'); },
@@ -1429,7 +1431,7 @@ function App() {
                         currentCols.map(key => {
                             const col = ALL_GRID_COLUMNS.find(c => c.key === key);
                             if (!col) return null;
-                            const isFlow = ['pre_flow_1','pre_flow_2','pre_flow_3','post_flow_1','post_flow_2','post_flow_3'].includes(key);
+                            const isFlow = false;
                             return e('div', { key, 'data-id': key, className: `group flex items-center gap-2 ${isFlow ? 'bg-green-50 border-green-200' : 'bg-white border-indigo-100'} border rounded-lg pl-2 pr-2 py-1.5 shadow-sm hover:border-purple-300 transition-all select-none` },
                                 e('div', { className: "drag-handle p-1 cursor-grab text-slate-300 hover:text-purple-500 active:cursor-grabbing" },
                                     e('svg', { width: "12", height: "12", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "3" },
@@ -1446,7 +1448,7 @@ function App() {
                         e('div', { className: "text-xs font-bold text-slate-400 mb-3" }, "비활성 컬럼 (클릭하여 추가)"),
                         e('div', { className: "flex flex-wrap gap-2" },
                             ALL_GRID_COLUMNS.filter(c => !currentCols.includes(c.key)).map(col => {
-                                const isFlow = ['pre_flow_1','pre_flow_2','pre_flow_3','post_flow_1','post_flow_2','post_flow_3'].includes(col.key);
+                                const isFlow = false;
                                 return e('button', { key: col.key, onClick: () => toggleColumn(col.key), className: `px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${isFlow ? 'bg-green-50 border-green-200 text-green-700 hover:bg-green-100' : 'bg-slate-50 border-slate-200 text-slate-500 hover:bg-purple-50 hover:border-purple-200 hover:text-purple-600'} border` }, "+ " + col.label);
                             })
                         )
@@ -1492,6 +1494,11 @@ function App() {
             ),
             activeTab === 4 && e('div', { className: "flex-1 flex flex-col min-h-0 overflow-hidden" },
                 e(NoiseRecord, { user: user, supabase: supabase })
+            ),
+            activeTab === 5 && e('div', { className: "flex-1 flex justify-center bg-slate-100/50 overflow-auto py-6" },
+                e('div', { className: "w-full max-w-[1350px] shadow-2xl border bg-white rounded-xl overflow-hidden flex flex-col h-fit mb-10" },
+                    e('iframe', { src: "flow.html?mode=input&m_date=" + startDate, className: "w-full border-none", style: { height: '1200px' } })
+                )
             )
         )
     );
