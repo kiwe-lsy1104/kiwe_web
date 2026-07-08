@@ -809,7 +809,7 @@ function UnreportedModal({ isOpen, onClose, unreportedRecords }) {
 
 // ==== Components: RecordsManagement ====
 // ==== Components: UnpaidDetailsModal ====
-function UnpaidDetailsModal({ isOpen, onClose, title, items }) {
+function UnpaidDetailsModal({ isOpen, onClose, title, items, onNavigateToRecord }) {
     if (!isOpen) return null;
     return e('div', { className: "fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm" },
         e('div', { className: "bg-white rounded-3xl shadow-2xl w-full max-w-6xl max-h-[85vh] flex flex-col z-10 overflow-hidden animate-in fade-in zoom-in duration-200" },
@@ -839,8 +839,8 @@ function UnpaidDetailsModal({ isOpen, onClose, title, items }) {
                                 const isSubPaid = !!r.subsidy_date;
                                 const isFunded = r.is_funded === '대상';
 
-                                return e('tr', { key: r.id || idx, className: "hover:bg-slate-50" },
-                                    e('td', { className: "p-3" }, e('div', { className: "font-bold text-slate-800" }, r.com_name), e('div', { className: "text-[10px] text-slate-400" }, r.com_id)),
+                                return e('tr', { key: r.id || idx, className: "hover:bg-slate-50 cursor-pointer", onClick: () => { onClose(); onNavigateToRecord && onNavigateToRecord(r.com_name); } },
+                                    e('td', { className: "p-3" }, e('div', { className: "font-bold text-slate-800 hover:text-rose-600 transition-colors" }, r.com_name), e('div', { className: "text-[10px] text-slate-400" }, r.com_id)),
                                     e('td', { className: "p-3 text-center" }, e('span', { className: "px-2 py-1 bg-slate-100 rounded text-[11px] font-bold" }, r.office_name)),
                                     e('td', { className: "p-3 text-center font-mono text-slate-500" }, r.end_date || '-'),
                                     e('td', { className: "p-3 text-center font-mono text-slate-500" }, r.billing_date || '-'),
@@ -857,6 +857,7 @@ function UnpaidDetailsModal({ isOpen, onClose, title, items }) {
                                                         return e('span', { className: 'px-2 py-0.5 rounded-[4px] text-[10px] font-black bg-slate-100 text-slate-700' }, '청구금액없음');
                                                     }
                                                 }
+                                                if (!r.billing_date) return e('span', { className: 'px-2 py-0.5 rounded-[4px] text-[10px] font-black bg-amber-100 text-amber-700' }, '사업장:미청구');
                                                 return e('span', { className: 'px-2 py-0.5 rounded-[4px] text-[10px] font-black bg-rose-100 text-rose-700' }, '사업장:미납');
                                             })(),
                                             isFunded && e('span', { className: `px-2 py-0.5 rounded-[4px] text-[10px] font-black ${isSubPaid ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'}` }, isSubPaid ? '공단:완료' : '공단:미납')
@@ -872,7 +873,7 @@ function UnpaidDetailsModal({ isOpen, onClose, title, items }) {
 }
 
 // ==== Components: UnpaidManagementTab ====
-function UnpaidManagementTab({ records, companies }) {
+function UnpaidManagementTab({ records, companies, onNavigateToRecord }) {
     const { useState, useMemo, useEffect } = React;
     const [search, setSearch] = useState('');
     const [filterYear, setFilterYear] = useState(new Date().getFullYear());
@@ -1014,8 +1015,8 @@ function UnpaidManagementTab({ records, companies }) {
                     filteredTableData.length === 0 ? e('tr', null, e('td', { colSpan: "6", className: "p-12 text-center text-slate-400" }, "데이터가 없습니다.")) :
                         filteredTableData.map(r => {
                             const isSubPaid = !!r.subsidy_date; const isPaid = !!r.deposit_date;
-                            return e('tr', { key: r.id, className: "hover:bg-slate-50 transition-colors" },
-                                e('td', { className: "p-6" }, e('div', { className: "font-bold text-slate-800 text-lg" }, r.com_name), e('div', { className: "text-xs text-slate-400" }, r.com_id)),
+                            return e('tr', { key: r.id, className: "hover:bg-slate-50 transition-colors cursor-pointer", onClick: () => onNavigateToRecord && onNavigateToRecord(r.com_name) },
+                                e('td', { className: "p-6" }, e('div', { className: "font-bold text-slate-800 text-lg hover:text-rose-600 transition-colors" }, r.com_name), e('div', { className: "text-xs text-slate-400" }, r.com_id)),
                                 e('td', { className: "p-6" }, e('div', { className: "font-bold" }, r.end_date), e('div', { className: "text-xs text-slate-400" }, `발송: ${r.shipping_date || '-'}`)),
                                 e('td', { className: "p-6 text-right font-bold" }, (Number(r.billing_amt) || 0).toLocaleString()),
                                 e('td', { className: "p-6 text-right font-bold text-blue-600" }, (Number(r.subsidy) || 0).toLocaleString()),
@@ -1029,6 +1030,7 @@ function UnpaidManagementTab({ records, companies }) {
                                             return e('span', { className: "bg-slate-100 text-slate-600 px-3 py-1 rounded-full text-xs font-bold" }, "청구금액없음");
                                         }
                                     }
+                                    if (!r.billing_date) return e('span', { className: "bg-amber-100 text-amber-600 px-3 py-1 rounded-full text-xs font-bold" }, "미청구");
                                     return e('span', { className: "bg-rose-100 text-rose-600 px-3 py-1 rounded-full text-xs font-bold" }, "미납");
                                 })())
                             );
@@ -1036,7 +1038,7 @@ function UnpaidManagementTab({ records, companies }) {
                 )
             )
         ),
-        e(UnpaidDetailsModal, { isOpen: modal.isOpen, onClose: () => setModal({ ...modal, isOpen: false }), title: modal.title, items: modal.items })
+        e(UnpaidDetailsModal, { isOpen: modal.isOpen, onClose: () => setModal({ ...modal, isOpen: false }), title: modal.title, items: modal.items, onNavigateToRecord })
     );
 }
 
@@ -1861,7 +1863,7 @@ function RecordsManagement() {
         ),
         e('main', { className: "flex-1 p-6" },
             activeTab === 'unpaid' ?
-                e(UnpaidManagementTab, { records, companies }) :
+                e(UnpaidManagementTab, { records, companies, onNavigateToRecord: (comName) => { setActiveTab('records'); setSearchTerm(comName); } }) :
                 e(React.Fragment, null,
                     e('div', { className: "grid gap-6 mb-6 grid-cols-1 md:grid-cols-3" },
                         e('div', { className: "bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex items-center gap-5" },
