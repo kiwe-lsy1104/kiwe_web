@@ -848,7 +848,17 @@ function UnpaidDetailsModal({ isOpen, onClose, title, items }) {
                                     e('td', { className: "p-3 text-right font-bold text-blue-600" }, (Number(r.subsidy) || 0).toLocaleString(), "원"),
                                     e('td', { className: "p-3 text-center" },
                                         e('div', { className: "flex flex-col gap-1 items-center" },
-                                            e('span', { className: `px-2 py-0.5 rounded-[4px] text-[10px] font-black ${isBizPaid ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}` }, isBizPaid ? '사업장:완료' : '사업장:미납'),
+                                            (function() {
+                                                if (isBizPaid) return e('span', { className: 'px-2 py-0.5 rounded-[4px] text-[10px] font-black bg-emerald-100 text-emerald-700' }, '사업장:완료');
+                                                if ((Number(r.billing_amt) || 0) === 0) {
+                                                    if (r.is_new === '신규' && (Number(r.actual_amt) || 0) === (Number(r.subsidy) || 0)) {
+                                                        return e('span', { className: 'px-2 py-0.5 rounded-[4px] text-[10px] font-black bg-blue-100 text-blue-700' }, '100%지원');
+                                                    } else {
+                                                        return e('span', { className: 'px-2 py-0.5 rounded-[4px] text-[10px] font-black bg-slate-100 text-slate-700' }, '청구금액없음');
+                                                    }
+                                                }
+                                                return e('span', { className: 'px-2 py-0.5 rounded-[4px] text-[10px] font-black bg-rose-100 text-rose-700' }, '사업장:미납');
+                                            })(),
                                             isFunded && e('span', { className: `px-2 py-0.5 rounded-[4px] text-[10px] font-black ${isSubPaid ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'}` }, isSubPaid ? '공단:완료' : '공단:미납')
                                         )
                                     )
@@ -1010,7 +1020,17 @@ function UnpaidManagementTab({ records, companies }) {
                                 e('td', { className: "p-6 text-right font-bold" }, (Number(r.billing_amt) || 0).toLocaleString()),
                                 e('td', { className: "p-6 text-right font-bold text-blue-600" }, (Number(r.subsidy) || 0).toLocaleString()),
                                 e('td', { className: "p-6 text-center" }, r.is_funded !== '대상' ? '-' : isSubPaid ? e('span', { className: "text-emerald-500 font-bold" }, "완료") : e('span', { className: "text-purple-500 font-bold animate-pulse" }, "미수")),
-                                e('td', { className: "p-6 text-center" }, isPaid ? e('span', { className: "bg-emerald-100 text-emerald-600 px-3 py-1 rounded-full text-xs font-bold" }, `완료 (${r.deposit_date})`) : e('span', { className: "bg-rose-100 text-rose-600 px-3 py-1 rounded-full text-xs font-bold" }, "미납"))
+                                e('td', { className: "p-6 text-center" }, (function() {
+                                    if (isPaid) return e('span', { className: "bg-emerald-100 text-emerald-600 px-3 py-1 rounded-full text-xs font-bold" }, `완료 (${r.deposit_date})`);
+                                    if ((Number(r.billing_amt) || 0) === 0) {
+                                        if (r.is_new === '신규' && (Number(r.actual_amt) || 0) === (Number(r.subsidy) || 0)) {
+                                            return e('span', { className: "bg-blue-100 text-blue-600 px-3 py-1 rounded-full text-xs font-bold" }, "100%지원");
+                                        } else {
+                                            return e('span', { className: "bg-slate-100 text-slate-600 px-3 py-1 rounded-full text-xs font-bold" }, "청구금액없음");
+                                        }
+                                    }
+                                    return e('span', { className: "bg-rose-100 text-rose-600 px-3 py-1 rounded-full text-xs font-bold" }, "미납");
+                                })())
                             );
                         })
                 )
