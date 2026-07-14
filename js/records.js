@@ -347,7 +347,32 @@ function RecordModal({
                         ),
                         e('div', { className: "space-y-4" },
                             e('div', { className: "relative" },
-                                e('label', { className: "text-[12px] font-extrabold text-slate-600 block mb-1" }, "사업장 검색/선택 *"),
+                                e('label', { className: "text-[12px] font-extrabold text-slate-600 block mb-1 flex items-center justify-between" },
+                                    e('span', null, "사업장 검색/선택 *"),
+                                    editingId && e('button', {
+                                        type: "button",
+                                        onClick: async () => {
+                                            const currentComId = formData.com_id;
+                                            if (!currentComId) return;
+                                            const found = companies.find(c => c.com_id === currentComId);
+                                            if (found) {
+                                                handleCompanySelect(found);
+                                                alert(`사업장 정보를 재조회했습니다.\n${found.com_name}`);
+                                            } else {
+                                                const { data, error } = await supabase.from('kiwe_companies').select('*').eq('com_id', currentComId).single();
+                                                if (!error && data) {
+                                                    handleCompanySelect(data);
+                                                    alert(`사업장 정보를 재조회했습니다.\n${data.com_name}`);
+                                                } else {
+                                                    alert('사업장 정보 조회 실패');
+                                                }
+                                            }
+                                        },
+                                        className: "flex items-center gap-1 text-[10px] font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-2 py-0.5 rounded-lg transition-all"
+                                    },
+                                        e(UserCheck, { size: 10 }), " 정보 재조회"
+                                    )
+                                ),
                                 e('div', { className: "relative" },
                                     e(Search, { className: "absolute left-3 top-1/2 -translate-y-1/2 text-slate-300", size: 14 }),
                                     e('input', {
@@ -356,12 +381,11 @@ function RecordModal({
                                         onChange: (ev) => { setCompanySearchTerm(ev.target.value); setShowCompanyDropdown(true); },
                                         onFocus: () => setShowCompanyDropdown(true),
                                         onBlur: () => setTimeout(() => setShowCompanyDropdown(false), 200),
-                                        placeholder: "사업장명 입력...",
-                                        className: "w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none font-bold",
-                                        disabled: !!editingId
+                                        placeholder: editingId ? "사업장명 (재선택 가능)" : "사업장명 입력...",
+                                        className: "w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none font-bold"
                                     })
                                 ),
-                                showCompanyDropdown && !editingId && e('div', { className: "absolute z-50 w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl max-h-60 overflow-y-auto" },
+                                showCompanyDropdown && e('div', { className: "absolute z-50 w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl max-h-60 overflow-y-auto" },
                                     companies.filter(c => {
                                         const normalizeForSearch = (str) => (str || '').replace(/\(주\)|㈜|\s/g, '').toLowerCase();
                                         const normTerm = normalizeForSearch(companySearchTerm);
@@ -560,7 +584,8 @@ function RecordModal({
                                         e('label', { className: "text-[12px] font-extrabold text-slate-600 ml-1" }, "신규여부"),
                                         e('select', { value: formData.is_new, onChange: (ev) => handleRecordChange('is_new', ev.target.value), className: "w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-center font-bold" },
                                             e('option', { value: "기존" }, "기존"),
-                                            e('option', { value: "신규" }, "신규")
+                                            e('option', { value: "신규" }, "신규"),
+                                            e('option', { value: "수시" }, "수시")
                                         )
                                     ),
                                     e('div', null,
@@ -1421,6 +1446,7 @@ function RecordsManagement() {
         const cost = Number(record.actual_amt) || 0;
         if (record.is_funded === '비대상') return 0;
         if (record.is_new === '신규') return Math.min(cost, 1000000);
+        // '수시'는 기존(일반사업장)과 동일하게 처리
         return Math.min(cost * 0.8, 400000);
     };
 
