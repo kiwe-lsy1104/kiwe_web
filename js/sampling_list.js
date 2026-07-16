@@ -595,6 +595,24 @@ export async function loadGridData(hot, supabase, startDate, endDate, comName, u
                 const prefix = prefixMatch ? prefixMatch[0] : '';
                 return prefix === 'DB';
             });
+        } else if (idFilter === 'r') {
+            newData = newData.filter(d => {
+                const isNoise = d.common_name && d.common_name.includes('소음');
+                if (isNoise) return false;
+                if (!d.sample_id) return true;
+                const prefixMatch = d.sample_id.match(/^[A-Z]+/);
+                const prefix = prefixMatch ? prefixMatch[0] : '';
+                return prefix === 'R';
+            });
+        } else if (idFilter === 'rb') {
+            newData = newData.filter(d => {
+                const isNoise = d.common_name && d.common_name.includes('소음');
+                if (isNoise) return false;
+                if (!d.sample_id) return false;
+                const prefixMatch = d.sample_id.match(/^[A-Z]+/);
+                const prefix = prefixMatch ? prefixMatch[0] : '';
+                return prefix === 'RB';
+            });
         }
 
         hot.loadData(newData);

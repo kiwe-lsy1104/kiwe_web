@@ -272,14 +272,14 @@ function RecordModal({
                     .order('quote_date', { ascending: false });
 
                 if (error) throw error;
-                
+
                 const normalize = (s) => (s || '').replace(/\(주\)|㈜|\s/g, '');
                 const targetNorm = normalize(selectedCompany.com_name);
                 const matched = (data || []).filter(q => {
                     const qNorm = normalize(q.client_name);
                     return qNorm.includes(targetNorm) || targetNorm.includes(qNorm);
                 });
-                
+
                 setQuotations(matched);
             } catch (err) {
                 console.error('견적서 로드 실패:', err);
@@ -636,7 +636,7 @@ function RecordModal({
                             ),
                             e('div', { className: "space-y-4" },
                                 selectedCompany && e('div', { className: "relative space-y-1" },
-                                    e('label', { className: "text-[12px] font-extrabold text-indigo-600 ml-1 flex justify-between items-center" }, 
+                                    e('label', { className: "text-[12px] font-extrabold text-indigo-600 ml-1 flex justify-between items-center" },
                                         e('span', null, "연계 견적서 선택"),
                                         loadingQuotes && e('span', { className: "text-[10px] text-slate-400 animate-pulse" }, "조회 중...")
                                     ),
@@ -873,7 +873,7 @@ function UnpaidDetailsModal({ isOpen, onClose, title, items, onNavigateToRecord 
                                     e('td', { className: "p-3 text-right font-bold text-blue-600" }, (Number(r.subsidy) || 0).toLocaleString(), "원"),
                                     e('td', { className: "p-3 text-center" },
                                         e('div', { className: "flex flex-col gap-1 items-center" },
-                                            (function() {
+                                            (function () {
                                                 if (isBizPaid) return e('span', { className: 'px-2 py-0.5 rounded-[4px] text-[10px] font-black bg-emerald-100 text-emerald-700' }, '사업장:완료');
                                                 if ((Number(r.billing_amt) || 0) === 0) {
                                                     if (r.is_new === '신규' && (Number(r.actual_amt) || 0) === (Number(r.subsidy) || 0)) {
@@ -1046,7 +1046,7 @@ function UnpaidManagementTab({ records, companies, onNavigateToRecord }) {
                                 e('td', { className: "p-6 text-right font-bold" }, (Number(r.billing_amt) || 0).toLocaleString()),
                                 e('td', { className: "p-6 text-right font-bold text-blue-600" }, (Number(r.subsidy) || 0).toLocaleString()),
                                 e('td', { className: "p-6 text-center" }, r.is_funded !== '대상' ? '-' : isSubPaid ? e('span', { className: "text-emerald-500 font-bold" }, "완료") : e('span', { className: "text-purple-500 font-bold animate-pulse" }, "미수")),
-                                e('td', { className: "p-6 text-center" }, (function() {
+                                e('td', { className: "p-6 text-center" }, (function () {
                                     if (isPaid) return e('span', { className: "bg-emerald-100 text-emerald-600 px-3 py-1 rounded-full text-xs font-bold" }, `완료 (${r.deposit_date})`);
                                     if ((Number(r.billing_amt) || 0) === 0) {
                                         if (r.is_new === '신규' && (Number(r.actual_amt) || 0) === (Number(r.subsidy) || 0)) {
@@ -1221,7 +1221,7 @@ function RecordsManagement() {
                                 const normRecordName = normalize(r.com_name);
                                 if (normRecordName === normSampleName && sample.m_date >= r.start_date && sample.m_date <= r.end_date) {
                                     if (!statusMap[r.id]) statusMap[r.id] = { total: 0, completed: 0, samples: [] };
-                                    
+
                                     // Skip noise records completely from progress statistics
                                     if (sample.common_name === '소음') return;
 
@@ -1858,8 +1858,8 @@ function RecordsManagement() {
             e('div', { className: "flex items-center gap-4" },
                 e('a', { href: "main.html", className: "p-2 hover:bg-slate-100 rounded-lg text-slate-500" }, e(Home, { size: 20 })),
                 e('div', { className: "h-6 w-px bg-slate-200" }),
-                e('h1', { className: "text-lg font-bold flex items-center gap-2" }, 
-                    e(ClipboardList, { size: 20, className: "text-indigo-600" }), 
+                e('h1', { className: "text-lg font-bold flex items-center gap-2" },
+                    e(ClipboardList, { size: 20, className: "text-indigo-600" }),
                     " 측정기록 카드",
                     e('a', { href: 'manual.html#section-records', target: '_blank', className: 'ml-2 p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-full transition-colors', title: '측정기록 관리 도움말 (새창)' },
                         e(HelpCircle, { size: 18 })

@@ -126,8 +126,8 @@ export default function AnalysisInput({
                 if (comA !== comB) return comA.localeCompare(comB, 'ko');
 
                 // 2순위: 공시료 여부 (일반 시료 먼저, 공시료 나중에)
-                const aIsBlank = !!(a.worker_name?.includes('공시료') || a.sample_id?.startsWith('DB') || a.sample_id?.startsWith('SB'));
-                const bIsBlank = !!(b.worker_name?.includes('공시료') || b.sample_id?.startsWith('DB') || b.sample_id?.startsWith('SB'));
+                const aIsBlank = !!(a.worker_name?.includes('공시료') || a.sample_id?.startsWith('DB') || a.sample_id?.startsWith('SB') || a.sample_id?.startsWith('RB'));
+                const bIsBlank = !!(b.worker_name?.includes('공시료') || b.sample_id?.startsWith('DB') || b.sample_id?.startsWith('SB') || b.sample_id?.startsWith('RB'));
                 if (aIsBlank !== bIsBlank) return aIsBlank ? 1 : -1;
 
                 // 3순위: 시료번호

@@ -304,7 +304,8 @@ export function AnalysisExtraction({
             const isBlankSample = (item) =>
                 (item.worker_name || '').includes('공시료') ||
                 (item.sample_id || '').startsWith('DB') ||
-                (item.sample_id || '').startsWith('SB');
+                (item.sample_id || '').startsWith('SB') ||
+                (item.sample_id || '').startsWith('RB');
 
             // 사업장별 최소 시료번호(SEQ) 계산 (공시료 제외, com_name 원본 사용)
             const companyPriority = {};
@@ -405,7 +406,8 @@ export function AnalysisExtraction({
             const isBlankSample = (item) =>
                 (item.worker_name || '').includes('공시료') ||
                 (item.sample_id || '').startsWith('DB') ||
-                (item.sample_id || '').startsWith('SB');
+                (item.sample_id || '').startsWith('SB') ||
+                (item.sample_id || '').startsWith('RB');
             const companyPriority = {};
             const getSeqNum = (id) => {
                 if (!id) return 999999;

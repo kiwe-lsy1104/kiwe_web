@@ -471,7 +471,7 @@ function App() {
         try {
             const { data, error } = await supabase
                 .from('kiwe_hazard')
-                .select('common_name, instrument_name, sampling_media');
+                .select('common_name, instrument_name, sampling_media, is_self');
             if (!error && data) {
                 setAllHazards(data);
                 if (hotInstance.current) {
@@ -671,9 +671,10 @@ function App() {
         // Step 4: Guard for data load. Use Ref for latest state in closures.
         const currentHazards = allHazardsRef.current;
         let inst = instrumentName;
+        let isSelf = '자체분석'; // 기본값: 자체분석
         
-        // ★ 개선: (front), (rear) 등 부가정보가 붙은 경우에도 매칭되도록 보완
-        if (!inst && commonName && currentHazards.length > 0) {
+        // kiwe_hazard 테이블에서 common_name으로 instrument_name 및 is_self 조회
+        if (commonName && currentHazards.length > 0) {
             // 1순위: 전체 일치 확인
             let h = currentHazards.find(x => x.common_name === commonName.trim());
             
@@ -683,16 +684,30 @@ function App() {
                 h = currentHazards.find(x => x.common_name === baseName);
             }
             
-            if (h) inst = h.instrument_name || '';
+            if (h) {
+                inst = h.instrument_name || inst || '';
+                isSelf = h.is_self || '자체분석'; // kiwe_hazard.is_self 에서 자체분석/외부의뢰 판단
+            }
         }
 
-        // Final Confirmed Rule: "중량분석" -> 'D', Else -> 'S'
-        let prefix = 'S';
-        if (inst && inst.trim() === "중량분석") {
-            prefix = 'D';
+        // ★ 하반기부터 시료번호 이원화:
+        // kiwe_hazard.is_self === '외부의뢰' → R prefix (공시료: RB)
+        // kiwe_hazard.is_self === '자체분석' 또는 미설정 → 기존 S/D prefix (공시료: SB/DB)
+        const isExternal = isSelf === '외부의뢰';
+
+        let prefix;
+        if (isExternal) {
+            // 외부의뢰: R (공시료: RB)
+            prefix = 'R';
+        } else {
+            // 자체분석 (기존 규칙): 중량분석 → D, 나머지 → S
+            prefix = 'S';
+            if (inst && inst.trim() === "중량분석") {
+                prefix = 'D';
+            }
         }
 
-        // Preserve "B" logic for blank samples (SB/DB)
+        // Preserve "B" logic for blank samples (SB/DB/RB)
         if (workerName && workerName.includes("공시료")) {
             prefix += "B";
         }
@@ -1117,6 +1132,20 @@ function App() {
                     input_seq: sanitizeInt(s.input_seq)
                 };
 
+                // ★ 수동 입력 시 is_self 누락 방지
+                if (!rowData.is_self) {
+                    const text = (rowData.common_name || '').trim();
+                    if (text && allHazardsRef.current && allHazardsRef.current.length > 0) {
+                        const baseName = text.split(/[/(]/)[0].trim();
+                        const h = allHazardsRef.current.find(x => x.common_name === text || x.common_name === baseName);
+                        if (h && h.is_self) {
+                            rowData.is_self = h.is_self;
+                        } else {
+                            rowData.is_self = '자체분석'; // 기본값
+                        }
+                    }
+                }
+
                 delete rowData.actions;
 
                 if (!rowData.sample_id) {
@@ -1355,7 +1384,7 @@ function App() {
                             e('div', { className: "h-10 w-px bg-slate-200 mx-1" }),
                             e('div', { className: "flex flex-col gap-1" },
                                 e('label', { className: "text-[11px] font-extrabold text-slate-400 block uppercase" }, "시료 분류 필터"),
-                                e('div', { className: 'flex bg-slate-100 p-1 rounded-xl gap-1 border border-slate-200' },
+                                e('div', { className: 'flex flex-wrap bg-slate-100 p-1 rounded-xl gap-1 border border-slate-200' },
                                     e('button', {
                                         onClick: () => setIdFilter('all'),
                                         className: `px-4 py-1.5 text-[11px] font-bold rounded-lg transition-all whitespace-nowrap ${idFilter === 'all' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`
@@ -1363,19 +1392,27 @@ function App() {
                                     e('button', {
                                         onClick: () => setIdFilter('s'),
                                         className: `px-4 py-1.5 text-[11px] font-bold rounded-lg transition-all whitespace-nowrap ${idFilter === 's' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`
-                                    }, '🔬 시료(S)'),
+                                    }, '🔬 자체(S)'),
                                     e('button', {
                                         onClick: () => setIdFilter('d'),
                                         className: `px-4 py-1.5 text-[11px] font-bold rounded-lg transition-all whitespace-nowrap ${idFilter === 'd' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`
-                                    }, '🔬 시료(D)'),
+                                    }, '🔬 자체(D)'),
                                     e('button', {
                                         onClick: () => setIdFilter('sb'),
                                         className: `px-4 py-1.5 text-[11px] font-bold rounded-lg transition-all whitespace-nowrap ${idFilter === 'sb' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`
-                                    }, '🧪 공시료(SB)'),
+                                    }, '🧪 자체공시료(SB)'),
                                     e('button', {
                                         onClick: () => setIdFilter('db'),
                                         className: `px-4 py-1.5 text-[11px] font-bold rounded-lg transition-all whitespace-nowrap ${idFilter === 'db' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`
-                                    }, '🧪 공시료(DB)')
+                                    }, '🧪 자체공시료(DB)'),
+                                    e('button', {
+                                        onClick: () => setIdFilter('r'),
+                                        className: `px-4 py-1.5 text-[11px] font-bold rounded-lg transition-all whitespace-nowrap ${idFilter === 'r' ? 'bg-white text-amber-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`
+                                    }, '📦 외부의뢰(R)'),
+                                    e('button', {
+                                        onClick: () => setIdFilter('rb'),
+                                        className: `px-4 py-1.5 text-[11px] font-bold rounded-lg transition-all whitespace-nowrap ${idFilter === 'rb' ? 'bg-white text-amber-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`
+                                    }, '📦 외부공시료(RB)')
                                 )
                             ),
                             e('div', { className: "flex flex-col gap-1" },
