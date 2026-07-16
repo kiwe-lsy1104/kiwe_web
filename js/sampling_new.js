@@ -1050,7 +1050,9 @@ function App() {
 
         if (addedCount > 0) {
             isDirtyRef.current = true;
-            alert(`공시료 총 ${addedCount}건을 각각의 사업장 데이터 바로 밑에 추가했습니다.\n확인 후 [데이터 저장]을 눌러주세요.`);
+            setTimeout(() => {
+                alert(`공시료 총 ${addedCount}건을 각각의 사업장 데이터 바로 밑에 추가했습니다.\n확인 후 [데이터 저장]을 눌러주세요.`);
+            }, 100);
         }
     };
 
@@ -1276,7 +1278,7 @@ function App() {
                         'lunch_time', 'occurrence_type', 'temp', 'humidity',
                         'analyst', 'measured_by', 'received_by', 'sample_id', 'condition',
                         'received_date', 'status', 'completed_at', 'instrument_name', 'hazard_category',
-                        'is_self', 'remarks', 'input_seq',
+                        'remarks', 'input_seq',
                         'pre_flow_1', 'pre_flow_2', 'pre_flow_3',
                         'post_flow_1', 'post_flow_2', 'post_flow_3'
                     ];
