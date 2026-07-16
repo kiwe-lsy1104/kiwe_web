@@ -679,7 +679,7 @@ function App() {
         fetchHazards();
         fetchColumnConfigFromDB();
 
-        const cleanupPopup = setupHazardSelection(gridRowRef, hotInstance, calculateSampleId, getSamplePrefix);
+        const cleanupPopup = setupHazardSelection(gridRowRef, hotInstance, async () => null, getSamplePrefix);
         return () => {
             if (hotInstance.current) {
                 try { hotInstance.current.destroy(); } catch (e) {}
@@ -744,7 +744,7 @@ function App() {
                         if (['common_name', 'worker_name', 'instrument_name'].includes(prop)) rowsToProcess.add(row);
                     }
                 });
-                if (rowsToProcess.size > 0) await applyBulkSampleIds(Array.from(rowsToProcess));
+                // if (rowsToProcess.size > 0) await applyBulkSampleIds(Array.from(rowsToProcess)); // 실시간 시료번호 자동 부여 비활성화 (저장 시 일괄 처리)
             });
 
             hotInstance.current.addHook('afterCreateRow', (index, amount) => {
@@ -792,7 +792,7 @@ function App() {
 
     async function fetchHazards() {
         try {
-            const { data, error } = await supabase.from('kiwe_hazard').select('common_name, instrument_name, sampling_media');
+            const { data, error } = await supabase.from('kiwe_hazard').select('common_name, instrument_name, sampling_media, is_self');
             if (!error && data) {
                 setAllHazards(data);
                 if (hotInstance.current) {
@@ -924,16 +924,22 @@ function App() {
     const getSamplePrefix = (instrumentName, workerName = '', commonName = '') => {
         const currentHazards = allHazardsRef.current;
         let inst = instrumentName;
-        if (!inst && commonName && currentHazards.length > 0) {
+        let isSelf = '자체분석';
+        
+        if (commonName && currentHazards.length > 0) {
             let h = currentHazards.find(x => x.common_name === commonName.trim());
             if (!h) {
                 const baseName = commonName.split(/[/(]/)[0].trim();
                 h = currentHazards.find(x => x.common_name === baseName);
             }
-            if (h) inst = h.instrument_name || '';
+            if (h) {
+                inst = h.instrument_name || inst || '';
+                isSelf = h.is_self || '자체분석';
+            }
         }
-        let prefix = 'S';
-        if (inst && inst.trim() === '중량분석') prefix = 'D';
+        
+        const isExternal = isSelf === '외부의뢰';
+        let prefix = isExternal ? 'R' : (inst && inst.trim() === '중량분석' ? 'D' : 'S');
         if (workerName && workerName.includes('공시료')) prefix += 'B';
         return prefix;
     };
@@ -999,19 +1005,36 @@ function App() {
         groupsToAdd.forEach(g => { if (g.blanksFound < 2) totalCount += (2 - g.blanksFound); });
         if (totalCount <= 0) return;
 
-        const startIdx = hot.countRows();
-        hot.alter('insert_row_below', startIdx - 1, totalCount);
         const currentReceiver = receiverDefaultRef.current;
+        let addedCount = 0;
         
-        hot.batch(() => {
-            let rowIdx = startIdx;
-            for (const g of groupsToAdd) {
-                const needed = 2 - g.blanksFound;
-                if (needed <= 0) continue;
-                const combinedHazard = Array.from(g.hazardSet).sort().join('/');
-                
+        for (const g of groupsToAdd) {
+            const needed = 2 - g.blanksFound;
+            if (needed <= 0) continue;
+            const combinedHazard = Array.from(g.hazardSet).sort().join('/');
+            
+            // 해당 사업장/날짜의 가장 마지막 행 찾기
+            let targetIdx = -1;
+            const rowCount = hot.countRows();
+            for (let i = 0; i < rowCount; i++) {
+                const rowDate = hot.getDataAtRowProp(i, 'm_date');
+                const rowCom = hot.getDataAtRowProp(i, 'com_name');
+                if (rowDate === g.date && rowCom === g.comName) {
+                    targetIdx = i;
+                }
+            }
+            
+            const insertVisualIdx = targetIdx !== -1 ? targetIdx + 1 : rowCount;
+            
+            if (insertVisualIdx === 0) {
+                hot.alter('insert_row_above', 0, needed);
+            } else {
+                hot.alter('insert_row_below', insertVisualIdx - 1, needed);
+            }
+            
+            hot.batch(() => {
                 for (let i = 0; i < needed; i++) {
-                    const row = rowIdx++;
+                    const row = insertVisualIdx + i;
                     hot.setDataAtRowProp(row, 'm_date', g.date || startDate);
                     hot.setDataAtRowProp(row, 'com_name', g.comName);
                     hot.setDataAtRowProp(row, 'worker_name', `공시료${g.blanksFound + i + 1}`);
@@ -1021,10 +1044,14 @@ function App() {
                     hot.setDataAtRowProp(row, 'received_date', g.date || startDate);
                     if (userRef.current) hot.setDataAtRowProp(row, 'measured_by', userRef.current.user_name);
                 }
-            }
-        });
-        isDirtyRef.current = true;
-        alert(`공시료 총 ${totalCount}건을 화학적 분류(카테고리/매체/탈착용매)에 맞게 그리드 하단에 추가했습니다.\n확인 후 [데이터 저장]을 눌러주세요.`);
+            });
+            addedCount += needed;
+        }
+
+        if (addedCount > 0) {
+            isDirtyRef.current = true;
+            alert(`공시료 총 ${addedCount}건을 각각의 사업장 데이터 바로 밑에 추가했습니다.\n확인 후 [데이터 저장]을 눌러주세요.`);
+        }
     };
 
     // ─── 저장 ────────────────────────────────────────────────────────
@@ -1220,6 +1247,20 @@ function App() {
                     post_flow_2: sanitizeFloat(s.post_flow_2),
                     post_flow_3: sanitizeFloat(s.post_flow_3),
                 };
+                
+                // ★ 수동 입력 시 is_self 누락 방지
+                if (!rowData.is_self) {
+                    const text = (rowData.common_name || '').trim();
+                    if (text && allHazardsRef.current && allHazardsRef.current.length > 0) {
+                        const baseName = text.split(/[/(]/)[0].trim();
+                        const h = allHazardsRef.current.find(x => x.common_name === text || x.common_name === baseName);
+                        if (h && h.is_self) {
+                            rowData.is_self = h.is_self;
+                        } else {
+                            rowData.is_self = '자체분석'; // 기본값
+                        }
+                    }
+                }
                 delete rowData.actions;
                 preparedData.push(rowData);
             }
