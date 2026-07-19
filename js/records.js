@@ -1067,15 +1067,21 @@ function UnpaidManagementTab({ records, companies, onNavigateToRecord }) {
     );
 }
 
-const INITIAL_RECORD = {
-    com_id: '', com_name: '', office_name: '안산', target_year: String(new Date().getFullYear()),
-    half_year: '상반기', is_new: '기존', is_cmr: 'n', start_date: '', end_date: '',
-    survey_date: '', worker_cnt: 0, inspector: '', noise_cycle: '6', noise_excl_cycle: '6',
-    next_noise_date: '', next_excl_date: '', is_funded: '대상', actual_amt: 0, billing_amt: 0,
-    subsidy: 0, half_all: '', half_o5: '', year_all: '', year_o5: '', report_date: '',
-    shipping_date: '', subsidy_date: '', billing_date: '', deposit_date: '', is_fixed: 'n',
-    work_type: '측정', document_date: ''
-};
+function makeInitialRecord() {
+    const _now = new Date();
+    const _month = _now.getMonth() + 1; // 1~12
+    const _half = _month <= 6 ? '상반기' : '하반기';
+    return {
+        com_id: '', com_name: '', office_name: '안산', target_year: String(_now.getFullYear()),
+        half_year: _half, is_new: '기존', is_cmr: 'n', start_date: '', end_date: '',
+        survey_date: '', worker_cnt: 0, inspector: '', noise_cycle: '6', noise_excl_cycle: '6',
+        next_noise_date: '', next_excl_date: '', is_funded: '대상', actual_amt: 0, billing_amt: 0,
+        subsidy: 0, half_all: '', half_o5: '', year_all: '', year_o5: '', report_date: '',
+        shipping_date: '', subsidy_date: '', billing_date: '', deposit_date: '', is_fixed: 'n',
+        work_type: '측정', document_date: ''
+    };
+}
+const INITIAL_RECORD = makeInitialRecord();
 
 function RecordsManagement() {
     const [user, setUser] = useState(null);
@@ -1541,9 +1547,33 @@ function RecordsManagement() {
         let y_all_ctr = 1;
         let y_o5_ctr = 1;
 
+        // ★ 하반기인 경우: 상반기의 year_all/year_o5 최댓값을 조회하여 연간 카운터 시작점으로 사용
+        if (searchHalf === '하반기') {
+            const { data: firstHalfRecords } = await supabase
+                .from('kiwe_records')
+                .select('year_all, year_o5, office_name, work_type')
+                .eq('target_year', searchYear)
+                .eq('half_year', '상반기');
+
+            if (firstHalfRecords && firstHalfRecords.length > 0) {
+                // 같은 그룹(office code)의 상반기 기록만 필터
+                const firstHalfGroup = firstHalfRecords.filter(r => {
+                    const wType = r.work_type || '측정';
+                    return wType === '측정' && getOfficeCode(r.office_name) === targetGroupCode;
+                });
+                const maxYearAll = Math.max(0, ...firstHalfGroup.map(r => Number(r.year_all) || 0));
+                const maxYearO5  = Math.max(0, ...firstHalfGroup.map(r => Number(r.year_o5)  || 0));
+                // 연간 카운터는 상반기 마지막 번호 다음부터 시작
+                if (maxYearAll > 0) y_all_ctr = maxYearAll + 1;
+                if (maxYearO5  > 0) y_o5_ctr  = maxYearO5  + 1;
+                console.log(`[Recalc] 하반기 연간 카운터 초기값 - y_all: ${y_all_ctr}, y_o5: ${y_o5_ctr} (상반기 최댓값: ${maxYearAll}, ${maxYearO5})`);
+            }
+        }
+
         // 동기화된 "가장 최근 O5 번호"를 추적 (5인 미만일 경우 가져다 쓰기 위함)
         let last_h_o5 = 0;
-        let last_y_o5 = 0;
+        // 하반기: y_o5 시작점이 상반기 최댓값+1이므로 last_y_o5도 상반기 최댓값으로 초기화
+        let last_y_o5 = y_o5_ctr > 1 ? y_o5_ctr - 1 : 0;
 
         // 2. 전체 측정기록을 시작일자순으로 순회하며 지정번호 배정
         for (let rec of groupRecords) {
@@ -1884,7 +1914,7 @@ function RecordsManagement() {
                     }, e(CreditCard, { size: 16 }), "미수금 현황")
                 ),
                 e('button', { onClick: downloadBackup, className: "px-4 py-2 text-sm font-semibold text-indigo-600 hover:bg-indigo-50 border border-indigo-100 rounded-lg flex items-center gap-2" }, e(DownloadIcon, { size: 18 }), " [백업다운] "),
-                e('button', { onClick: () => { setEditingId(null); setFormData({ ...INITIAL_RECORD, inspector: user.user_name }); setSelectedCompany(null); setIsModalOpen(true); }, className: "bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 text-sm font-semibold shadow-md shadow-indigo-100" }, e(Plus, { size: 18 }), " 측정기록 입력 ")
+                e('button', { onClick: () => { setEditingId(null); setFormData({ ...makeInitialRecord(), inspector: user.user_name }); setSelectedCompany(null); setIsModalOpen(true); }, className: "bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 text-sm font-semibold shadow-md shadow-indigo-100" }, e(Plus, { size: 18 }), " 측정기록 입력 ")
             )
         ),
         e('main', { className: "flex-1 p-6" },
