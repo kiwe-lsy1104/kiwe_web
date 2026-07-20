@@ -79,11 +79,10 @@
             { title: '사업장 관리', desc: '사업장 DB 등록/수정', icon: 'building-2', color: 'bg-emerald-600', path: 'companies.html' },
             { title: '측정계획관리', desc: '차기 측정 일정 수립', icon: 'calendar-clock', color: 'bg-blue-500', path: 'plan.html', id: 'plan' },
             { title: '견적 관리', desc: '견적서 작성 및 발행 관리', icon: 'file-text', color: 'bg-rose-500', path: 'quotation.html' },
-            { title: '시료대장 작성', desc: '시료 채취 및 분석 기록', icon: 'flask-conical', color: 'bg-cyan-500', path: 'sampling.html' },
+            { title: '시료채취기록대장 (하반기 통합)', desc: '유량보정 통합 · 공시료 자동 체크', icon: 'flask-conical', color: 'bg-purple-600', path: 'sampling_new.html', badge: 'NEW' },
             { title: '일정 및 장비 관리', desc: '스케줄 및 장비 예약', icon: 'calendar-days', color: 'bg-orange-500', path: 'schedule.html' },
             { title: '분석결과통보서', desc: '유기화합물 및 전체 보고서', icon: 'file-spreadsheet', color: 'bg-violet-600', path: 'analysis_unified.html' },
             { title: '시료통계관리', desc: '분석 현황 조회 및 인쇄', icon: 'bar-chart-3', color: 'bg-indigo-500', path: 'sampling_manage.html' },
-            { title: '시료채취기록대장 (하반기 통합)', desc: '유량보정 통합 · 공시료 자동 체크', icon: 'flask-conical', color: 'bg-purple-600', path: 'sampling_new.html', badge: 'NEW' },
             { title: '평가원 관리 및 설정', desc: '직원 권한 및 시스템 설정', icon: 'settings', color: 'bg-slate-700', path: 'settings.html', adminOnly: true },
         ];
 
@@ -168,12 +167,16 @@
                         ),
                         e('p', { className: "text-slate-500 mt-2 font-medium" }, "환영합니다, ", e('span', { className: "text-blue-600 font-bold" }, user.user_name), "님")
                     ),
-                    e('div', { style: { display: 'flex', gap: '8px' } },
-                        e('a', { href: 'manual.html', className: "bg-white px-4 py-2 rounded-xl text-slate-500 hover:text-indigo-600 font-bold shadow-sm border border-slate-200 transition-colors flex items-center gap-2", style: { textDecoration: 'none' } },
+                    e('div', { style: { display: 'flex', gap: '8px', alignItems: 'center' } },
+                        e('a', { href: 'sampling.html', className: "bg-cyan-50 px-4 py-2 rounded-xl text-cyan-700 hover:bg-cyan-100 font-bold shadow-sm border border-cyan-200 transition-colors flex items-center gap-2 text-sm", style: { textDecoration: 'none' } },
+                            e('i', { 'data-lucide': "flask-conical", className: "w-4 h-4 text-cyan-600" }),
+                            "상반기 시료대장"
+                        ),
+                        e('a', { href: 'manual.html', className: "bg-white px-4 py-2 rounded-xl text-slate-500 hover:text-indigo-600 font-bold shadow-sm border border-slate-200 transition-colors flex items-center gap-2 text-sm", style: { textDecoration: 'none' } },
                             e('i', { 'data-lucide': "book-open", className: "w-4 h-4" }),
                             " 사용매뉴얼"
                         ),
-                        e('button', { onClick: handleLogout, className: "bg-white px-4 py-2 rounded-xl text-slate-500 hover:text-red-500 font-bold shadow-sm border border-slate-200 transition-colors flex items-center gap-2" },
+                        e('button', { onClick: handleLogout, className: "bg-white px-4 py-2 rounded-xl text-slate-500 hover:text-red-500 font-bold shadow-sm border border-slate-200 transition-colors flex items-center gap-2 text-sm" },
                             e('i', { 'data-lucide': "log-out", className: "w-4 h-4" }),
                             " 로그아웃"
                         )
