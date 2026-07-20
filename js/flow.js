@@ -194,7 +194,7 @@ async function fetchData() {
     const rawArrays = await Promise.all(
         tableList.map(async tn => {
             try {
-                let q = supabase.from(tn).select('m_date, pump_no, pre_flow_1, pre_flow_2, pre_flow_3, post_flow_1, post_flow_2, post_flow_3').not('pump_no', 'is', null);
+                let q = supabase.from(tn).select('m_date, pump_no, pre_flow_avg, post_flow_avg').not('pump_no', 'is', null);
                 if (startStr) q = q.gte('m_date', startStr);
                 if (endStr) q = q.lte('m_date', endStr);
                 if (pumpTerm) q = q.ilike('pump_no', `%${pumpTerm}%`);
@@ -208,9 +208,9 @@ async function fetchData() {
     // 3. Aggregate sampling data by m_date + pump_no (flow values from sampling take priority)
     const samplingMap = new Map();
     rawData.forEach(r => {
-        const p1 = parseFloat(r.pre_flow_1), p2 = parseFloat(r.pre_flow_2), p3 = parseFloat(r.pre_flow_3);
-        const po1 = parseFloat(r.post_flow_1), po2 = parseFloat(r.post_flow_2), po3 = parseFloat(r.post_flow_3);
-        const hasData = !isNaN(p1) || !isNaN(p2) || !isNaN(p3) || !isNaN(po1) || !isNaN(po2) || !isNaN(po3);
+        const pre = parseFloat(r.pre_flow_avg);
+        const post = parseFloat(r.post_flow_avg);
+        const hasData = !isNaN(pre) || !isNaN(post);
         const key = `${r.m_date}_${r.pump_no}`;
         if (!samplingMap.has(key) || hasData) {
             samplingMap.set(key, { ...r });
@@ -246,20 +246,11 @@ async function fetchData() {
 
     // 5. Calculate averages on the fly
     finalData.forEach(row => {
-        const pf1 = parseFloat(row.pre_flow_1), pf2 = parseFloat(row.pre_flow_2), pf3 = parseFloat(row.pre_flow_3);
-        const pof1 = parseFloat(row.post_flow_1), pof2 = parseFloat(row.post_flow_2), pof3 = parseFloat(row.post_flow_3);
+        const preAvg = parseFloat(row.pre_flow_avg);
+        const postAvg = parseFloat(row.post_flow_avg);
         
-        let preCount = 0, preSum = 0;
-        if (!isNaN(pf1)) { preSum += pf1; preCount++; }
-        if (!isNaN(pf2)) { preSum += pf2; preCount++; }
-        if (!isNaN(pf3)) { preSum += pf3; preCount++; }
-        row.pre_avg = preCount > 0 ? Number((preSum / preCount).toFixed(3)) : null;
-
-        let postCount = 0, postSum = 0;
-        if (!isNaN(pof1)) { postSum += pof1; postCount++; }
-        if (!isNaN(pof2)) { postSum += pof2; postCount++; }
-        if (!isNaN(pof3)) { postSum += pof3; postCount++; }
-        row.post_avg = postCount > 0 ? Number((postSum / postCount).toFixed(3)) : null;
+        row.pre_avg = !isNaN(preAvg) ? preAvg : null;
+        row.post_avg = !isNaN(postAvg) ? postAvg : null;
 
         if (row.pre_avg !== null || row.post_avg !== null) {
             let totalAvg = 0;
@@ -385,9 +376,9 @@ function renderGrid(data) {
         readOnly: mode === 'view',
         colHeaders: [
             '연번', '관리', '측정일자', '펌프번호', '보정기', '보정자', '전유량보정일자',
-            '전-1회', '전-2회', '전-3회', '전평균',
+            '측정전평균유량',
             '후유량보정일자',
-            '후-1회', '후-2회', '후-3회', '후평균',
+            '측정후평균유량',
             '전체평균유량'
         ],
         columns: [
@@ -398,15 +389,9 @@ function renderGrid(data) {
             { data: 'calibrator_no', type: 'numeric', width: 60, className: centerClass },
             { data: 'calibrator_person', type: 'text', width: 70, className: centerClass },
             { data: 'pre_cal_date', type: 'date', dateFormat: 'YYYY-MM-DD', renderer: autoShrinkRenderer, width: 95, className: centerClass },
-            { data: 'pre_flow_1', type: 'numeric', numericFormat: { pattern: '0.000' }, readOnly: true, width: 65, className: centerClass + ' bg-slate-50' },
-            { data: 'pre_flow_2', type: 'numeric', numericFormat: { pattern: '0.000' }, readOnly: true, width: 65, className: centerClass + ' bg-slate-50' },
-            { data: 'pre_flow_3', type: 'numeric', numericFormat: { pattern: '0.000' }, readOnly: true, width: 65, className: centerClass + ' bg-slate-50' },
-            { data: 'pre_avg', type: 'numeric', numericFormat: { pattern: '0.000' }, readOnly: true, width: 75, className: centerClass + ' font-bold bg-slate-100' },
+            { data: 'pre_avg', type: 'numeric', numericFormat: { pattern: '0.000' }, readOnly: true, width: 95, className: centerClass + ' font-bold bg-slate-100' },
             { data: 'post_cal_date', type: 'date', dateFormat: 'YYYY-MM-DD', renderer: autoShrinkRenderer, width: 95, className: centerClass },
-            { data: 'post_flow_1', type: 'numeric', numericFormat: { pattern: '0.000' }, readOnly: true, width: 65, className: centerClass + ' bg-slate-50' },
-            { data: 'post_flow_2', type: 'numeric', numericFormat: { pattern: '0.000' }, readOnly: true, width: 65, className: centerClass + ' bg-slate-50' },
-            { data: 'post_flow_3', type: 'numeric', numericFormat: { pattern: '0.000' }, readOnly: true, width: 65, className: centerClass + ' bg-slate-50' },
-            { data: 'post_avg', type: 'numeric', numericFormat: { pattern: '0.000' }, readOnly: true, width: 75, className: centerClass + ' font-bold bg-slate-100' },
+            { data: 'post_avg', type: 'numeric', numericFormat: { pattern: '0.000' }, readOnly: true, width: 95, className: centerClass + ' font-bold bg-slate-100' },
             { data: 'total_avg', type: 'numeric', numericFormat: { pattern: '0.000' }, readOnly: true, renderer: autoShrinkRenderer, width: 120, className: 'htCenter htMiddle font-bold text-indigo-700 bg-indigo-50/50' }
         ],
         wordWrap: false,
@@ -442,26 +427,6 @@ function renderGrid(data) {
                     ]);
                 }
 
-                const calcPreAvg = () => {
-                    const f1 = parseFloat(this.getDataAtRowProp(row, 'pre_flow_1'));
-                    const f2 = parseFloat(this.getDataAtRowProp(row, 'pre_flow_2'));
-                    const f3 = parseFloat(this.getDataAtRowProp(row, 'pre_flow_3'));
-                    if (!isNaN(f1) && !isNaN(f2) && !isNaN(f3)) {
-                        const avg = Number(((f1 + f2 + f3) / 3).toFixed(3));
-                        this.setDataAtRowProp(row, 'pre_avg', avg);
-                    }
-                };
-
-                const calcPostAvg = () => {
-                    const f1 = parseFloat(this.getDataAtRowProp(row, 'post_flow_1'));
-                    const f2 = parseFloat(this.getDataAtRowProp(row, 'post_flow_2'));
-                    const f3 = parseFloat(this.getDataAtRowProp(row, 'post_flow_3'));
-                    if (!isNaN(f1) && !isNaN(f2) && !isNaN(f3)) {
-                        const avg = Number(((f1 + f2 + f3) / 3).toFixed(3));
-                        this.setDataAtRowProp(row, 'post_avg', avg);
-                    }
-                };
-
                 const calcTotalAvg = () => {
                     const pre = parseFloat(this.getDataAtRowProp(row, 'pre_avg'));
                     const post = parseFloat(this.getDataAtRowProp(row, 'post_avg'));
@@ -471,8 +436,6 @@ function renderGrid(data) {
                     }
                 };
 
-                if (['pre_flow_1', 'pre_flow_2', 'pre_flow_3'].includes(prop)) calcPreAvg();
-                if (['post_flow_1', 'post_flow_2', 'post_flow_3'].includes(prop)) calcPostAvg();
                 if (prop === 'pre_avg' || prop === 'post_avg') calcTotalAvg();
             });
         },
@@ -496,8 +459,7 @@ function renderGrid(data) {
 
 /**
  * Validation Logic:
- * 1. Individual readings (Pre-1,2,3 or Post-1,2,3) variation > 10%
- * 2. Pre-Avg vs Post-Avg difference > 5%
+ * 1. Pre-Avg vs Post-Avg difference > 10%
  */
 function getFlowWarnings(validData) {
     const warnings = [];
@@ -506,27 +468,7 @@ function getFlowWarnings(validData) {
         const pump = row.pump_no || '-';
         const context = `[${date}] 펌프 ${pump}`;
 
-        // 1. 10% Variation Check for Individual Readings
-        const checkVariation = (reads, label) => {
-            const vals = reads.filter(v => v !== null && !isNaN(v));
-            if (vals.length < 3) return; // Only check if all 3 are present
-
-            const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
-            if (avg === 0) return;
-
-            const max = Math.max(...vals);
-            const min = Math.min(...vals);
-            const variation = (max - min) / avg;
-
-            if (variation >= 0.10) {
-                warnings.push(`${context}: ${label} 측정값 간 편차가 10% 이상입니다. (편차: ${(variation * 100).toFixed(2)}%)`);
-            }
-        };
-
-        checkVariation([row.pre_flow_1, row.pre_flow_2, row.pre_flow_3], '전(Pre)');
-        checkVariation([row.post_flow_1, row.post_flow_2, row.post_flow_3], '후(Post)');
-
-        // 2. 5% Variation Check for Pre/Post Average
+        // 1. 10% Variation Check for Pre/Post Average
         if (row.pre_avg && row.post_avg) {
             const diff = Math.abs(row.pre_avg - row.post_avg);
             const avgDiff = diff / row.pre_avg;

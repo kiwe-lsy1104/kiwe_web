@@ -46,13 +46,9 @@ const ALL_GRID_COLUMNS = [
     { key: 'measured_by',  label: '측정자' },
     { key: 'received_by',  label: '인수자/접수자' },
     { key: 'received_date', label: '인수일' },
-    // ★ 유량보정 통합 컬럼
-    { key: 'pre_flow_1',   label: '측정전유량1차' },
-    { key: 'pre_flow_2',   label: '측정전유량2차' },
-    { key: 'pre_flow_3',   label: '측정전유량3차' },
-    { key: 'post_flow_1',  label: '측정후유량1차' },
-    { key: 'post_flow_2',  label: '측정후유량2차' },
-    { key: 'post_flow_3',  label: '측정후유량3차' },
+    // ★ 유량보정 컬럼 (측정전/후 평균 각 1회)
+    { key: 'pre_flow_avg',  label: '측정전평균유량' },
+    { key: 'post_flow_avg', label: '측정후평균유량' },
 ];
 
 const DEFAULT_COLS = [
@@ -60,7 +56,7 @@ const DEFAULT_COLS = [
     'pump_no', 'start_time', 'end_time', 'measured_min', 'shift_type',
     'work_hour', 'lunch_time', 'occurrence_type', 'temp', 'humidity',
     'condition', 'analyst', 'measured_by', 'received_by', 'received_date',
-    'pre_flow_1', 'pre_flow_2', 'pre_flow_3', 'post_flow_1', 'post_flow_2', 'post_flow_3'
+    'pre_flow_avg', 'post_flow_avg'
 ];
 
 // ──────────────────────────────────────────────────────────────────
@@ -222,13 +218,9 @@ function initSampleGridNew(container, mDate, comName, onHazardDoubleClick, onDel
         'received_date':   { data: 'received_date', label: '인수일', type: 'date', dateFormat: 'YYYY-MM-DD', width: 90, className: 'htCenter htMiddle' },
         'status':          { data: 'status', label: '완료상태', renderer: statusRenderer, width: 80, className: 'htCenter htMiddle' },
         'completed_at':    { data: 'completed_at', label: '완료날짜', type: 'date', dateFormat: 'YYYY-MM-DD', width: 90, className: 'htCenter htMiddle' },
-        // ★ 유량보정 통합 컬럼 — 녹색 렌더러 적용
-        'pre_flow_1':      { data: 'pre_flow_1', label: '전유량\n1차', renderer: flowRenderer, type: 'numeric', width: 58, className: 'htCenter htMiddle' },
-        'pre_flow_2':      { data: 'pre_flow_2', label: '전유량\n2차', renderer: flowRenderer, type: 'numeric', width: 58, className: 'htCenter htMiddle' },
-        'pre_flow_3':      { data: 'pre_flow_3', label: '전유량\n3차', renderer: flowRenderer, type: 'numeric', width: 58, className: 'htCenter htMiddle' },
-        'post_flow_1':     { data: 'post_flow_1', label: '후유량\n1차', renderer: flowRenderer, type: 'numeric', width: 58, className: 'htCenter htMiddle' },
-        'post_flow_2':     { data: 'post_flow_2', label: '후유량\n2차', renderer: flowRenderer, type: 'numeric', width: 58, className: 'htCenter htMiddle' },
-        'post_flow_3':     { data: 'post_flow_3', label: '후유량\n3차', renderer: flowRenderer, type: 'numeric', width: 58, className: 'htCenter htMiddle' },
+        // ★ 유량보정 컬럼 — 측정전/후 평균유량 각 1회 입력
+        'pre_flow_avg':    { data: 'pre_flow_avg',  label: '측정전\n평균유량', renderer: flowRenderer, type: 'numeric', numericFormat: { pattern: '0.000' }, width: 80, className: 'htCenter htMiddle' },
+        'post_flow_avg':   { data: 'post_flow_avg', label: '측정후\n평균유량', renderer: flowRenderer, type: 'numeric', numericFormat: { pattern: '0.000' }, width: 80, className: 'htCenter htMiddle' },
 
     };
 
@@ -1226,28 +1218,41 @@ function App() {
                 const s = rawLatest[i];
                 if (!(s.com_name && s.common_name)) continue;
                 if (!s.sample_id) s.sample_id = await calculateSampleId(i);
+                // ★ measured_min 자동 계산 (start_time, end_time, lunch_time 기반)
+                let calcMeasuredMin = sanitizeInt(s.measured_min);
+                const st = formatTimeHHMM(s.start_time);
+                const et = formatTimeHHMM(s.end_time);
+                if (st && et) {
+                    const [sH, sM] = st.split(':').map(Number);
+                    const [eH, eM] = et.split(':').map(Number);
+                    if (!isNaN(sH) && !isNaN(sM) && !isNaN(eH) && !isNaN(eM)) {
+                        let startTotal = sH * 60 + sM;
+                        let endTotal = eH * 60 + eM;
+                        if (endTotal < startTotal) endTotal += 24 * 60;
+                        const lunchMin = sanitizeInt(s.lunch_time) || 0;
+                        calcMeasuredMin = Math.max(0, endTotal - startTotal - lunchMin);
+                    }
+                }
+
                 const rowData = {
                     ...s,
                     m_date: s.m_date || startDate,
                     com_name: (s.com_name || '').replace(/\(주\)/g, '㈜').trim(),
-                    start_time: formatTimeHHMM(s.start_time),
-                    end_time:   formatTimeHHMM(s.end_time),
+                    start_time: st,
+                    end_time:   et,
                     pump_no:         sanitizeStr(s.pump_no),
                     work_hour:       sanitizeFloat(s.work_hour),
                     lunch_time:      sanitizeInt(s.lunch_time),
+                    measured_min:    calcMeasuredMin,
                     temp:            sanitizeStr(s.temp),
                     humidity:        sanitizeStr(s.humidity),
                     occurrence_type: sanitizeStr(s.occurrence_type),
                     shift_type:      sanitizeStr(s.shift_type),
                     condition:       sanitizeStr(s.condition) || '양호',
                     input_seq:       sanitizeInt(s.input_seq),
-                    // ★ 유량보정 필드
-                    pre_flow_1:  sanitizeFloat(s.pre_flow_1),
-                    pre_flow_2:  sanitizeFloat(s.pre_flow_2),
-                    pre_flow_3:  sanitizeFloat(s.pre_flow_3),
-                    post_flow_1: sanitizeFloat(s.post_flow_1),
-                    post_flow_2: sanitizeFloat(s.post_flow_2),
-                    post_flow_3: sanitizeFloat(s.post_flow_3),
+                    // ★ 유량보정 필드 (측정전/후 평균 각 1회)
+                    pre_flow_avg:  sanitizeFloat(s.pre_flow_avg),
+                    post_flow_avg: sanitizeFloat(s.post_flow_avg),
                 };
                 
                 // ★ 수동 입력 시 is_self 누락 방지
@@ -1275,12 +1280,11 @@ function App() {
                     const safeColumns = [
                         'm_date', 'com_name', 'work_process', 'worker_name', 'common_name',
                         'pump_no', 'start_time', 'end_time', 'shift_type', 'work_hour',
-                        'lunch_time', 'occurrence_type', 'temp', 'humidity',
+                        'lunch_time', 'measured_min', 'occurrence_type', 'temp', 'humidity',
                         'analyst', 'measured_by', 'received_by', 'sample_id', 'condition',
                         'received_date', 'status', 'completed_at', 'instrument_name', 'hazard_category',
                         'remarks', 'input_seq',
-                        'pre_flow_1', 'pre_flow_2', 'pre_flow_3',
-                        'post_flow_1', 'post_flow_2', 'post_flow_3'
+                        'pre_flow_avg', 'post_flow_avg'
                     ];
                     return data.map(item => {
                         const filtered = {};
@@ -1453,7 +1457,7 @@ function App() {
                 e('div', { className: "flex-shrink-0 px-4 py-2.5 bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-xl flex items-center gap-3" },
                     e(Droplet, { size: 16, className: "text-green-600 flex-shrink-0" }),
                     e('p', { className: "text-xs font-bold text-green-700" },
-                        "✅ 유량보정 통합 모드 — 각 행에 [전유량 1/2/3차] · [후유량 1/2/3차] 컬럼이 포함됩니다. 오른쪽으로 스크롤하면 확인할 수 있습니다."
+                        "✅ 유량보정 통합 모드 — 각 행에 [측정전평균유량] · [측정후평균유량] 컬럼이 포함됩니다. 오른쪽으로 스크롤하면 확인할 수 있습니다."
                     ),
                     e('div', { className: "ml-auto flex-shrink-0 px-2 py-0.5 bg-green-100 text-green-700 text-[10px] font-black rounded border border-green-200" }, `테이블: ${FIXED_TABLE}`)
                 ),
