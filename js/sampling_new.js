@@ -631,8 +631,16 @@ function App() {
                 ghostClass: 'bg-purple-50',
                 handle: '.drag-handle',
                 onEnd: (evt) => {
-                    const { oldIndex, newIndex } = evt;
+                    const { oldIndex, newIndex, item } = evt;
                     if (oldIndex === newIndex) return;
+
+                    // Revert Sortable's DOM mutation so React can cleanly re-render
+                    const parent = item.parentNode;
+                    if (parent) {
+                        const referenceNode = parent.children[oldIndex > newIndex ? oldIndex + 1 : oldIndex];
+                        parent.insertBefore(item, referenceNode);
+                    }
+
                     setColumnConfig(prev => {
                         const nextConfig = { ...prev };
                         const tabCols = [...(nextConfig[activeTab] || DEFAULT_COLS)];
@@ -645,7 +653,7 @@ function App() {
             });
             return () => sortable.destroy();
         }
-    }, [showSettings]);
+    }, [showSettings, activeTab]);
 
     useEffect(() => {
         const handleBeforeUnload = (ev) => {

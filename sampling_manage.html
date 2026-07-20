@@ -556,26 +556,14 @@
                 const flowMap = new Map();
                 rawData.forEach(r => {
                     if (r.m_date && r.pump_no) {
-                        const pf1 = parseFloat(r.pre_flow_1), pf2 = parseFloat(r.pre_flow_2), pf3 = parseFloat(r.pre_flow_3);
-                        const pof1 = parseFloat(r.post_flow_1), pof2 = parseFloat(r.post_flow_2), pof3 = parseFloat(r.post_flow_3);
+                        const preAvg = parseFloat(r.pre_flow_avg);
+                        const postAvg = parseFloat(r.post_flow_avg);
                         
-                        let preCount = 0, preSum = 0;
-                        if (!isNaN(pf1)) { preSum += pf1; preCount++; }
-                        if (!isNaN(pf2)) { preSum += pf2; preCount++; }
-                        if (!isNaN(pf3)) { preSum += pf3; preCount++; }
-                        const preAvg = preCount > 0 ? (preSum / preCount) : null;
-
-                        let postCount = 0, postSum = 0;
-                        if (!isNaN(pof1)) { postSum += pof1; postCount++; }
-                        if (!isNaN(pof2)) { postSum += pof2; postCount++; }
-                        if (!isNaN(pof3)) { postSum += pof3; postCount++; }
-                        const postAvg = postCount > 0 ? (postSum / postCount) : null;
-
-                        if (preAvg !== null || postAvg !== null) {
+                        if (!isNaN(preAvg) || !isNaN(postAvg)) {
                             let totalAvg = 0;
-                            if (preAvg !== null && postAvg !== null) totalAvg = (preAvg + postAvg) / 2;
-                            else if (preAvg !== null) totalAvg = preAvg;
-                            else if (postAvg !== null) totalAvg = postAvg;
+                            if (!isNaN(preAvg) && !isNaN(postAvg)) totalAvg = (preAvg + postAvg) / 2;
+                            else if (!isNaN(preAvg)) totalAvg = preAvg;
+                            else if (!isNaN(postAvg)) totalAvg = postAvg;
 
                             // 하나의 펌프에 여러 행이 있을 수 있으므로, 이미 계산된 값이 있으면 덮어쓰기 (가장 마지막에 입력된 유효한 값 유지)
                             flowMap.set(`${r.m_date}_${r.pump_no}`, Number(totalAvg.toFixed(3)));
@@ -635,7 +623,7 @@
                     .map(row => {
                         const searchKey = row.common_name ? row.common_name.split('/')[0].trim() : '';
                         const hazardInfo = hazardMap.get(searchKey) || {};
-                        const minutes = calculateMinutes(row.start_time, row.end_time, row.lunch_time);
+                        const minutes = row.measured_min !== null && row.measured_min !== undefined ? row.measured_min : calculateMinutes(row.start_time, row.end_time, row.lunch_time);
                         const avgFlow = flowMap.get(`${row.m_date}_${row.pump_no}`) || 0;
                         const gk = getMappingKey(row.com_name, row.m_date, row.common_name);
                         return {
