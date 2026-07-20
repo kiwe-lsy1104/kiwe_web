@@ -693,7 +693,7 @@ function App() {
         // ★ 하반기부터 시료번호 이원화:
         // kiwe_hazard.is_self === '외부의뢰' → R prefix (공시료: RB)
         // kiwe_hazard.is_self === '자체분석' 또는 미설정 → 기존 S/D prefix (공시료: SB/DB)
-        const isExternal = isSelf === '외부의뢰';
+        const isExternal = isSelf && isSelf !== '자체분석';
 
         let prefix;
         if (isExternal) {

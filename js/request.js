@@ -311,7 +311,7 @@ export function ExternalRequestManager({ supabase, sessionData }) {
                         blank_sample_no: (blankMap.get(gk) || []).join('/')
                     };
                 })
-                .filter(r => r.is_self === '외부의뢰'); // ★ 외부의뢰만 필터링
+                .filter(r => r.is_self && r.is_self !== '자체분석'); // ★ 외부의뢰만 필터링
 
             // 키워드 필터링
             let finalData = enriched;

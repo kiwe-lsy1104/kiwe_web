@@ -633,12 +633,12 @@
                             avg_flow: avgFlow > 0 ? avgFlow : '-',
                             air_volume: (minutes > 0 && avgFlow > 0) ? (minutes * avgFlow).toFixed(3) : '-',
                             blank_sample_no: (blankMap.get(gk) || []).join('/'),
-                            analyzer: hazardInfo.is_self === '자체분석' ? defaultAnalyst : (hazardInfo.is_self === '외부의뢰' ? defaultLab : '-')
+                            analyzer: hazardInfo.is_self === '자체분석' ? defaultAnalyst : (hazardInfo.is_self && hazardInfo.is_self !== '자체분석' ? hazardInfo.is_self : '-')
                         };
                     });
 
                 const resolvedTab = tabId || activeTabId;
-                if (resolvedTab === 'external') enriched = enriched.filter(r => r.is_self === '외부의뢰');
+                if (resolvedTab === 'external') enriched = enriched.filter(r => r.is_self && r.is_self !== '자체분석');
 
                 if (kw) {
                     const term = kw.replace(/\(주\)|㈜|\s/g, '').toLowerCase();

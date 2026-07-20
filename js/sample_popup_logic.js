@@ -10,14 +10,24 @@ export function setupHazardSelection(gridRowRef, hotInstance, calculateSampleId,
 
             if (targetRow === null || !hot) return;
 
-            const isSelf = h.is_self;
+            const isSelf = h.is_self || '';
             let analyst = '';
-            let receivedBy = '이초롱';
+            let receivedBy = '';
+
+            try {
+                const { data, error } = await supabase.from('kiwe_users').select('user_name').eq('job_title', '분석책임자').maybeSingle();
+                if (!error && data?.user_name) {
+                    receivedBy = data.user_name;
+                }
+            } catch (err) {
+                console.warn("분석책임자 조회 실패:", err);
+            }
+            if (!receivedBy) receivedBy = '이초롱';
 
             if (isSelf === '자체분석') {
-                analyst = '이초롱';
-            } else if (isSelf === '외부의뢰') {
-                analyst = h.agency_name || '';
+                analyst = receivedBy;
+            } else {
+                analyst = isSelf;
             }
 
             const updates = [

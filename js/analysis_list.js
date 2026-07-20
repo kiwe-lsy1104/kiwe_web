@@ -282,7 +282,7 @@ export function AnalysisExtraction({
                     // 분석자 결정: is_self 기반
                     let analyzer = '-';
                     if (hazardInfo.is_self === '자체분석') analyzer = defaultAnalyst;
-                    else if (hazardInfo.is_self === '외부의뢰') analyzer = defaultLab;
+                    else if (hazardInfo.is_self && hazardInfo.is_self !== '자체분석') analyzer = hazardInfo.is_self;
 
                     processedData.push({
                         ...hazardInfo,

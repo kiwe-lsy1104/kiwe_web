@@ -277,7 +277,7 @@
                                         e('td', { className: "px-2 py-2 text-[10px] text-indigo-500 text-center" }, h.desorption_solvent || '-'),
                                         e('td', { className: "px-2 py-2 text-right" },
                                             e('span', { className: `px-2 py-0.5 rounded-full text-[10px] font-black ${h.is_self === '자체분석' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}` },
-                                                h.is_self === '자체분석' ? '자체분석' : '외부의뢰'
+                                                h.is_self || '-'
                                             )
                                         )
                                     );

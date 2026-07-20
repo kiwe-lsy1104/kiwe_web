@@ -938,7 +938,7 @@ function App() {
             }
         }
         
-        const isExternal = isSelf === '외부의뢰';
+        const isExternal = isSelf && isSelf !== '자체분석';
         let prefix = isExternal ? 'R' : (inst && inst.trim() === '중량분석' ? 'D' : 'S');
         if (workerName && workerName.includes('공시료')) prefix += 'B';
         return prefix;
