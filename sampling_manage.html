@@ -218,6 +218,19 @@
             { key: 'worker_name', label: '근로자명', width: 80, source: 'sampling' },
             { key: 'common_name', label: '유해인자', width: 150, source: 'sampling' },
             { key: 'pump_no', label: '펌프번호', width: 80, source: 'sampling' },
+            { key: 'calibrator_no', label: '보정기기번호', width: 100, source: 'sampling' },
+            { key: 'calibrator_person', label: '보정자', width: 80, source: 'sampling' },
+            { key: 'pre_cal_date', label: '측정전보정일', width: 90, source: 'sampling' },
+            { key: 'pre_flow_1', label: '측정전1회', width: 75, source: 'calc' },
+            { key: 'pre_flow_2', label: '측정전2회', width: 75, source: 'calc' },
+            { key: 'pre_flow_3', label: '측정전3회', width: 75, source: 'calc' },
+            { key: 'pre_flow_avg', label: '측정전평균', width: 80, source: 'calc' },
+            { key: 'post_cal_date', label: '측정후보정일', width: 90, source: 'sampling' },
+            { key: 'post_flow_1', label: '측정후1회', width: 75, source: 'calc' },
+            { key: 'post_flow_2', label: '측정후2회', width: 75, source: 'calc' },
+            { key: 'post_flow_3', label: '측정후3회', width: 75, source: 'calc' },
+            { key: 'post_flow_avg', label: '측정후평균', width: 80, source: 'calc' },
+            { key: 'total_avg', label: '전체평균유량', width: 85, source: 'calc' },
             { key: 'start_time', label: '시작시간', width: 80, source: 'sampling' },
             { key: 'end_time', label: '종료시간', width: 80, source: 'sampling' },
             { key: 'collection_time', label: '포집시간(분)', width: 90, source: 'calc' },
@@ -584,7 +597,24 @@
                     return 0;
                 };
 
-                // ── 유량 자체 계산 (kiwe_flow 의존성 제거) ──
+                // ── 유량보정대장 (kiwe_flow) 데이터 병합 (m_date + pump_no 기준) ──
+                const mDates = [...new Set(rawData.map(s => s.m_date).filter(Boolean))];
+                let flowRecs = [];
+                if (mDates.length > 0) {
+                    try {
+                        const { data: fData } = await supabase.from('kiwe_flow')
+                            .select('*')
+                            .in('m_date', mDates);
+                        flowRecs = fData || [];
+                    } catch { }
+                }
+                const flowObjectMap = new Map();
+                flowRecs.forEach(f => {
+                    if (f.m_date && f.pump_no) {
+                        flowObjectMap.set(`${f.m_date}_${f.pump_no}`, f);
+                    }
+                });
+
                 const flowMap = new Map();
                 rawData.forEach(r => {
                     if (r.m_date && r.pump_no) {
@@ -647,9 +677,47 @@
                     .map(row => {
                         const searchKey = row.common_name ? row.common_name.split('/')[0].trim() : '';
                         const hazardInfo = hazardMap.get(searchKey) || {};
+                        const fInfo = flowObjectMap.get(`${row.m_date}_${row.pump_no}`) || {};
+
+                        const pf1 = row.pre_flow_1 ?? fInfo.pre_flow_1;
+                        const pf2 = row.pre_flow_2 ?? fInfo.pre_flow_2;
+                        const pf3 = row.pre_flow_3 ?? fInfo.pre_flow_3;
+                        const pof1 = row.post_flow_1 ?? fInfo.post_flow_1;
+                        const pof2 = row.post_flow_2 ?? fInfo.post_flow_2;
+                        const pof3 = row.post_flow_3 ?? fInfo.post_flow_3;
+
+                        let preAvgVal = parseFloat(row.pre_flow_avg);
+                        if (isNaN(preAvgVal) || preAvgVal <= 0) {
+                            const v1 = parseFloat(pf1), v2 = parseFloat(pf2), v3 = parseFloat(pf3);
+                            let cnt = 0, sum = 0;
+                            if (!isNaN(v1) && v1 > 0) { sum += v1; cnt++; }
+                            if (!isNaN(v2) && v2 > 0) { sum += v2; cnt++; }
+                            if (!isNaN(v3) && v3 > 0) { sum += v3; cnt++; }
+                            if (cnt > 0) preAvgVal = sum / cnt;
+                        }
+                        if (isNaN(preAvgVal) || preAvgVal <= 0) preAvgVal = parseFloat(fInfo.pre_flow_avg) || 0;
+
+                        let postAvgVal = parseFloat(row.post_flow_avg);
+                        if (isNaN(postAvgVal) || postAvgVal <= 0) {
+                            const v1 = parseFloat(pof1), v2 = parseFloat(pof2), v3 = parseFloat(pof3);
+                            let cnt = 0, sum = 0;
+                            if (!isNaN(v1) && v1 > 0) { sum += v1; cnt++; }
+                            if (!isNaN(v2) && v2 > 0) { sum += v2; cnt++; }
+                            if (!isNaN(v3) && v3 > 0) { sum += v3; cnt++; }
+                            if (cnt > 0) postAvgVal = sum / cnt;
+                        }
+                        if (isNaN(postAvgVal) || postAvgVal <= 0) postAvgVal = parseFloat(fInfo.post_flow_avg) || 0;
+
+                        let totalAvgVal = 0;
+                        if (preAvgVal > 0 && postAvgVal > 0) totalAvgVal = (preAvgVal + postAvgVal) / 2;
+                        else if (preAvgVal > 0) totalAvgVal = preAvgVal;
+                        else if (postAvgVal > 0) totalAvgVal = postAvgVal;
+                        else if (fInfo.total_avg && parseFloat(fInfo.total_avg) > 0) totalAvgVal = parseFloat(fInfo.total_avg);
+
                         const minutes = row.measured_min !== null && row.measured_min !== undefined ? row.measured_min : calculateMinutes(row.start_time, row.end_time, row.lunch_time);
-                        const avgFlow = flowMap.get(`${row.m_date}_${row.pump_no}`) || 0;
+                        const avgFlow = totalAvgVal > 0 ? Number(totalAvgVal.toFixed(3)) : (flowMap.get(`${row.m_date}_${row.pump_no}`) || 0);
                         const gk = getMappingKey(row.com_name, row.m_date, row.common_name);
+
                         return {
                             ...hazardInfo, ...row,
                             corp_code: '',
@@ -657,7 +725,22 @@
                             avg_flow: avgFlow > 0 ? avgFlow : '-',
                             air_volume: (minutes > 0 && avgFlow > 0) ? (minutes * avgFlow).toFixed(3) : '-',
                             blank_sample_no: (blankMap.get(gk) || []).join('/'),
-                            analyzer: hazardInfo.is_self === '자체분석' ? defaultAnalyst : (hazardInfo.is_self && hazardInfo.is_self !== '자체분석' ? hazardInfo.is_self : '-')
+                            analyzer: hazardInfo.is_self === '자체분석' ? defaultAnalyst : (hazardInfo.is_self && hazardInfo.is_self !== '자체분석' ? hazardInfo.is_self : '-'),
+
+                            // 유량보정대장 통합 컬럼
+                            pre_flow_1: (pf1 !== null && pf1 !== undefined && pf1 !== '') ? pf1 : '-',
+                            pre_flow_2: (pf2 !== null && pf2 !== undefined && pf2 !== '') ? pf2 : '-',
+                            pre_flow_3: (pf3 !== null && pf3 !== undefined && pf3 !== '') ? pf3 : '-',
+                            pre_flow_avg: preAvgVal > 0 ? Number(preAvgVal.toFixed(3)) : '-',
+                            post_flow_1: (pof1 !== null && pof1 !== undefined && pof1 !== '') ? pof1 : '-',
+                            post_flow_2: (pof2 !== null && pof2 !== undefined && pof2 !== '') ? pof2 : '-',
+                            post_flow_3: (pof3 !== null && pof3 !== undefined && pof3 !== '') ? pof3 : '-',
+                            post_flow_avg: postAvgVal > 0 ? Number(postAvgVal.toFixed(3)) : '-',
+                            total_avg: avgFlow > 0 ? avgFlow : '-',
+                            calibrator_no: fInfo.calibrator_no || row.calibrator_no || '-',
+                            calibrator_person: fInfo.calibrator_person || row.calibrator_person || '-',
+                            pre_cal_date: fInfo.pre_cal_date || row.pre_cal_date || '-',
+                            post_cal_date: fInfo.post_cal_date || row.post_cal_date || '-'
                         };
                     });
 
@@ -924,6 +1007,61 @@
                 XLSX.writeFile(wb, filename);
             };
 
+            // ── 유량보정 + 시료대장 통합 엑셀 다운로드 ──
+            const downloadFlowIntegratedExcel = () => {
+                const target = selectedIds.size > 0 ? filteredData.filter(r => selectedIds.has(r.sample_id)) : filteredData;
+                if (!target || target.length === 0) return alert('다운로드할 데이터가 없습니다. 먼저 조회를 진행해주세요.');
+
+                const columnsToExport = [
+                    { key: 'sample_id', label: '시료번호' },
+                    { key: 'm_date', label: '측정일자' },
+                    { key: 'com_name', label: '사업장명' },
+                    { key: 'work_process', label: '단위작업장소' },
+                    { key: 'worker_name', label: '근로자명' },
+                    { key: 'common_name', label: '유해인자' },
+                    { key: 'pump_no', label: '펌프번호' },
+                    { key: 'calibrator_no', label: '보정기기번호' },
+                    { key: 'calibrator_person', label: '보정자' },
+                    { key: 'pre_cal_date', label: '측정전보정일' },
+                    { key: 'pre_flow_1', label: '측정전1회' },
+                    { key: 'pre_flow_2', label: '측정전2회' },
+                    { key: 'pre_flow_3', label: '측정전3회' },
+                    { key: 'pre_flow_avg', label: '측정전평균' },
+                    { key: 'post_cal_date', label: '측정후보정일' },
+                    { key: 'post_flow_1', label: '측정후1회' },
+                    { key: 'post_flow_2', label: '측정후2회' },
+                    { key: 'post_flow_3', label: '측정후3회' },
+                    { key: 'post_flow_avg', label: '측정후평균' },
+                    { key: 'avg_flow', label: '전체평균유량' },
+                    { key: 'start_time', label: '시작시간' },
+                    { key: 'end_time', label: '종료시간' },
+                    { key: 'collection_time', label: '포집시간(분)' },
+                    { key: 'air_volume', label: '채기량(L)' },
+                    { key: 'sampling', label: '채취방법' },
+                    { key: 'sampling_media', label: '채취매체' },
+                    { key: 'sample_state', label: '시료상태' },
+                    { key: 'instrument_name', label: '분석방법' },
+                    { key: 'is_self', label: '분석구분' },
+                    { key: 'analyzer', label: '분석자' },
+                    { key: 'remarks', label: '비고' }
+                ];
+
+                const excelData = target.map(row => {
+                    const obj = {};
+                    columnsToExport.forEach(c => {
+                        obj[c.label] = row[c.key] ?? '';
+                    });
+                    return obj;
+                });
+
+                const ws = XLSX.utils.json_to_sheet(excelData);
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, '유량보정_시료대장_통합');
+
+                const filename = `유량보정_시료대장_통합_${startDate}_${endDate}.xlsx`;
+                XLSX.writeFile(wb, filename);
+            };
+
             // ── 셀 렌더링 ──
             const renderCell = (key, row) => {
                 const col = ALL_COLUMNS.find(c => c.key === key);
@@ -957,7 +1095,7 @@
 
                 let content = row[key] == null ? '' : String(row[key]);
                 // ★ 엑셀 붙여넣기 시 날짜 자동 변환 방지 (뒤에 공백 추가가 가장 안정적)
-                const targetKeys = ['pump_no', 'start_time', 'end_time', 'temp', 'humidity'];
+                const targetKeys = ['pump_no', 'start_time', 'end_time', 'temp', 'humidity', 'pre_flow_1', 'pre_flow_2', 'pre_flow_3', 'post_flow_1', 'post_flow_2', 'post_flow_3'];
                 if (targetKeys.includes(key) && content && /^(\d+[~\-]\d+|\d{1,2}:\d{2})$/.test(content)) {
                     content = content + ' ';
                 }
@@ -1079,6 +1217,14 @@
                                 },
                                     e(Download, { size: 16 }),
                                     selectedIds.size > 0 ? `엑셀 (${selectedIds.size}건)` : '엑셀'
+                                ),
+                                e('button', {
+                                    onClick: downloadFlowIntegratedExcel,
+                                    title: '측정전/후 1,2,3회 유량 및 유량보정대장 정보(보정기기번호, 보정자 등)를 포함하여 통합 다운로드합니다',
+                                    className: 'h-[38px] px-4 bg-teal-600 text-white font-bold rounded-lg shadow hover:bg-teal-700 flex items-center gap-2 active:scale-95 transition-all text-sm'
+                                },
+                                    e(Download, { size: 16 }),
+                                    selectedIds.size > 0 ? `유량통합 엑셀 (${selectedIds.size}건)` : '유량통합 엑셀'
                                 ),
                                 e('button', {
                                     onClick: () => window.print(),
