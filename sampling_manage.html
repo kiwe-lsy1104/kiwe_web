@@ -679,12 +679,22 @@
                         const hazardInfo = hazardMap.get(searchKey) || {};
                         const fInfo = flowObjectMap.get(`${row.m_date}_${row.pump_no}`) || {};
 
-                        const pf1 = row.pre_flow_1 ?? fInfo.pre_flow_1;
-                        const pf2 = row.pre_flow_2 ?? fInfo.pre_flow_2;
-                        const pf3 = row.pre_flow_3 ?? fInfo.pre_flow_3;
-                        const pof1 = row.post_flow_1 ?? fInfo.post_flow_1;
-                        const pof2 = row.post_flow_2 ?? fInfo.post_flow_2;
-                        const pof3 = row.post_flow_3 ?? fInfo.post_flow_3;
+                        // 시료테이블 값이 0이거나 없으면 kiwe_flow 값으로 fallback
+                        // (??는 null/undefined만 처리, 0은 처리 안됨 → 명시적 체크 필요)
+                        const getFlowVal = (sampVal, flowVal) => {
+                            const s = parseFloat(sampVal);
+                            if (!isNaN(s) && s > 0) return s;
+                            const f = parseFloat(flowVal);
+                            if (!isNaN(f) && f > 0) return f;
+                            return null;
+                        };
+
+                        const pf1 = getFlowVal(row.pre_flow_1, fInfo.pre_flow_1);
+                        const pf2 = getFlowVal(row.pre_flow_2, fInfo.pre_flow_2);
+                        const pf3 = getFlowVal(row.pre_flow_3, fInfo.pre_flow_3);
+                        const pof1 = getFlowVal(row.post_flow_1, fInfo.post_flow_1);
+                        const pof2 = getFlowVal(row.post_flow_2, fInfo.post_flow_2);
+                        const pof3 = getFlowVal(row.post_flow_3, fInfo.post_flow_3);
 
                         let preAvgVal = parseFloat(row.pre_flow_avg);
                         if (isNaN(preAvgVal) || preAvgVal <= 0) {
