@@ -200,6 +200,38 @@ export function ExternalRequestManager({ supabase, sessionData }) {
         } catch { return 0; }
     };
 
+    const getRowFlowAvg = (r) => {
+        if (!r) return 0;
+        let preAvg = parseFloat(r.pre_flow_avg);
+        let postAvg = parseFloat(r.post_flow_avg);
+
+        if (isNaN(preAvg) || preAvg <= 0) {
+            const pf1 = parseFloat(r.pre_flow_1), pf2 = parseFloat(r.pre_flow_2), pf3 = parseFloat(r.pre_flow_3);
+            let count = 0, sum = 0;
+            if (!isNaN(pf1) && pf1 > 0) { sum += pf1; count++; }
+            if (!isNaN(pf2) && pf2 > 0) { sum += pf2; count++; }
+            if (!isNaN(pf3) && pf3 > 0) { sum += pf3; count++; }
+            preAvg = count > 0 ? (sum / count) : NaN;
+        }
+
+        if (isNaN(postAvg) || postAvg <= 0) {
+            const pof1 = parseFloat(r.post_flow_1), pof2 = parseFloat(r.post_flow_2), pof3 = parseFloat(r.post_flow_3);
+            let count = 0, sum = 0;
+            if (!isNaN(pof1) && pof1 > 0) { sum += pof1; count++; }
+            if (!isNaN(pof2) && pof2 > 0) { sum += pof2; count++; }
+            if (!isNaN(pof3) && pof3 > 0) { sum += pof3; count++; }
+            postAvg = count > 0 ? (sum / count) : NaN;
+        }
+
+        const hasPre = !isNaN(preAvg) && preAvg > 0;
+        const hasPost = !isNaN(postAvg) && postAvg > 0;
+
+        if (hasPre && hasPost) return Number(((preAvg + postAvg) / 2).toFixed(3));
+        if (hasPre) return Number(preAvg.toFixed(3));
+        if (hasPost) return Number(postAvg.toFixed(3));
+        return 0;
+    };
+
     const addBusinessDays = (date, days) => {
         const result = new Date(date);
         let added = 0;
@@ -244,33 +276,12 @@ export function ExternalRequestManager({ supabase, sessionData }) {
 
             const mDates = [...new Set(rawData.map(s => s.m_date).filter(Boolean))];
 
-            // ── 유량 자체 계산 (kiwe_flow 의존성 제거) ──
+            // ── 유량 자체 계산 (kiwe_flow 의존성 제거 및 상/하반기 통합) ──
             const flowMap = new Map();
             rawData.forEach(r => {
                 if (r.m_date && r.pump_no) {
-                    const pf1 = parseFloat(r.pre_flow_1), pf2 = parseFloat(r.pre_flow_2), pf3 = parseFloat(r.pre_flow_3);
-                    const pof1 = parseFloat(r.post_flow_1), pof2 = parseFloat(r.post_flow_2), pof3 = parseFloat(r.post_flow_3);
-                    
-                    let preCount = 0, preSum = 0;
-                    if (!isNaN(pf1)) { preSum += pf1; preCount++; }
-                    if (!isNaN(pf2)) { preSum += pf2; preCount++; }
-                    if (!isNaN(pf3)) { preSum += pf3; preCount++; }
-                    const preAvg = preCount > 0 ? (preSum / preCount) : null;
-
-                    let postCount = 0, postSum = 0;
-                    if (!isNaN(pof1)) { postSum += pof1; postCount++; }
-                    if (!isNaN(pof2)) { postSum += pof2; postCount++; }
-                    if (!isNaN(pof3)) { postSum += pof3; postCount++; }
-                    const postAvg = postCount > 0 ? (postSum / postCount) : null;
-
-                    if (preAvg !== null || postAvg !== null) {
-                        let totalAvg = 0;
-                        if (preAvg !== null && postAvg !== null) totalAvg = (preAvg + postAvg) / 2;
-                        else if (preAvg !== null) totalAvg = preAvg;
-                        else if (postAvg !== null) totalAvg = postAvg;
-
-                        flowMap.set(`${r.m_date}_${r.pump_no}`, Number(totalAvg.toFixed(3)));
-                    }
+                    const avg = getRowFlowAvg(r);
+                    if (avg > 0) flowMap.set(`${r.m_date}_${r.pump_no}`, avg);
                 }
             });
             const hazardMap = new Map((hazardRes.data || []).map(h => [h.common_name, h]));
@@ -300,7 +311,7 @@ export function ExternalRequestManager({ supabase, sessionData }) {
                     const searchKey = row.common_name ? row.common_name.split('/')[0].trim() : '';
                     const hazardInfo = hazardMap.get(searchKey) || {};
                     const minutes = calculateMinutes(row.start_time, row.end_time, row.lunch_time);
-                    const avgFlow = flowMap.get(`${row.m_date}_${row.pump_no}`) || 0;
+                    const avgFlow = getRowFlowAvg(row) || flowMap.get(`${row.m_date}_${row.pump_no}`) || 0;
                     const gk = getMappingKey(row.com_name, row.m_date, row.common_name);
                     return {
                         ...hazardInfo, ...row,
@@ -658,14 +669,24 @@ export function ExternalRequestManager({ supabase, sessionData }) {
 
             const hazardMap = new Map((hazardRes.data || []).map(h => [h.common_name, h]));
             const flowMap = new Map();
-            (flowRes.data || []).forEach(f => flowMap.set(`${f.m_date}_${f.pump_no}`, f.total_avg));
+            (flowRes.data || []).forEach(f => {
+                if (f.m_date && f.pump_no && parseFloat(f.total_avg) > 0) {
+                    flowMap.set(`${f.m_date}_${f.pump_no}`, parseFloat(f.total_avg));
+                }
+            });
+            mainSamples.forEach(r => {
+                if (r.m_date && r.pump_no) {
+                    const avg = getRowFlowAvg(r);
+                    if (avg > 0) flowMap.set(`${r.m_date}_${r.pump_no}`, avg);
+                }
+            });
 
             // 5. 데이터 병합 및 가공
             const enriched = mainSamples.map(r => {
                 const searchKey = r.common_name ? r.common_name.split('/')[0].trim() : '';
                 const hazardInfo = hazardMap.get(searchKey) || {};
                 const minutes = calculateMinutes(r.start_time, r.end_time, r.lunch_time);
-                const avgFlow = flowMap.get(`${r.m_date}_${r.pump_no}`) || 0;
+                const avgFlow = getRowFlowAvg(r) || flowMap.get(`${r.m_date}_${r.pump_no}`) || 0;
                 const gk = getMappingKey(r.com_name, r.m_date, r.common_name);
 
                 return {

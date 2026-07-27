@@ -12,6 +12,33 @@ const e = React.createElement;
 const getTable = (d) => { if (!d) return null; const dt = new Date(d); return `kiwe_sampling_${dt.getFullYear()}_${(dt.getMonth() + 1) <= 6 ? 1 : 2}`; };
 const getTables = (s, en) => { const ts = new Set(); let c = new Date(s); c.setDate(1); const stop = new Date(en); while (c <= stop) { const t = getTable(c.toISOString().slice(0, 10)); if (t) ts.add(t); c.setMonth(c.getMonth() + 1); } const et = getTable(en); if (et) ts.add(et); return Array.from(ts); };
 const calcDuration = (s, en, l) => { try { const [h1, m1] = s.split(':').map(Number); const [h2, m2] = en.split(':').map(Number); let d = h2 * 60 + m2 - h1 * 60 - m1; if (d < 0) d += 1440; return Math.max(0, d - (parseInt(l) || 0)); } catch { return 0; } };
+const getRowFlowAvg = (r) => {
+    if (!r) return 0;
+    let preAvg = parseFloat(r.pre_flow_avg);
+    let postAvg = parseFloat(r.post_flow_avg);
+    if (isNaN(preAvg) || preAvg <= 0) {
+        const pf1 = parseFloat(r.pre_flow_1), pf2 = parseFloat(r.pre_flow_2), pf3 = parseFloat(r.pre_flow_3);
+        let count = 0, sum = 0;
+        if (!isNaN(pf1) && pf1 > 0) { sum += pf1; count++; }
+        if (!isNaN(pf2) && pf2 > 0) { sum += pf2; count++; }
+        if (!isNaN(pf3) && pf3 > 0) { sum += pf3; count++; }
+        preAvg = count > 0 ? (sum / count) : NaN;
+    }
+    if (isNaN(postAvg) || postAvg <= 0) {
+        const pof1 = parseFloat(r.post_flow_1), pof2 = parseFloat(r.post_flow_2), pof3 = parseFloat(r.post_flow_3);
+        let count = 0, sum = 0;
+        if (!isNaN(pof1) && pof1 > 0) { sum += pof1; count++; }
+        if (!isNaN(pof2) && pof2 > 0) { sum += pof2; count++; }
+        if (!isNaN(pof3) && pof3 > 0) { sum += pof3; count++; }
+        postAvg = count > 0 ? (sum / count) : NaN;
+    }
+    const hasPre = !isNaN(preAvg) && preAvg > 0;
+    const hasPost = !isNaN(postAvg) && postAvg > 0;
+    if (hasPre && hasPost) return Number(((preAvg + postAvg) / 2).toFixed(3));
+    if (hasPre) return Number(preAvg.toFixed(3));
+    if (hasPost) return Number(postAvg.toFixed(3));
+    return 0;
+};
 
 const BLANK_PROTOCOL = {
     hazardName: '', mol_weight: 0, twa_mg: 0, twa_ppm: 0, sg: 0, purity: 100,
@@ -88,7 +115,17 @@ export default function AnalysisInput({
                 flowData = data || [];
             }
             const flowMap = new Map();
-            flowData.forEach(f => flowMap.set(`${f.m_date}_${f.pump_no}`, parseFloat(f.total_avg) || 0));
+            flowData.forEach(f => {
+                if (f.m_date && f.pump_no && parseFloat(f.total_avg) > 0) {
+                    flowMap.set(`${f.m_date}_${f.pump_no}`, parseFloat(f.total_avg));
+                }
+            });
+            sData.forEach(r => {
+                if (r.m_date && r.pump_no) {
+                    const avg = getRowFlowAvg(r);
+                    if (avg > 0) flowMap.set(`${r.m_date}_${r.pump_no}`, avg);
+                }
+            });
 
             // 4. 가공 (중량분석 제외, 유해인자별 행 분리)
             const processed = [];
@@ -99,7 +136,7 @@ export default function AnalysisInput({
                 subs.forEach(sub => {
                     const hz = hMap[sub];
                     if (!hz || hz.instrument_name === '추출법') return;
-                    const flow = flowMap.get(`${row.m_date}_${row.pump_no}`) || 0;
+                    const flow = getRowFlowAvg(row) || flowMap.get(`${row.m_date}_${row.pump_no}`) || 0;
                     const dur = calcDuration(row.start_time, row.end_time, row.lunch_time);
                     const vol_m3 = (flow * dur) / 1000;
                     processed.push({

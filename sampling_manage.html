@@ -552,21 +552,45 @@
                 );
                 const rawData = rawArrays.flat();
  
+                const getRowFlowAvg = (r) => {
+                    if (!r) return 0;
+                    let preAvg = parseFloat(r.pre_flow_avg);
+                    let postAvg = parseFloat(r.post_flow_avg);
+
+                    if (isNaN(preAvg) || preAvg <= 0) {
+                        const pf1 = parseFloat(r.pre_flow_1), pf2 = parseFloat(r.pre_flow_2), pf3 = parseFloat(r.pre_flow_3);
+                        let count = 0, sum = 0;
+                        if (!isNaN(pf1) && pf1 > 0) { sum += pf1; count++; }
+                        if (!isNaN(pf2) && pf2 > 0) { sum += pf2; count++; }
+                        if (!isNaN(pf3) && pf3 > 0) { sum += pf3; count++; }
+                        preAvg = count > 0 ? (sum / count) : NaN;
+                    }
+
+                    if (isNaN(postAvg) || postAvg <= 0) {
+                        const pof1 = parseFloat(r.post_flow_1), pof2 = parseFloat(r.post_flow_2), pof3 = parseFloat(r.post_flow_3);
+                        let count = 0, sum = 0;
+                        if (!isNaN(pof1) && pof1 > 0) { sum += pof1; count++; }
+                        if (!isNaN(pof2) && pof2 > 0) { sum += pof2; count++; }
+                        if (!isNaN(pof3) && pof3 > 0) { sum += pof3; count++; }
+                        postAvg = count > 0 ? (sum / count) : NaN;
+                    }
+
+                    const hasPre = !isNaN(preAvg) && preAvg > 0;
+                    const hasPost = !isNaN(postAvg) && postAvg > 0;
+
+                    if (hasPre && hasPost) return Number(((preAvg + postAvg) / 2).toFixed(3));
+                    if (hasPre) return Number(preAvg.toFixed(3));
+                    if (hasPost) return Number(postAvg.toFixed(3));
+                    return 0;
+                };
+
                 // ── 유량 자체 계산 (kiwe_flow 의존성 제거) ──
                 const flowMap = new Map();
                 rawData.forEach(r => {
                     if (r.m_date && r.pump_no) {
-                        const preAvg = parseFloat(r.pre_flow_avg);
-                        const postAvg = parseFloat(r.post_flow_avg);
-                        
-                        if (!isNaN(preAvg) || !isNaN(postAvg)) {
-                            let totalAvg = 0;
-                            if (!isNaN(preAvg) && !isNaN(postAvg)) totalAvg = (preAvg + postAvg) / 2;
-                            else if (!isNaN(preAvg)) totalAvg = preAvg;
-                            else if (!isNaN(postAvg)) totalAvg = postAvg;
-
-                            // 하나의 펌프에 여러 행이 있을 수 있으므로, 이미 계산된 값이 있으면 덮어쓰기 (가장 마지막에 입력된 유효한 값 유지)
-                            flowMap.set(`${r.m_date}_${r.pump_no}`, Number(totalAvg.toFixed(3)));
+                        const avg = getRowFlowAvg(r);
+                        if (avg > 0) {
+                            flowMap.set(`${r.m_date}_${r.pump_no}`, avg);
                         }
                     }
                 });
