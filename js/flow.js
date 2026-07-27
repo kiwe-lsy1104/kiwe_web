@@ -194,7 +194,10 @@ async function fetchData() {
     const rawArrays = await Promise.all(
         tableList.map(async tn => {
             try {
-                let q = supabase.from(tn).select('m_date, pump_no, pre_flow_avg, post_flow_avg').not('pump_no', 'is', null);
+                // 상반기: pre_flow_1~3, post_flow_1~3 / 하반기: pre_flow_avg, post_flow_avg 두 코드 모두 가져올것
+                let q = supabase.from(tn)
+                    .select('m_date, pump_no, pre_flow_avg, post_flow_avg, pre_flow_1, pre_flow_2, pre_flow_3, post_flow_1, post_flow_2, post_flow_3')
+                    .not('pump_no', 'is', null);
                 if (startStr) q = q.gte('m_date', startStr);
                 if (endStr) q = q.lte('m_date', endStr);
                 if (pumpTerm) q = q.ilike('pump_no', `%${pumpTerm}%`);
@@ -206,14 +209,35 @@ async function fetchData() {
     const rawData = rawArrays.flat();
 
     // 3. Aggregate sampling data by m_date + pump_no (flow values from sampling take priority)
+    // 상반기(pre_flow_1~3) / 하반기(pre_flow_avg) 두 형식 모두 지원
+    const calcAvgFromRuns = (v1, v2, v3) => {
+        let sum = 0, cnt = 0;
+        const n1 = parseFloat(v1), n2 = parseFloat(v2), n3 = parseFloat(v3);
+        if (!isNaN(n1) && n1 > 0) { sum += n1; cnt++; }
+        if (!isNaN(n2) && n2 > 0) { sum += n2; cnt++; }
+        if (!isNaN(n3) && n3 > 0) { sum += n3; cnt++; }
+        return cnt > 0 ? sum / cnt : NaN;
+    };
+
     const samplingMap = new Map();
     rawData.forEach(r => {
-        const pre = parseFloat(r.pre_flow_avg);
-        const post = parseFloat(r.post_flow_avg);
-        const hasData = !isNaN(pre) || !isNaN(post);
+        let preAvg = parseFloat(r.pre_flow_avg);
+        let postAvg = parseFloat(r.post_flow_avg);
+
+        // 상반기와 같이 pre_flow_avg가 없는 경우 1~3회에서 평균 계산
+        if (isNaN(preAvg) || preAvg <= 0) {
+            const computed = calcAvgFromRuns(r.pre_flow_1, r.pre_flow_2, r.pre_flow_3);
+            if (!isNaN(computed)) preAvg = computed;
+        }
+        if (isNaN(postAvg) || postAvg <= 0) {
+            const computed = calcAvgFromRuns(r.post_flow_1, r.post_flow_2, r.post_flow_3);
+            if (!isNaN(computed)) postAvg = computed;
+        }
+
+        const hasData = !isNaN(preAvg) || !isNaN(postAvg);
         const key = `${r.m_date}_${r.pump_no}`;
         if (!samplingMap.has(key) || hasData) {
-            samplingMap.set(key, { ...r });
+            samplingMap.set(key, { ...r, pre_flow_avg: !isNaN(preAvg) ? preAvg : null, post_flow_avg: !isNaN(postAvg) ? postAvg : null });
         }
     });
 
