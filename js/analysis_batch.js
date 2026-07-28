@@ -80,65 +80,131 @@ function App() {
         setStats(null);
 
         try {
-            // 1. 시료채취 데이터 (D로 시작하는 중량/오일 분석용)
-            setLoadMsg('시료 데이터 조회 중...');
-            const { data: samplesRaw, error: sErr } = await supabase
-                .from(tableName)
-                .select('*')
-                .gte('m_date', startDate)
-                .lte('m_date', endDate);
+            // 1. 시료채취 데이터 전체 조회 (Supabase 1000건 기본 limit 해결을 위한 루프)
+            setLoadMsg('시료 데이터 전체 조회 중...');
+            let samplesRaw = [];
+            let page = 0;
+            const pageSize = 1000;
+            while (true) {
+                setLoadMsg(`시료 데이터 읽는 중... (${samplesRaw.length}건 수집됨)`);
+                const { data: chunk, error: sErr } = await supabase
+                    .from(tableName)
+                    .select('*')
+                    .gte('m_date', startDate)
+                    .lte('m_date', endDate)
+                    .order('m_date', { ascending: true })
+                    .range(page * pageSize, (page + 1) * pageSize - 1);
 
-            if (sErr) throw new Error(`시료 조회 오류: ${sErr.message}`);
-            if (!samplesRaw || samplesRaw.length === 0) {
+                if (sErr) throw new Error(`시료 조회 오류: ${sErr.message}`);
+                if (!chunk || chunk.length === 0) break;
+
+                samplesRaw.push(...chunk);
+                if (chunk.length < pageSize) break;
+                page++;
+            }
+
+            if (samplesRaw.length === 0) {
                 alert(`${year}년 ${halfLabel} 기간에 시료 데이터가 없습니다.`);
                 setHasData(false);
                 return;
             }
 
-            // 2. 유해인자 마스터 조회
-            setLoadMsg('유해인자 정보 조회 중...');
-            const commonNames = [...new Set(samplesRaw.map(s => s.common_name).filter(Boolean))];
+            // 2. kiwe_hazard 유해인자 마스터 전체 조회
+            setLoadMsg('유해인자 마스터 정보 조회 중...');
             const { data: hazardData } = await supabase
                 .from('kiwe_hazard')
-                .select('common_name, instrument_name, twa_mg')
-                .in('common_name', commonNames);
+                .select('*');
 
             const hazardMap = new Map((hazardData || []).map(h => [h.common_name, h]));
 
-            // 분류: 중량분석 / 오일분석
-            // 중량분석: kiwe_hazard.instrument_name = '중량분석'
-            // 오일분석: common_name에 '금속가공유' 포함
-            const weightSamples = samplesRaw.filter(s => {
-                const h = hazardMap.get(s.common_name);
-                return h && h.instrument_name === '중량분석';
-            });
-            const oilSamples = samplesRaw.filter(s =>
-                s.common_name && s.common_name.includes('금속가공유')
-            );
-
-            // 3. 중량/무게 데이터 조회 (weight_data + weight_blank_data)
-            setLoadMsg('중량 측정값 조회 중...');
-            const allIds = [...new Set([...weightSamples, ...oilSamples].map(s => s.sample_id))];
+            // 3. 중량/무게 입력 데이터 전체 조회 (weight_data & weight_blank_data)
+            setLoadMsg('저장된 중량/오일 분석 데이터 조회 중...');
             const wDataMap = new Map();
 
-            if (allIds.length > 0) {
-                const chunks = chunkArr(allIds, 500);
-                const [wResults, wbResults] = await Promise.all([
-                    Promise.all(chunks.map(ids =>
-                        supabase.from('weight_data').select('*').in('sample_id', ids)
-                    )),
-                    Promise.all(chunks.map(ids =>
-                        supabase.from('weight_blank_data').select('*').in('sample_id', ids)
-                    ))
-                ]);
-                wResults.flatMap(r => r.data || []).forEach(w => wDataMap.set(w.sample_id, w));
-                wbResults.flatMap(r => r.data || []).forEach(w => wDataMap.set(w.sample_id, w));
-            }
+            // weight_data & weight_blank_data에서 전체 가져오기
+            const fetchWeightTable = async (tName) => {
+                let list = [];
+                let p = 0;
+                while (true) {
+                    const { data: c, error: err } = await supabase
+                        .from(tName)
+                        .select('*')
+                        .range(p * pageSize, (p + 1) * pageSize - 1);
+                    if (err || !c || c.length === 0) break;
+                    list.push(...c);
+                    if (c.length < pageSize) break;
+                    p++;
+                }
+                return list;
+            };
 
-            // 4. 유량 데이터 조회
+            const [wResults, wbResults] = await Promise.all([
+                fetchWeightTable('weight_data'),
+                fetchWeightTable('weight_blank_data')
+            ]);
+
+            wResults.forEach(w => wDataMap.set(w.sample_id, { ...w, _table: 'weight_data' }));
+            wbResults.forEach(w => wDataMap.set(w.sample_id, { ...w, _table: 'weight_blank_data' }));
+
+            // 4. 분류 기준 정의
+            // 오일분석:
+            //  - common_name에 '금속가공유' 포함
+            //  - 또는 kiwe_hazard의 hazard_category / instrument_name 에 '오일' 포함
+            //  - 또는 weight_data / weight_blank_data의 hazard_category가 '오일분석'인 시료
+            const isOilSample = (s) => {
+                if (s.common_name && s.common_name.includes('금속가공유')) return true;
+                const h = hazardMap.get(s.common_name);
+                if (h) {
+                    if (h.instrument_name && h.instrument_name.includes('오일')) return true;
+                    if (h.hazard_category && h.hazard_category.includes('오일')) return true;
+                }
+                const wm = wDataMap.get(s.sample_id);
+                if (wm && wm.hazard_category === '오일분석') return true;
+                return false;
+            };
+
+            // 중량분석:
+            //  - 오일분석이 아니고,
+            //  - kiwe_hazard의 instrument_name === '중량분석' 이거나 hazard_category에 '중량' 포함
+            //  - 또는 common_name에 '분진', '후연', '목재', '면', '곡물', '용접', '석면', '유리' 포함
+            //  - 또는 sample_id가 'D'로 시작 (중량시료 채취기록대장 관례)
+            //  - 또는 weight_data / weight_blank_data에 등록된 시료 (hazard_category !== '오일분석')
+            const isWeightSample = (s) => {
+                if (isOilSample(s)) return false;
+
+                const h = hazardMap.get(s.common_name);
+                if (h) {
+                    if (h.instrument_name && (h.instrument_name.includes('중량') || h.instrument_name.includes('광산란'))) return true;
+                    if (h.hazard_category && h.hazard_category.includes('중량')) return true;
+                }
+
+                if (s.common_name && (
+                    s.common_name.includes('분진') ||
+                    s.common_name.includes('후연') ||
+                    s.common_name.includes('목재') ||
+                    s.common_name.includes('면분진') ||
+                    s.common_name.includes('곡물') ||
+                    s.common_name.includes('용접') ||
+                    s.common_name.includes('석면') ||
+                    s.common_name.includes('유리')
+                )) return true;
+
+                if (s.sample_id && s.sample_id.toUpperCase().startsWith('D')) return true;
+
+                const wm = wDataMap.get(s.sample_id);
+                if (wm && wm.hazard_category !== '오일분석') return true;
+
+                return false;
+            };
+
+            const weightSamples = samplesRaw.filter(isWeightSample);
+            const oilSamples    = samplesRaw.filter(isOilSample);
+
+            // 5. 유량 데이터 전체 조회 (kiwe_flow)
             setLoadMsg('유량 데이터 조회 중...');
             const allDates = [...new Set(samplesRaw.map(s => s.m_date).filter(Boolean))];
             const flowMap = new Map();
+
             if (allDates.length > 0) {
                 const dChunks = chunkArr(allDates, 200);
                 const fResults = await Promise.all(
@@ -153,7 +219,7 @@ function App() {
                         flowMap.set(`${f.m_date}_${f.pump_no}`, parseFloat(f.total_avg));
                 });
             }
-            // 시료 내 인라인 유량으로 덮어쓰기
+            // 시료 데이터 자체의 인라인 유량 값 반영
             samplesRaw.forEach(r => {
                 const avg = getRowFlowAvg(r);
                 if (avg > 0 && r.m_date && r.pump_no)
