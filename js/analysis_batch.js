@@ -237,9 +237,16 @@ function App() {
                     const isBlank = !!(s.worker_name && s.worker_name.includes('공시료'));
                     const hazardInfo = hazardMap.get(s.common_name) || {};
 
-                    // 무게: DB는 g 단위 저장
-                    const w1Vals = [wm.w1_1 || 0, wm.w1_2 || 0, wm.w1_3 || 0];
-                    const w2Vals = [wm.w2_1 || 0, wm.w2_2 || 0, wm.w2_3 || 0];
+                    // 1, 2, 3회치 무게 (g 단위)
+                    const w1_1 = wm.w1_1 || 0;
+                    const w1_2 = wm.w1_2 || 0;
+                    const w1_3 = wm.w1_3 || 0;
+                    const w2_1 = wm.w2_1 || 0;
+                    const w2_2 = wm.w2_2 || 0;
+                    const w2_3 = wm.w2_3 || 0;
+
+                    const w1Vals = [w1_1, w1_2, w1_3];
+                    const w2Vals = [w2_1, w2_2, w2_3];
                     const w1Valid = w1Vals.filter(v => v > 0);
                     const w2Valid = w2Vals.filter(v => v > 0);
                     const avg1 = w1Valid.length > 0 ? w1Valid.reduce((a, b) => a + b, 0) / w1Valid.length : 0; // g
@@ -251,6 +258,8 @@ function App() {
                         flow,
                         duration,
                         isBlank,
+                        w1_1, w1_2, w1_3,
+                        w2_1, w2_2, w2_3,
                         avg1,
                         avg2,
                         airVolume,
@@ -349,6 +358,13 @@ function App() {
         }
     };
 
+    // ── TLV 포맷 헬퍼 (정수는 정수로, 소수점은 소수점으로) ──
+    const formatTLV = (v) => {
+        if (v === null || v === undefined || isNaN(v) || v <= 0) return '';
+        const n = Number(v);
+        return Number.isInteger(n) ? n : parseFloat(n.toFixed(4));
+    };
+
     // ── Excel Export ───────────────────────────────────
     const downloadExcel = () => {
         const XLSX = window.XLSX;
@@ -362,11 +378,15 @@ function App() {
         const buildHeader = (isOil) => isOil
             ? ['측정일', '사업장명', '시료번호', '구분', '근로자명', '유해인자',
                '측정자', '분석자', '시작시간', '종료시간', '측정시간(분)',
-               '평균유량(L/min)', '채기량(L)', '추출전평균(g)', '추출후평균(g)',
+               '평균유량(L/min)', '채기량(L)',
+               '추출전(1회)', '추출전(2회)', '추출전(3회)', '추출전평균(g)',
+               '추출후(1회)', '추출후(2회)', '추출후(3회)', '추출후평균(g)',
                '공시료보정치(g)', '분석량(mg)', '회수율', '농도(mg/m³)', 'TLV(mg/m³)', '판정']
             : ['측정일', '사업장명', '시료번호', '구분', '근로자명', '유해인자',
                '측정자', '분석자', '시작시간', '종료시간', '측정시간(분)',
-               '평균유량(L/min)', '채기량(L)', '채취전평균(g)', '채취후평균(g)',
+               '평균유량(L/min)', '채기량(L)',
+               '채취전(1회)', '채취전(2회)', '채취전(3회)', '채취전평균(g)',
+               '채취후(1회)', '채취후(2회)', '채취후(3회)', '채취후평균(g)',
                '공시료보정치(g)', '분석량(mg)', '농도(mg/m³)', 'TLV(mg/m³)', '판정'];
 
         const buildRows = (rows, isOil) => rows.map(s => {
@@ -386,30 +406,44 @@ function App() {
                 s.duration || 0,
                 s.flow > 0 ? parseFloat(s.flow.toFixed(3)) : 0,
                 s.airVolume > 0 ? parseFloat(s.airVolume.toFixed(3)) : 0,
+
+                // 3회치 전 무게
+                s.w1_1 > 0 ? parseFloat(s.w1_1.toFixed(6)) : '',
+                s.w1_2 > 0 ? parseFloat(s.w1_2.toFixed(6)) : '',
+                s.w1_3 > 0 ? parseFloat(s.w1_3.toFixed(6)) : '',
                 s.avg1 > 0 ? parseFloat(s.avg1.toFixed(6)) : 0,
+
+                // 3회치 후 무게
+                s.w2_1 > 0 ? parseFloat(s.w2_1.toFixed(6)) : '',
+                s.w2_2 > 0 ? parseFloat(s.w2_2.toFixed(6)) : '',
+                s.w2_3 > 0 ? parseFloat(s.w2_3.toFixed(6)) : '',
                 s.avg2 > 0 ? parseFloat(s.avg2.toFixed(6)) : 0,
+
                 parseFloat((s.deltaB / 1000).toFixed(6)),
                 s.isBlank ? '' : parseFloat(s.analysisAmount.toFixed(6)),
             ];
+
+            const tlvFormatted = formatTLV(s.corrTLV);
+
             if (isOil) {
                 return [...base,
                     parseFloat((parseFloat(s.recovery_rate) || 1).toFixed(2)),
                     s.isBlank ? '' : parseFloat(s.conc.toFixed(6)),
-                    s.corrTLV > 0 ? parseFloat(s.corrTLV.toFixed(3)) : '',
+                    tlvFormatted,
                     judgment
                 ];
             } else {
                 return [...base,
                     s.isBlank ? '' : parseFloat(s.conc.toFixed(6)),
-                    s.corrTLV > 0 ? parseFloat(s.corrTLV.toFixed(3)) : '',
+                    tlvFormatted,
                     judgment
                 ];
             }
         });
 
         const colWidths = (isOil) => isOil
-            ? [12, 22, 16, 7, 12, 18, 8, 8, 8, 8, 10, 12, 10, 14, 14, 14, 12, 8, 12, 10, 8].map(w => ({ wch: w }))
-            : [12, 22, 16, 7, 12, 18, 8, 8, 8, 8, 10, 12, 10, 14, 14, 14, 12, 12, 10, 8].map(w => ({ wch: w }));
+            ? [12, 22, 16, 7, 12, 18, 8, 8, 8, 8, 10, 12, 10, 14, 14, 14, 14, 14, 14, 14, 14, 14, 12, 8, 12, 10, 8].map(w => ({ wch: w }))
+            : [12, 22, 16, 7, 12, 18, 8, 8, 8, 8, 10, 12, 10, 14, 14, 14, 14, 14, 14, 14, 14, 14, 12, 12, 10, 8].map(w => ({ wch: w }));
 
         const addSheet = (rows, isOil, sheetName) => {
             if (rows.length === 0) return;
@@ -592,8 +626,17 @@ function App() {
                                 e('th', null, '측정(분)'),
                                 e('th', null, '유량\n(L/min)'),
                                 e('th', null, '채기량(L)'),
-                                e('th', null, isOilTab ? '추출전(g)' : '채취전(g)'),
-                                e('th', null, isOilTab ? '추출후(g)' : '채취후(g)'),
+
+                                e('th', null, isOilTab ? '추출전(1)' : '채취전(1)'),
+                                e('th', null, isOilTab ? '추출전(2)' : '채취전(2)'),
+                                e('th', null, isOilTab ? '추출전(3)' : '채취전(3)'),
+                                e('th', null, isOilTab ? '추출전평균(g)' : '채취전평균(g)'),
+
+                                e('th', null, isOilTab ? '추출후(1)' : '채취후(1)'),
+                                e('th', null, isOilTab ? '추출후(2)' : '채취후(2)'),
+                                e('th', null, isOilTab ? '추출후(3)' : '채취후(3)'),
+                                e('th', null, isOilTab ? '추출후평균(g)' : '채취후평균(g)'),
+
                                 e('th', null, 'ΔB(g)'),
                                 e('th', null, '분석량\n(mg)'),
                                 ...(isOilTab ? [e('th', null, '회수율')] : []),
@@ -615,6 +658,8 @@ function App() {
                                     groupStart ? 'group-start' : '',
                                 ].filter(Boolean).join(' ');
 
+                                const tlvDisp = formatTLV(s.corrTLV);
+
                                 return e('tr', { key: `${s.sample_id}_${i}`, className: rowClass },
                                     e('td', null, s.m_date || '-'),
                                     e('td', { style: { textAlign: 'left', paddingLeft: '8px', maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis' } }, s.com_name || '-'),
@@ -629,8 +674,19 @@ function App() {
                                     e('td', null, s.duration > 0 ? s.duration : '-'),
                                     e('td', { style: { fontFamily: 'monospace' } }, s.flow > 0 ? fmt3(s.flow) : '-'),
                                     e('td', { style: { fontFamily: 'monospace' } }, s.airVolume > 0 ? fmt3(s.airVolume) : '-'),
-                                    e('td', { style: { fontFamily: 'monospace', color: '#94a3b8' } }, s.avg1 > 0 ? fmt6(s.avg1) : '-'),
-                                    e('td', { style: { fontFamily: 'monospace', color: '#94a3b8' } }, s.avg2 > 0 ? fmt6(s.avg2) : '-'),
+
+                                    // 1, 2, 3회치 전 무게
+                                    e('td', { style: { fontFamily: 'monospace', color: '#64748b' } }, s.w1_1 > 0 ? fmt6(s.w1_1) : '-'),
+                                    e('td', { style: { fontFamily: 'monospace', color: '#64748b' } }, s.w1_2 > 0 ? fmt6(s.w1_2) : '-'),
+                                    e('td', { style: { fontFamily: 'monospace', color: '#64748b' } }, s.w1_3 > 0 ? fmt6(s.w1_3) : '-'),
+                                    e('td', { style: { fontFamily: 'monospace', color: '#94a3b8', fontWeight: 700 } }, s.avg1 > 0 ? fmt6(s.avg1) : '-'),
+
+                                    // 1, 2, 3회치 후 무게
+                                    e('td', { style: { fontFamily: 'monospace', color: '#64748b' } }, s.w2_1 > 0 ? fmt6(s.w2_1) : '-'),
+                                    e('td', { style: { fontFamily: 'monospace', color: '#64748b' } }, s.w2_2 > 0 ? fmt6(s.w2_2) : '-'),
+                                    e('td', { style: { fontFamily: 'monospace', color: '#64748b' } }, s.w2_3 > 0 ? fmt6(s.w2_3) : '-'),
+                                    e('td', { style: { fontFamily: 'monospace', color: '#94a3b8', fontWeight: 700 } }, s.avg2 > 0 ? fmt6(s.avg2) : '-'),
+
                                     e('td', { style: { fontFamily: 'monospace', color: '#64748b' } }, fmt6(s.deltaB / 1000)),
                                     e('td', { style: { fontFamily: 'monospace', fontWeight: 700, color: s.isBlank ? '#475569' : '#e2e8f0' } }, s.isBlank ? '-' : fmt6(s.analysisAmount)),
                                     ...(isOilTab ? [e('td', { style: { fontFamily: 'monospace' } }, fmt3(parseFloat(s.recovery_rate) || 1))] : []),
@@ -641,7 +697,7 @@ function App() {
                                             color: s.isBlank ? '#374151' : s.exceed ? '#f87171' : '#34d399'
                                         }
                                     }, s.isBlank ? '-' : fmt6(s.conc)),
-                                    e('td', { style: { fontFamily: 'monospace', fontSize: '0.65rem', color: '#64748b' } }, s.corrTLV > 0 ? fmt3(s.corrTLV) : '-'),
+                                    e('td', { style: { fontFamily: 'monospace', fontSize: '0.75rem', color: '#94a3b8', fontWeight: 700 } }, tlvDisp !== '' ? tlvDisp : '-'),
                                     e('td', null,
                                         judgment === '초과'
                                             ? e('span', { style: { color: '#f87171', fontWeight: 900, fontSize: '0.72rem' } }, '초과')
