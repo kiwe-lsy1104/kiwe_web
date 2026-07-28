@@ -706,6 +706,165 @@ export function ExternalRequestManager({ supabase, sessionData }) {
         }
     };
 
+    // ── 전체 반기 외부의뢰 상세 엑셀 일괄 다운로드 ──
+    const downloadAllHistoryExcel = async () => {
+        if (!historyData || historyData.length === 0) {
+            return alert('조회된 외부의뢰 내역이 없습니다. 먼저 내역을 조회하세요.');
+        }
+
+        try {
+            setHistoryLoading(true);
+            const requestIds = historyData.map(r => r.id);
+            const requestMap = new Map(historyData.map(r => [r.id, r]));
+
+            // 1. 해당 의뢰건들의 모든 시료 아이템 조회 (500개씩 청크 처리)
+            const reqChunks = chunkArr(requestIds, 300);
+            const itemResults = await Promise.all(
+                reqChunks.map(ids =>
+                    supabase.from('kiwe_request_items').select('request_id, sample_id').in('request_id', ids)
+                )
+            );
+            const allItems = itemResults.flatMap(r => r.data || []);
+            if (allItems.length === 0) return alert('의뢰에 포함된 시료 정보가 없습니다.');
+
+            const sampleToReqMap = new Map();
+            allItems.forEach(item => {
+                sampleToReqMap.set(item.sample_id, requestMap.get(item.request_id));
+            });
+
+            const allSampleIds = [...new Set(allItems.map(i => i.sample_id))];
+
+            // 2. 시료 원본 데이터 조회 (해당 연도 상/하반기 파티션)
+            const year = historyYear;
+            const tables = [`kiwe_sampling_${year}_1`, `kiwe_sampling_${year}_2`].filter(t => t);
+
+            const sampleChunks = chunkArr(allSampleIds, 300);
+            const fetchedArrays = await Promise.all(
+                tables.flatMap(tn =>
+                    sampleChunks.map(ids =>
+                        supabase.from(tn).select('*').in('sample_id', ids)
+                    )
+                )
+            );
+            const mainSamples = fetchedArrays.flatMap(r => r.data || []);
+            if (mainSamples.length === 0) return alert('시료 원본 데이터를 찾을 수 없습니다.');
+
+            // 3. 공시료 조회를 위해 해당 일자의 모든 데이터 가져오기
+            const uniqueDates = Array.from(new Set(mainSamples.map(s => s.m_date))).filter(Boolean);
+            const dateChunks = chunkArr(uniqueDates, 200);
+            const allSamplesArrays = await Promise.all(
+                tables.flatMap(tn =>
+                    dateChunks.map(dates =>
+                        supabase.from(tn).select('*').in('m_date', dates)
+                    )
+                )
+            );
+            const allSamples = allSamplesArrays.flatMap(r => r.data || []);
+
+            // 4. 공시료 맵 생성
+            const blankMap = new Map();
+            allSamples.forEach(r => {
+                const isBlank = (r.worker_name?.includes('공시료')) || (r.sample_id?.startsWith('DB') || r.sample_id?.startsWith('SB'));
+                if (isBlank) {
+                    const hazards = (r.common_name || '').split(/[/(]/).filter(Boolean);
+                    hazards.forEach(hSub => {
+                        const gk = getMappingKey(r.com_name, r.m_date, hSub.trim());
+                        if (!blankMap.has(gk)) blankMap.set(gk, []);
+                        if (!blankMap.get(gk).includes(r.sample_id)) {
+                            blankMap.get(gk).push(r.sample_id);
+                        }
+                    });
+                }
+            });
+
+            // 5. 유해인자 및 유량 정보 보완
+            const [flowRes, hazardRes] = await Promise.all([
+                supabase.from('kiwe_flow').select('m_date, pump_no, total_avg').in('m_date', uniqueDates),
+                supabase.from('kiwe_hazard').select('*')
+            ]);
+
+            const hazardMap = new Map((hazardRes.data || []).map(h => [h.common_name, h]));
+            const flowMap = new Map();
+            (flowRes.data || []).forEach(f => {
+                if (f.m_date && f.pump_no && parseFloat(f.total_avg) > 0) {
+                    flowMap.set(`${f.m_date}_${f.pump_no}`, parseFloat(f.total_avg));
+                }
+            });
+            mainSamples.forEach(r => {
+                if (r.m_date && r.pump_no) {
+                    const avg = getRowFlowAvg(r);
+                    if (avg > 0) flowMap.set(`${r.m_date}_${r.pump_no}`, avg);
+                }
+            });
+
+            // 6. 엑셀 행 가공
+            const XLSX = window.XLSX;
+            if (!XLSX) return alert('SheetJS 라이브러리가 로드되지 않았습니다.');
+
+            const headers = [
+                '의뢰일자', '분석기관', '발신공문번호', '상태', '결과수신일',
+                '시료번호', '공시료번호', '측정일자', '사업장명', '단위작업장소',
+                '근로자명', '유해인자', '포집시간(분)', '평균유량(L/min)', '채기량(L)',
+                '채취방법', '채취매체', '분석구분', '의뢰자', '비고'
+            ];
+
+            const excelRows = mainSamples.map(r => {
+                const req = sampleToReqMap.get(r.sample_id) || {};
+                const searchKey = r.common_name ? r.common_name.split('/')[0].trim() : '';
+                const hazardInfo = hazardMap.get(searchKey) || {};
+                const minutes = calculateMinutes(r.start_time, r.end_time, r.lunch_time);
+                const avgFlow = getRowFlowAvg(r) || flowMap.get(`${r.m_date}_${r.pump_no}`) || 0;
+                const gk = getMappingKey(r.com_name, r.m_date, r.common_name);
+                const blankNo = (blankMap.get(gk) || []).join('/');
+
+                return [
+                    req.request_date || '',
+                    req.kiwe_partners?.partner_name || '',
+                    req.document_no || '',
+                    req.status || '',
+                    req.receive_date || '',
+                    r.sample_id || '',
+                    blankNo || '',
+                    r.m_date || '',
+                    r.com_name || '',
+                    r.work_process || '',
+                    r.worker_name || '',
+                    r.common_name || '',
+                    minutes > 0 ? minutes : '',
+                    avgFlow > 0 ? parseFloat(avgFlow.toFixed(3)) : '-',
+                    (minutes > 0 && avgFlow > 0) ? parseFloat((minutes * avgFlow).toFixed(3)) : '-',
+                    hazardInfo.sampling || r.sampling || '',
+                    hazardInfo.sampling_media || r.sampling_media || '',
+                    r.is_self || '',
+                    req.created_by || '',
+                    r.remarks || ''
+                ];
+            });
+
+            // 정렬: 의뢰일자 → 사업장명 → 시료번호
+            excelRows.sort((a, b) => {
+                const d = a[0].localeCompare(b[0]); if (d) return d;
+                const c = a[8].localeCompare(b[8]); if (c) return c;
+                return a[5].localeCompare(b[5]);
+            });
+
+            const wb = XLSX.utils.book_new();
+            const ws = XLSX.utils.aoa_to_sheet([headers, ...excelRows]);
+            ws['!cols'] = [12, 18, 18, 10, 12, 14, 14, 12, 20, 16, 12, 18, 10, 12, 10, 16, 16, 10, 10, 16].map(w => ({ wch: w }));
+            XLSX.utils.book_append_sheet(wb, ws, '외부의뢰상세내역');
+
+            const halfLabel = historyHalf === 1 ? '상반기' : '하반기';
+            const filename = `KiWE_외부의뢰_상세내역_${historyYear}년_${halfLabel}_${new Date().toISOString().split('T')[0]}.xlsx`;
+            XLSX.writeFile(wb, filename);
+
+        } catch (err) {
+            console.error(err);
+            alert('반기 외부의뢰 엑셀 생성 실패: ' + err.message);
+        } finally {
+            setHistoryLoading(false);
+        }
+    };
+
     const updateRequest = async (id, field, value) => {
         try {
             let finalValue = value;
@@ -1138,6 +1297,14 @@ export function ExternalRequestManager({ supabase, sessionData }) {
                 },
                     e(historySortOrder === 'desc' ? SortDesc : SortAsc, { size: 16, className: 'text-emerald-600' }),
                     `정렬: ${historySortOrder === 'desc' ? '최신순' : '과거순'}`
+                ),
+                e('button', {
+                    onClick: downloadAllHistoryExcel,
+                    disabled: historyLoading || historyData.length === 0,
+                    className: 'h-[38px] px-5 ml-auto bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-black rounded-xl shadow-md hover:from-emerald-700 hover:to-teal-700 flex items-center gap-2 text-xs transition-all active:scale-95 disabled:opacity-50'
+                },
+                    e(Download, { size: 16 }),
+                    '📥 반기 전체 상세 엑셀 다운로드'
                 )
             ),
 
