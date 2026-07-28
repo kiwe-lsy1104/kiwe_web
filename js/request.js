@@ -8,6 +8,9 @@ import {
 const ROW_HEIGHT = 40; // px
 const BUFFER = 10;     // 상하 버퍼 행 수
 
+const chunkArr = (arr, size) =>
+    Array.from({ length: Math.ceil(arr.length / size) }, (_, i) => arr.slice(i * size, i * size + size));
+
 const DB_SETTINGS_KEY = 'external_request_column_config';
 
 const ALL_COLUMNS = [
