@@ -205,9 +205,9 @@ async function fetchAllFromTable(table, selectFields, start, end, comFilter = nu
 }
 
 // 컬럼 너비 관리
-const COL_KEY = 'KIWE_SAMPLE_PRINT_COL_WIDTHS_V3';
+const COL_KEY = 'KIWE_SAMPLE_PRINT_COL_WIDTHS_V4';
 // No, 단위작업공정, 근로자명, 시료번호, 유해인자, 펌프/소음기, 전유량, 후유량, 시작, 종료, 비고
-const DEFAULT_WIDTHS = [26, 80, 58, 70, 90, 52, 80, 80, 52, 52, 80];
+const DEFAULT_WIDTHS = [26, 80, 58, 70, 90, 52, 60, 60, 52, 52, 120];
 let colWidths = [...DEFAULT_WIDTHS];
 
 function loadColWidths() {
@@ -683,8 +683,8 @@ function renderBlock(g, isFirstGroup) {
                         <th>시료번호</th>
                         <th>유해인자</th>
                         <th>펌프/소음기</th>
-                        <th style="font-size:7.5pt; letter-spacing:-0.5px;">전유량 1,2,3차 (L/min)</th>
-                        <th style="font-size:7.5pt; letter-spacing:-0.5px;">후유량 1,2,3차 (L/min)</th>
+                        <th style="font-size:7.5pt; letter-spacing:-0.5px;">전유량(평균유량)</th>
+                        <th style="font-size:7.5pt; letter-spacing:-0.5px;">후유량(평균유량)</th>
                         <th>시작시간</th>
                         <th>종료시간</th>
                         <th>비고</th>
@@ -831,7 +831,7 @@ async function downloadExcel() {
         const wsData = [];
         
         // 헤더 정의
-        const headers = ["No", "단위작업공정", "근로자명", "시료번호", "유해인자", "펌프/소음기", "전유량 1,2,3차 (L/min)", "후유량 1,2,3차 (L/min)", "시작시간", "종료시간", "비고"];
+        const headers = ["No", "단위작업공정", "근로자명", "시료번호", "유해인자", "펌프/소음기", "전유량(평균유량)", "후유량(평균유량)", "시작시간", "종료시간", "비고"];
         
         groups.forEach(g => {
             // 그룹 타이틀 행
