@@ -201,8 +201,17 @@
                     const targetCode = getOfficeCode(filterOffice);
                     data = data.filter(r => getOfficeCode(r.office_name) === targetCode);
                 }
+                if (filterMonth !== 'all') {
+                    data = data.filter(r => r.end_date && new Date(r.end_date).getMonth() + 1 === parseInt(filterMonth));
+                } else if (filterHalf !== 'all') {
+                    data = data.filter(r => {
+                        if (!r.end_date) return false;
+                        const m = new Date(r.end_date).getMonth() + 1;
+                        return filterHalf === '1' ? m <= 6 : m > 6;
+                    });
+                }
                 return data;
-            }, [records, filterYear, filterOffice]);
+            }, [records, filterYear, filterOffice, filterMonth, filterHalf]);
 
             const stats = useMemo(() => {
                 return statsBaseData.reduce((acc, r) => {
@@ -212,7 +221,7 @@
                     acc.billed += r.billing_date ? amt : 0;
                     acc.unbilled += !r.billing_date ? amt : 0;
                     acc.unpaid += (r.billing_date && !r.deposit_date) ? amt : 0;
-                    acc.noReport += !r.report_date ? 1 : 0;
+                    acc.noReport += (!r.report_date && r.work_type === '측정') ? 1 : 0;
                     acc.totalSubsidy += r.is_funded === '대상' ? subsidy : 0;
                     acc.unpaidSubsidy += (r.is_funded === '대상' && !r.subsidy_date) ? subsidy : 0;
                     acc.totalSales += amt + (r.is_funded === '대상' ? subsidy : 0);
@@ -228,17 +237,8 @@
                     const normTerm = normalizeForSearch(search);
                     data = data.filter(r => normalizeForSearch(r.com_name).includes(normTerm));
                 }
-                if (filterMonth !== 'all') {
-                    data = data.filter(r => r.end_date && new Date(r.end_date).getMonth() + 1 === parseInt(filterMonth));
-                } else if (filterHalf !== 'all') {
-                    data = data.filter(r => {
-                        if (!r.end_date) return false;
-                        const m = new Date(r.end_date).getMonth() + 1;
-                        return filterHalf === '1' ? m <= 6 : m > 6;
-                    });
-                }
                 return data;
-            }, [statsBaseData, search, filterMonth, filterHalf]);
+            }, [statsBaseData, search]);
 
             const openModal = (type) => {
                 let items = [];
@@ -263,7 +263,7 @@
                     items = enrich(statsBaseData.filter(r => r.billing_date && !r.deposit_date));
                     title = '사업장 미수금 목록';
                 } else if (type === 'noReport') {
-                    items = enrich(statsBaseData.filter(r => !r.report_date));
+                    items = enrich(statsBaseData.filter(r => !r.report_date && r.work_type === '측정'));
                     title = '전산미보고 목록';
                 } else if (type === 'unpaidSubsidy') {
                     items = enrich(statsBaseData.filter(r => r.is_funded === '대상' && !r.subsidy_date));
