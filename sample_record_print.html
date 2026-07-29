@@ -205,9 +205,9 @@ async function fetchAllFromTable(table, selectFields, start, end, comFilter = nu
 }
 
 // 컬럼 너비 관리
-const COL_KEY = 'KIWE_SAMPLE_PRINT_COL_WIDTHS_V2';
-// No, 단위작업공정, 근로자명, 시료번호, 유해인자, 펌프/소음기, 유량, 시작, 종료, 비고
-const DEFAULT_WIDTHS = [26, 80, 58, 70, 90, 52, 160, 52, 52, 80];
+const COL_KEY = 'KIWE_SAMPLE_PRINT_COL_WIDTHS_V3';
+// No, 단위작업공정, 근로자명, 시료번호, 유해인자, 펌프/소음기, 전유량, 후유량, 시작, 종료, 비고
+const DEFAULT_WIDTHS = [26, 80, 58, 70, 90, 52, 80, 80, 52, 52, 80];
 let colWidths = [...DEFAULT_WIDTHS];
 
 function loadColWidths() {
@@ -255,8 +255,10 @@ function getSampleType(sid) {
     const id = String(sid).toUpperCase();
     if (id.startsWith('SB')) return 'SB';
     if (id.startsWith('DB')) return 'DB';
+    if (id.startsWith('RB')) return 'RB';
     if (id.startsWith('S')) return 'S';
     if (id.startsWith('D')) return 'D';
+    if (id.startsWith('R')) return 'R';
     return 'other';
 }
 function getSidClass(t) { return { S: 'sid-s', D: 'sid-d', SB: 'sid-sb', DB: 'sid-db' }[t] || ''; }
@@ -367,9 +369,9 @@ async function buildPrint() {
         // 공시료 필터 (일반 시료만 적용)
         let filteredSamples = samplingSamples;
         if (blankMode === 'exclude') {
-            filteredSamples = samplingSamples.filter(s => { const t = getSampleType(s.sample_id); return t === 'S' || t === 'D'; });
+            filteredSamples = samplingSamples.filter(s => { const t = getSampleType(s.sample_id); return t !== 'SB' && t !== 'DB' && t !== 'RB'; });
         } else if (blankMode === 'only') {
-            filteredSamples = samplingSamples.filter(s => { const t = getSampleType(s.sample_id); return t === 'SB' || t === 'DB'; });
+            filteredSamples = samplingSamples.filter(s => { const t = getSampleType(s.sample_id); return t === 'SB' || t === 'DB' || t === 'RB'; });
         }
 
         // 2. 소음 데이터 통합 (이제 소음대장 연동 없이 시료채취대장의 소음 데이터만 사용)
@@ -634,6 +636,7 @@ function renderBlock(g, isFirstGroup) {
                     <td>${hazard}</td>
                     <td style="text-align:center">${pump}</td>
                     <td></td>
+                    <td></td>
                     <td style="text-align:center">${timeShort(row.start_time)}</td>
                     <td style="text-align:center">${timeShort(row.end_time)}</td>
                     ${isFirst_ ? `<td rowspan="${rows.length}"></td>` : ''}
@@ -680,7 +683,8 @@ function renderBlock(g, isFirstGroup) {
                         <th>시료번호</th>
                         <th>유해인자</th>
                         <th>펌프/소음기</th>
-                        <th style="font-size:7.5pt;">유량 1차      2차      3차 (L/min)</th>
+                        <th style="font-size:7.5pt; letter-spacing:-0.5px;">전유량 1,2,3차 (L/min)</th>
+                        <th style="font-size:7.5pt; letter-spacing:-0.5px;">후유량 1,2,3차 (L/min)</th>
                         <th>시작시간</th>
                         <th>종료시간</th>
                         <th>비고</th>
@@ -827,7 +831,7 @@ async function downloadExcel() {
         const wsData = [];
         
         // 헤더 정의
-        const headers = ["No", "단위작업공정", "근로자명", "시료번호", "유해인자", "펌프/소음기", "시작시간", "종료시간", "비고"];
+        const headers = ["No", "단위작업공정", "근로자명", "시료번호", "유해인자", "펌프/소음기", "전유량 1,2,3차 (L/min)", "후유량 1,2,3차 (L/min)", "시작시간", "종료시간", "비고"];
         
         groups.forEach(g => {
             // 그룹 타이틀 행
@@ -850,6 +854,8 @@ async function downloadExcel() {
                         sid,
                         hazard,
                         pump,
+                        "", // 전유량
+                        "", // 후유량
                         timeShort(row.start_time),
                         timeShort(row.end_time),
                         "" // 비고 (데이터가 테이블에는 없으므로 비움)

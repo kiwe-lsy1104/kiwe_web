@@ -136,6 +136,7 @@
                 const term = search.toLowerCase();
                 return hazards.filter(h =>
                     (h.common_name || '').toLowerCase().includes(term) ||
+                    (h.legal_name || '').toLowerCase().includes(term) ||
                     (h.cas_no || '').toLowerCase().includes(term) ||
                     (h.synonyms || '').toLowerCase().includes(term)
                 );
