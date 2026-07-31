@@ -608,19 +608,43 @@
                         flowRecs = fData || [];
                     } catch { }
                 }
+
+                // ── 완전 일치 맵 ──
                 const flowObjectMap = new Map();
                 flowRecs.forEach(f => {
                     if (f.m_date && f.pump_no) {
-                        flowObjectMap.set(`${f.m_date}_${f.pump_no}`, f);
+                        flowObjectMap.set(`${f.m_date}_${String(f.pump_no).trim()}`, f);
                     }
                 });
 
+                // ── 기본 펌프번호(숫자)별 파생 레코드 목록 맵 ──
+                // 예: "2026-01-15_18" → [kiwe_flow 행(18), kiwe_flow 행(18-1), kiwe_flow 행(18-2)]
+                // pump_no "18", "18-1", "18-2" 모두 기본번호 "18" 로 그룹핑
+                const flowGroupMap = new Map();
+                flowRecs.forEach(f => {
+                    if (f.m_date && f.pump_no) {
+                        const basePump = String(f.pump_no).trim().split('-')[0].trim();
+                        const groupKey = `${f.m_date}_${basePump}`;
+                        if (!flowGroupMap.has(groupKey)) flowGroupMap.set(groupKey, []);
+                        flowGroupMap.get(groupKey).push(f);
+                    }
+                });
+                // 그룹 내 pump_no 오름차순 정렬 ("18" < "18-1" < "18-2")
+                flowGroupMap.forEach(list => {
+                    list.sort((a, b) => String(a.pump_no).localeCompare(String(b.pump_no), undefined, { numeric: true, sensitivity: 'base' }));
+                });
+
+                // ── 날짜+기본펌프별 시료 row 배정 카운터 ──
+                // 완전 일치가 없을 때 파생 레코드를 순서대로 배정하기 위한 인덱스
+                const flowGroupAssignCounter = new Map();
+
+                // ── 시료대장의 날짜+펌프별 avg 맵 (fallback용) ──
                 const flowMap = new Map();
                 rawData.forEach(r => {
                     if (r.m_date && r.pump_no) {
                         const avg = getRowFlowAvg(r);
                         if (avg > 0) {
-                            flowMap.set(`${r.m_date}_${r.pump_no}`, avg);
+                            flowMap.set(`${r.m_date}_${String(r.pump_no).trim()}`, avg);
                         }
                     }
                 });
@@ -677,7 +701,26 @@
                     .map(row => {
                         const searchKey = row.common_name ? row.common_name.split('/')[0].trim() : '';
                         const hazardInfo = hazardMap.get(searchKey) || {};
-                        const fInfo = flowObjectMap.get(`${row.m_date}_${row.pump_no}`) || {};
+
+                        // ── pump_no 기반 유량보정 레코드 조회 ──
+                        // 1단계: 완전 일치 (예: 시료 pump_no "18-1" → kiwe_flow "18-1")
+                        const sampPumpStr = String(row.pump_no || '').trim();
+                        let fInfo = flowObjectMap.get(`${row.m_date}_${sampPumpStr}`) || null;
+
+                        // 2단계: 완전 일치 실패 시, 기본 펌프번호(숫자부분)로 그룹 조회하여 순서대로 배정
+                        // 예: 시료 pump_no "18" → kiwe_flow에 "18", "18-1", "18-2" → 같은 날+사업장 내 등장순 배정
+                        if (!fInfo) {
+                            const basePump = sampPumpStr.split('-')[0].trim();
+                            const groupKey = `${row.m_date}_${basePump}`;
+                            const groupList = flowGroupMap.get(groupKey);
+                            if (groupList && groupList.length > 0) {
+                                const assignKey = `${row.m_date}_${sampPumpStr}`;
+                                const idx = flowGroupAssignCounter.get(assignKey) || 0;
+                                fInfo = groupList[idx % groupList.length];
+                                flowGroupAssignCounter.set(assignKey, idx + 1);
+                            }
+                        }
+                        if (!fInfo) fInfo = {};
 
                         // 시료테이블 값이 0이거나 없으면 kiwe_flow 값으로 fallback
                         // (??는 null/undefined만 처리, 0은 처리 안됨 → 명시적 체크 필요)
