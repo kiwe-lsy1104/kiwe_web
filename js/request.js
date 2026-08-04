@@ -752,17 +752,36 @@ export function ExternalRequestManager({ supabase, sessionData }) {
             const mainSamples = fetchedArrays.flatMap(r => r.data || []);
             if (mainSamples.length === 0) return alert('시료 원본 데이터를 찾을 수 없습니다.');
 
-            // 3. 공시료 조회를 위해 해당 일자의 모든 데이터 가져오기
+            // 3. 공시료 조회를 위해 해당 일자의 모든 데이터 가져오기 (Supabase 1000건 제한 우회를 위한 페이징 처리)
             const uniqueDates = Array.from(new Set(mainSamples.map(s => s.m_date))).filter(Boolean);
-            const dateChunks = chunkArr(uniqueDates, 200);
+            const dateChunks = chunkArr(uniqueDates, 100);
             const allSamplesArrays = await Promise.all(
                 tables.flatMap(tn =>
-                    dateChunks.map(dates =>
-                        supabase.from(tn).select('*').in('m_date', dates)
-                    )
+                    dateChunks.map(async dates => {
+                        let chunkResults = [];
+                        let from = 0;
+                        const limit = 1000;
+                        let hasMore = true;
+                        while (hasMore) {
+                            const { data, error } = await supabase
+                                .from(tn)
+                                .select('*')
+                                .in('m_date', dates)
+                                .range(from, from + limit - 1);
+                            if (error) throw error;
+                            if (data && data.length > 0) {
+                                chunkResults = chunkResults.concat(data);
+                                if (data.length < limit) hasMore = false;
+                                else from += limit;
+                            } else {
+                                hasMore = false;
+                            }
+                        }
+                        return chunkResults;
+                    })
                 )
             );
-            const allSamples = allSamplesArrays.flatMap(r => r.data || []);
+            const allSamples = allSamplesArrays.flat();
 
             // 4. 공시료 맵 생성
             const blankMap = new Map();
@@ -780,11 +799,34 @@ export function ExternalRequestManager({ supabase, sessionData }) {
                 }
             });
 
-            // 5. 유해인자 및 유량 정보 보완
-            const [flowRes, hazardRes] = await Promise.all([
-                supabase.from('kiwe_flow').select('m_date, pump_no, total_avg').in('m_date', uniqueDates),
-                supabase.from('kiwe_hazard').select('*')
-            ]);
+            // 5. 유해인자 및 유량 정보 보완 (유량 정보도 1000건 제한 우회를 위해 페이징 처리)
+            let flowData = [];
+            const flowDateChunks = chunkArr(uniqueDates, 100);
+            for (const chunk of flowDateChunks) {
+                let from = 0;
+                const limit = 1000;
+                let hasMore = true;
+                while (hasMore) {
+                    const { data, error } = await supabase
+                        .from('kiwe_flow')
+                        .select('m_date, pump_no, total_avg')
+                        .in('m_date', chunk)
+                        .range(from, from + limit - 1);
+                    if (error) throw error;
+                    if (data && data.length > 0) {
+                        flowData = flowData.concat(data);
+                        if (data.length < limit) hasMore = false;
+                        else from += limit;
+                    } else {
+                        hasMore = false;
+                    }
+                }
+            }
+
+            const { data: hazardData, error: hazardErr } = await supabase.from('kiwe_hazard').select('*');
+            if (hazardErr) throw hazardErr;
+            const hazardRes = { data: hazardData };
+            const flowRes = { data: flowData };
 
             const hazardMap = new Map((hazardRes.data || []).map(h => [h.common_name, h]));
             const flowMap = new Map();
