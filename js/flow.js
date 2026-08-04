@@ -195,9 +195,11 @@ async function fetchData() {
         tableList.map(async tn => {
             try {
                 // 상반기: pre_flow_1~3, post_flow_1~3 / 하반기: pre_flow_avg, post_flow_avg 두 코드 모두 가져올것
+                // ★ 제안2: 소음(유량 없는 유해인자) 제외 — common_name에 '소음'이 포함된 행 필터
                 let q = supabase.from(tn)
-                    .select('m_date, pump_no, pre_flow_avg, post_flow_avg, pre_flow_1, pre_flow_2, pre_flow_3, post_flow_1, post_flow_2, post_flow_3')
-                    .not('pump_no', 'is', null);
+                    .select('m_date, pump_no, common_name, measured_by, pre_flow_avg, post_flow_avg, pre_flow_1, pre_flow_2, pre_flow_3, post_flow_1, post_flow_2, post_flow_3')
+                    .not('pump_no', 'is', null)
+                    .not('common_name', 'ilike', '%소음%'); // ★ 소음 제외
                 if (startStr) q = q.gte('m_date', startStr);
                 if (endStr) q = q.lte('m_date', endStr);
                 if (pumpTerm) q = q.ilike('pump_no', `%${pumpTerm}%`);
@@ -218,6 +220,15 @@ async function fetchData() {
         if (!isNaN(n3) && n3 > 0) { sum += n3; cnt++; }
         return cnt > 0 ? sum / cnt : NaN;
     };
+
+    // ★ 제안1: m_date+pump_no 기준으로 measured_by(측정자)도 집계 (보정자 fallback용)
+    const measuredByMap = new Map();
+    rawData.forEach(r => {
+        const key = `${r.m_date}_${r.pump_no}`;
+        if (r.measured_by && !measuredByMap.has(key)) {
+            measuredByMap.set(key, r.measured_by);
+        }
+    });
 
     const samplingMap = new Map();
     rawData.forEach(r => {
@@ -250,16 +261,21 @@ async function fetchData() {
         const key = `${f.m_date}_${f.pump_no}`;
         if (finalMap.has(key)) {
             const ext = finalMap.get(key);
+            // ★ 제안1: 보정자(calibrator_person)가 kiwe_flow에 없으면 측정자(measured_by)로 자동 대체
+            const resolvedCalibratorPerson = f.calibrator_person || measuredByMap.get(key) || ext.measured_by || null;
             // 시료대장의 유량값이 우선, kiwe_flow의 보정 메타데이터만 덮어씀
             finalMap.set(key, {
                 ...f, ...ext,
-                calibrator_no: f.calibrator_no, calibrator_person: f.calibrator_person,
+                calibrator_no: f.calibrator_no,
+                calibrator_person: resolvedCalibratorPerson,
                 pre_cal_date: f.pre_cal_date, post_cal_date: f.post_cal_date,
                 flow_id: f.flow_id
             });
         } else {
             // 시료대장에 없는 펌프지만 유량보정대장에는 있는 경우 (과거 데이터 등)
-            finalMap.set(key, f);
+            // ★ 제안1: 이 경우에도 calibrator_person 없으면 측정자로 fallback
+            const resolvedCalibratorPerson = f.calibrator_person || measuredByMap.get(key) || null;
+            finalMap.set(key, { ...f, calibrator_person: resolvedCalibratorPerson });
         }
     });
 

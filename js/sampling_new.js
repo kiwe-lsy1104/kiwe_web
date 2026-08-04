@@ -447,9 +447,20 @@ async function loadGridDataNew(hot, supabase, startDate, endDate, comName, user,
             const searchKey = d.common_name ? d.common_name.split('/')[0].trim() : '';
             const hazardInfo = hazardsMap[searchKey] || {};
             const isBlank = d.worker_name && d.worker_name.includes('공시료');
+            // ★ 제안3: DB에 값이 있으면 그것을 우선, null/undefined인 경우만 hazardInfo 값으로 채움
+            // (null이 hazardInfo 값을 덮어쓰지 않도록 명시적으로 병합)
+            const merged = { ...hazardInfo, ...d };
+            // sampling_media, sampling, storage, instrument_name: DB에 저장된 값이 있으면 우선, 없으면 hazardInfo
+            const hazardFallbackFields = ['sampling_media', 'sampling', 'storage', 'instrument_name', 'hazard_category', 'is_self'];
+            hazardFallbackFields.forEach(field => {
+                if (merged[field] === null || merged[field] === undefined || merged[field] === '') {
+                    if (hazardInfo[field] !== null && hazardInfo[field] !== undefined && hazardInfo[field] !== '') {
+                        merged[field] = hazardInfo[field];
+                    }
+                }
+            });
             return {
-                ...hazardInfo,
-                ...d,
+                ...merged,
                 start_time: formatTimeHHMM(d.start_time),
                 end_time: formatTimeHHMM(d.end_time),
                 condition: d.condition || d.sample_state || '양호',
@@ -1292,7 +1303,9 @@ function App() {
                         'analyst', 'measured_by', 'received_by', 'sample_id', 'condition',
                         'received_date', 'status', 'completed_at', 'instrument_name', 'hazard_category',
                         'remarks', 'input_seq',
-                        'pre_flow_avg', 'post_flow_avg'
+                        'pre_flow_avg', 'post_flow_avg',
+                        // ★ 제안3: 채취매체/채취방법/보관방법/분석구분 컬럼도 DB에 저장
+                        'sampling_media', 'sampling', 'storage', 'is_self'
                     ];
                     return data.map(item => {
                         const filtered = {};

@@ -319,14 +319,25 @@ export function AnalysisExtraction({
                     const avgFlow = getRowFlowAvg(row) || flowMap.get(`${row.m_date}_${row.pump_no}`) || 0;
                     const airVol = (mins * avgFlow).toFixed(3);
 
-                    // 분석자 결정: is_self 기반
+                    // ★ 제안3: null/undefined가 hazardInfo 값을 덮어쓰지 않도록 명시적 merge
+                    const mergedRow = { ...hazardInfo, ...row };
+                    const hazardFallbackFields = ['sampling_media', 'sampling', 'storage', 'instrument_name', 'hazard_category', 'is_self'];
+                    hazardFallbackFields.forEach(field => {
+                        if (mergedRow[field] === null || mergedRow[field] === undefined || mergedRow[field] === '') {
+                            if (hazardInfo[field] !== null && hazardInfo[field] !== undefined && hazardInfo[field] !== '') {
+                                mergedRow[field] = hazardInfo[field];
+                            }
+                        }
+                    });
+
+                    // 분석자 결정: row.is_self 또는 hazardInfo.is_self 기준
+                    const effectiveIsSelf = mergedRow.is_self;
                     let analyzer = '-';
-                    if (hazardInfo.is_self === '자체분석') analyzer = defaultAnalyst;
-                    else if (hazardInfo.is_self && hazardInfo.is_self !== '자체분석') analyzer = hazardInfo.is_self;
+                    if (effectiveIsSelf === '자체분석') analyzer = defaultAnalyst;
+                    else if (effectiveIsSelf && effectiveIsSelf !== '자체분석') analyzer = effectiveIsSelf;
 
                     processedData.push({
-                        ...hazardInfo,
-                        ...row,
+                        ...mergedRow,
                         common_name: subTrim,
                         start_time: formatTime(rawStart),
                         end_time: formatTime(rawEnd),
