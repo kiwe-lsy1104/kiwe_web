@@ -14,22 +14,51 @@ const chunkArr = (arr, size) =>
 const DB_SETTINGS_KEY = 'external_request_column_config';
 
 const ALL_COLUMNS = [
+    // 의뢰 정보 (히스토리/일괄 다운로드용)
+    { key: 'request_date', label: '의뢰일자', width: 90, source: 'request' },
+    { key: 'partner_name', label: '분석기관', width: 120, source: 'request' },
+    { key: 'document_no', label: '발신공문번호', width: 120, source: 'request' },
+    { key: 'status', label: '의뢰상태', width: 80, source: 'request' },
+    { key: 'receive_date', label: '결과수신일', width: 90, source: 'request' },
+    { key: 'created_by', label: '의뢰자', width: 80, source: 'request' },
+
+    // 시료/사업장 기본 정보
     { key: 'corp_code', label: '공단코드', width: 80, source: 'sampling' },
     { key: 'sample_id', label: '시료번호', width: 110, source: 'sampling' },
+    { key: 'input_seq', label: '순번', width: 50, source: 'sampling' },
     { key: 'blank_sample_no', label: '공시료번호', width: 100, source: 'sampling' },
     { key: 'm_date', label: '측정일자', width: 90, source: 'sampling' },
     { key: 'com_name', label: '사업장명', width: 160, source: 'sampling' },
-    { key: 'work_process', label: '공정명', width: 130, source: 'sampling' },
+    { key: 'work_process', label: '공정/장소', width: 130, source: 'sampling' },
     { key: 'worker_name', label: '근로자명', width: 80, source: 'sampling' },
     { key: 'common_name', label: '유해인자', width: 150, source: 'sampling' },
+    { key: 'pump_no', label: '펌프번호', width: 80, source: 'sampling' },
+
+    // 측정 및 유량/포집 정보
+    { key: 'start_time', label: '시작시간', width: 80, source: 'sampling' },
+    { key: 'end_time', label: '종료시간', width: 80, source: 'sampling' },
     { key: 'collection_time', label: '포집시간(분)', width: 90, source: 'calc' },
-    { key: 'avg_flow', label: '평균유량', width: 80, source: 'calc' },
+    { key: 'avg_flow', label: '평균유량(L/min)', width: 90, source: 'calc' },
     { key: 'air_volume', label: '채기량(L)', width: 80, source: 'calc' },
+    { key: 'temp', label: '온도', width: 60, source: 'sampling' },
+    { key: 'humidity', label: '습도', width: 60, source: 'sampling' },
+    { key: 'sample_state', label: '시료상태', width: 80, source: 'sampling' },
+    { key: 'measured_by', label: '측정자', width: 80, source: 'sampling' },
+    { key: 'received_by', label: '인수자/접수자', width: 100, source: 'sampling' },
+
+    // 유해인자 / 분석방법 정보
+    { key: 'hazard_category', label: '유해인자분류', width: 100, source: 'hazard' },
+    { key: 'instrument_name', label: '분석방법', width: 100, source: 'hazard' },
     { key: 'sampling', label: '채취방법', width: 120, source: 'hazard' },
     { key: 'sampling_media', label: '채취매체', width: 120, source: 'hazard' },
+    { key: 'storage', label: '보관방법', width: 100, source: 'hazard' },
     { key: 'is_self', label: '분석구분', width: 80, source: 'sampling' },
+
+    // 기타
     { key: 'remarks', label: '비고', width: 150, source: 'custom' },
 ];
+
+const DEFAULT_COLUMNS = ['corp_code', 'sample_id', 'blank_sample_no', 'm_date', 'com_name', 'work_process', 'worker_name', 'common_name', 'pump_no', 'collection_time', 'avg_flow', 'air_volume', 'sampling', 'sampling_media', 'is_self', 'remarks'];
 
 export function ExternalRequestManager({ supabase, sessionData }) {
     const e = React.createElement;
@@ -59,7 +88,7 @@ export function ExternalRequestManager({ supabase, sessionData }) {
     const resizingRef = useRef(null);
 
     // Column Config
-    const [columnConfig, setColumnConfig] = useState(['corp_code', 'sample_id', 'blank_sample_no', 'm_date', 'com_name', 'work_process', 'worker_name', 'common_name', 'collection_time', 'avg_flow', 'air_volume', 'sampling', 'sampling_media', 'is_self', 'remarks']);
+    const [columnConfig, setColumnConfig] = useState(DEFAULT_COLUMNS);
     const [columnWidths, setColumnWidths] = useState({});
     const [showSettings, setShowSettings] = useState(false);
     const [settingsSaveStatus, setSettingsSaveStatus] = useState('');
@@ -878,16 +907,19 @@ export function ExternalRequestManager({ supabase, sessionData }) {
                 }
             });
 
-            // 6. 엑셀 행 가공
+            // 6. 엑셀 행 가공 (컬럼 설정 기반 동적 가공)
             const XLSX = window.XLSX;
             if (!XLSX) return alert('SheetJS 라이브러리가 로드되지 않았습니다.');
 
-            const headers = [
-                '의뢰일자', '분석기관', '발신공문번호', '상태', '결과수신일',
-                '시료번호', '공시료번호', '측정일자', '사업장명', '단위작업장소',
-                '근로자명', '유해인자', '포집시간(분)', '평균유량(L/min)', '채기량(L)',
-                '채취방법', '채취매체', '분석구분', '의뢰자', '비고'
-            ];
+            // 일괄 다운로드 시 의뢰 기본정보(의뢰일자, 분석기관, 공문번호, 상태)를 앞단에 포함
+            let activeKeys = [...columnConfig];
+            const requestPrefixKeys = ['request_date', 'partner_name', 'document_no', 'status'];
+            requestPrefixKeys.slice().reverse().forEach(k => {
+                if (!activeKeys.includes(k)) activeKeys.unshift(k);
+            });
+
+            const activeCols = activeKeys.map(key => ALL_COLUMNS.find(c => c.key === key)).filter(Boolean);
+            const headers = activeCols.map(c => c.label);
 
             const excelRows = mainSamples.map(r => {
                 const req = sampleToReqMap.get(r.sample_id) || {};
@@ -902,40 +934,60 @@ export function ExternalRequestManager({ supabase, sessionData }) {
                 const blanksToUse = hazardBlanks.length > 0 ? hazardBlanks : fallbackBlanks;
                 const blankNo = blanksToUse.join('/');
 
-                return [
-                    req.request_date || '',
-                    req.kiwe_partners?.partner_name || '',
-                    req.document_no || '',
-                    req.status || '',
-                    req.receive_date || '',
-                    r.sample_id || '',
-                    blankNo || '',
-                    r.m_date || '',
-                    r.com_name || '',
-                    r.work_process || '',
-                    r.worker_name || '',
-                    r.common_name || '',
-                    minutes > 0 ? minutes : '',
-                    avgFlow > 0 ? parseFloat(avgFlow.toFixed(3)) : '-',
-                    (minutes > 0 && avgFlow > 0) ? parseFloat((minutes * avgFlow).toFixed(3)) : '-',
-                    hazardInfo.sampling || r.sampling || '',
-                    hazardInfo.sampling_media || r.sampling_media || '',
-                    r.is_self || '',
-                    req.created_by || '',
-                    r.remarks || ''
-                ];
+                const getVal = (key) => {
+                    switch (key) {
+                        case 'request_date': return req.request_date || '';
+                        case 'partner_name': return req.kiwe_partners?.partner_name || '';
+                        case 'document_no': return req.document_no || '';
+                        case 'status': return req.status || '';
+                        case 'receive_date': return req.receive_date || '';
+                        case 'created_by': return req.created_by || '';
+                        case 'corp_code': return r.corp_code || '';
+                        case 'sample_id': return r.sample_id || '';
+                        case 'input_seq': return r.input_seq || '';
+                        case 'blank_sample_no': return blankNo || '';
+                        case 'm_date': return r.m_date || '';
+                        case 'com_name': return r.com_name || '';
+                        case 'work_process': return r.work_process || '';
+                        case 'worker_name': return r.worker_name || '';
+                        case 'common_name': return r.common_name || '';
+                        case 'pump_no': return r.pump_no || '';
+                        case 'start_time': return r.start_time || '';
+                        case 'end_time': return r.end_time || '';
+                        case 'collection_time': return minutes > 0 ? minutes : '';
+                        case 'avg_flow': return avgFlow > 0 ? parseFloat(avgFlow.toFixed(3)) : '-';
+                        case 'air_volume': return (minutes > 0 && avgFlow > 0) ? parseFloat((minutes * avgFlow).toFixed(3)) : '-';
+                        case 'temp': return r.temp || '';
+                        case 'humidity': return r.humidity || '';
+                        case 'sample_state': return r.sample_state || '';
+                        case 'measured_by': return r.measured_by || '';
+                        case 'received_by': return r.received_by || '';
+                        case 'hazard_category': return hazardInfo.hazard_category || r.hazard_category || '';
+                        case 'instrument_name': return hazardInfo.instrument_name || r.instrument_name || '';
+                        case 'sampling': return hazardInfo.sampling || r.sampling || '';
+                        case 'sampling_media': return hazardInfo.sampling_media || r.sampling_media || '';
+                        case 'storage': return hazardInfo.storage || r.storage || '';
+                        case 'is_self': return r.is_self || '';
+                        case 'remarks': return r.remarks || '';
+                        default: return r[key] || '';
+                    }
+                };
+
+                return activeCols.map(c => getVal(c.key));
             });
 
-            // 정렬: 의뢰일자 → 사업장명 → 시료번호
+            // 정렬: 첫번째 컬럼(의뢰일자/측정일자) -> 두번째 컬럼 -> 시료번호
             excelRows.sort((a, b) => {
-                const d = a[0].localeCompare(b[0]); if (d) return d;
-                const c = a[8].localeCompare(b[8]); if (c) return c;
-                return a[5].localeCompare(b[5]);
+                const d = String(a[0] || '').localeCompare(String(b[0] || ''));
+                if (d) return d;
+                const c = String(a[1] || '').localeCompare(String(b[1] || ''));
+                if (c) return c;
+                return String(a[5] || '').localeCompare(String(b[5] || ''));
             });
 
             const wb = XLSX.utils.book_new();
             const ws = XLSX.utils.aoa_to_sheet([headers, ...excelRows]);
-            ws['!cols'] = [12, 18, 18, 10, 12, 14, 14, 12, 20, 16, 12, 18, 10, 12, 10, 16, 16, 10, 10, 16].map(w => ({ wch: w }));
+            ws['!cols'] = activeCols.map(c => ({ wch: Math.max(10, Math.floor(c.width / 8)) }));
             XLSX.utils.book_append_sheet(wb, ws, '외부의뢰상세내역');
 
             const halfLabel = historyHalf === 1 ? '상반기' : '하반기';
@@ -1014,8 +1066,7 @@ export function ExternalRequestManager({ supabase, sessionData }) {
 
     const resetColumns = () => {
         if (!confirm('컬럼 구성을 초기화하시겠습니까?')) return;
-        const defaults = ['corp_code', 'sample_id', 'blank_sample_no', 'm_date', 'com_name', 'work_process', 'worker_name', 'common_name', 'collection_time', 'avg_flow', 'air_volume', 'sampling', 'sampling_media', 'is_self', 'remarks'];
-        setColumnConfig(defaults);
+        setColumnConfig(DEFAULT_COLUMNS);
         const defaultWidths = {};
         ALL_COLUMNS.forEach(c => { defaultWidths[c.key] = c.width; });
         setColumnWidths(defaultWidths);
@@ -1150,6 +1201,58 @@ export function ExternalRequestManager({ supabase, sessionData }) {
             )
         ),
 
+        /* ── 공통 컬럼 설정 패널 ── */
+        showSettings && e('div', { className: 'card-custom p-5 animate-fade-in no-print shrink-0 border border-indigo-100 shadow-sm ring-4 ring-indigo-50/50 mx-2 mb-4' },
+            e('div', { className: 'flex justify-between items-center mb-3' },
+                e('h3', { className: 'font-black text-slate-700 flex items-center gap-2' }, e(Settings2, { size: 16, className: 'text-indigo-600' }), '엑셀 및 리스트 컬럼 구성 (추가/삭제)'),
+                e('div', { className: 'flex items-center gap-2' },
+                    e('button', {
+                        onClick: () => saveColumnConfigToDB(columnConfig),
+                        disabled: settingsSaveStatus === 'saving',
+                        className: (
+                            settingsSaveStatus === 'saved' ? 'text-xs font-black px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-600 border border-emerald-200' :
+                                settingsSaveStatus === 'error' ? 'text-xs font-black px-3 py-1.5 rounded-lg bg-red-50 text-red-500 border border-red-200' :
+                                    settingsSaveStatus === 'saving' ? 'text-xs font-black px-3 py-1.5 rounded-lg bg-slate-100 text-slate-400' :
+                                        'text-xs font-black px-3 py-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition-all shadow-sm'
+                        )
+                    },
+                        settingsSaveStatus === 'saved' ? '✅ 저장 완료' :
+                            settingsSaveStatus === 'error' ? '❌ 저장 실패' :
+                                settingsSaveStatus === 'saving' ? '저장 중...' :
+                                    '🌐 공유 저장'
+                    ),
+                    e('button', { onClick: resetColumns, className: 'text-xs font-black text-slate-400 hover:text-red-500 flex items-center gap-1 px-2' }, e(RotateCcw, { size: 12 }), '초기화')
+                )
+            ),
+            e('p', { className: 'text-[11px] text-indigo-500 bg-indigo-50 rounded-lg px-3 py-2 mb-3 font-bold' },
+                '💡 여기서 추가/삭제한 컬럼 구성대로 [선택 엑셀] 및 [반기 전체 엑셀 일괄 다운로드] 시 파일에 반영됩니다. (공유 저장 시 시스템 전체 적용)'
+            ),
+            e('div', { className: 'mb-4' },
+                e('div', { className: 'flex flex-wrap gap-2 p-3 bg-slate-50 rounded-xl border border-dashed border-slate-200' },
+                    columnConfig.map((key, idx) => {
+                        const col = ALL_COLUMNS.find(c => c.key === key);
+                        if (!col) return null;
+                        return e('div', { key, className: `flex items-center gap-1 border rounded-lg px-2 py-1.5 shadow-sm transition-all hover:scale-105 ${getColSourceClass(key)}` },
+                            e('button', { onClick: () => moveColumn(idx, -1), disabled: idx === 0, className: `p-0.5 rounded ${idx === 0 ? 'opacity-20' : 'hover:bg-black/10'}` }, e(ChevronLeft, { size: 13 })),
+                            e('span', { className: 'text-xs font-black px-1' }, col.label),
+                            e('button', { onClick: () => moveColumn(idx, 1), disabled: idx === columnConfig.length - 1, className: `p-0.5 rounded ${idx === columnConfig.length - 1 ? 'opacity-20' : 'hover:bg-black/10'}` }, e(ChevronRight, { size: 13 })),
+                            e('button', { onClick: () => toggleColumn(key), className: 'ml-1 p-1 hover:bg-rose-500 hover:text-white rounded-md transition-colors' }, e(X, { size: 13 }))
+                        );
+                    })
+                )
+            ),
+            e('div', { className: 'pt-3 border-t border-slate-100' },
+                e('div', { className: 'flex flex-wrap gap-2' },
+                    unusedCols.map(col => e('button', {
+                        key: col.key, onClick: () => toggleColumn(col.key),
+                        className: `px-3 py-1.5 rounded-lg border text-xs font-black transition-all hover:scale-105 ${getColSourceClass(col.key)}`
+                    },
+                        '+ ' + col.label
+                    ))
+                )
+            )
+        ),
+
         // ===================================
         // NEW MODE
         // ===================================
@@ -1224,58 +1327,6 @@ export function ExternalRequestManager({ supabase, sessionData }) {
                             : 'bg-slate-300 cursor-not-allowed opacity-80'
                             }`
                     }, e(Box, { size: 18 }), "의뢰 등록")
-                )
-            ),
-
-            /* ── 컬럼 설정 패널 ── */
-            showSettings && e('div', { className: 'card-custom p-5 animate-fade-in no-print shrink-0 border border-indigo-100 shadow-sm ring-4 ring-indigo-50/50 mx-2' },
-                e('div', { className: 'flex justify-between items-center mb-3' },
-                    e('h3', { className: 'font-black text-slate-700 flex items-center gap-2' }, e(Settings2, { size: 16, className: 'text-indigo-600' }), '컬럼 구성'),
-                    e('div', { className: 'flex items-center gap-2' },
-                        e('button', {
-                            onClick: () => saveColumnConfigToDB(columnConfig),
-                            disabled: settingsSaveStatus === 'saving',
-                            className: (
-                                settingsSaveStatus === 'saved' ? 'text-xs font-black px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-600 border border-emerald-200' :
-                                    settingsSaveStatus === 'error' ? 'text-xs font-black px-3 py-1.5 rounded-lg bg-red-50 text-red-500 border border-red-200' :
-                                        settingsSaveStatus === 'saving' ? 'text-xs font-black px-3 py-1.5 rounded-lg bg-slate-100 text-slate-400' :
-                                            'text-xs font-black px-3 py-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition-all shadow-sm'
-                            )
-                        },
-                            settingsSaveStatus === 'saved' ? '✅ 저장 완료' :
-                                settingsSaveStatus === 'error' ? '❌ 저장 실패' :
-                                    settingsSaveStatus === 'saving' ? '저장 중...' :
-                                        '🌐 공유 저장'
-                        ),
-                        e('button', { onClick: resetColumns, className: 'text-xs font-black text-slate-400 hover:text-red-500 flex items-center gap-1 px-2' }, e(RotateCcw, { size: 12 }), '초기화')
-                    )
-                ),
-                e('p', { className: 'text-[11px] text-indigo-500 bg-indigo-50 rounded-lg px-3 py-2 mb-3 font-bold' },
-                    '💡 컬럼 설정 후 [🌐 공유 저장]을 누르면 다른 컴퓨터/사용자에게도 동일하게 적용됩니다.'
-                ),
-                e('div', { className: 'mb-4' },
-                    e('div', { className: 'flex flex-wrap gap-2 p-3 bg-slate-50 rounded-xl border border-dashed border-slate-200' },
-                        columnConfig.map((key, idx) => {
-                            const col = ALL_COLUMNS.find(c => c.key === key);
-                            if (!col) return null;
-                            return e('div', { key, className: `flex items-center gap-1 border rounded-lg px-2 py-1.5 shadow-sm transition-all hover:scale-105 ${getColSourceClass(key)}` },
-                                e('button', { onClick: () => moveColumn(idx, -1), disabled: idx === 0, className: `p-0.5 rounded ${idx === 0 ? 'opacity-20' : 'hover:bg-black/10'}` }, e(ChevronLeft, { size: 13 })),
-                                e('span', { className: 'text-xs font-black px-1' }, col.label),
-                                e('button', { onClick: () => moveColumn(idx, 1), disabled: idx === columnConfig.length - 1, className: `p-0.5 rounded ${idx === columnConfig.length - 1 ? 'opacity-20' : 'hover:bg-black/10'}` }, e(ChevronRight, { size: 13 })),
-                                e('button', { onClick: () => toggleColumn(key), className: 'ml-1 p-1 hover:bg-rose-500 hover:text-white rounded-md transition-colors' }, e(X, { size: 13 }))
-                            );
-                        })
-                    )
-                ),
-                e('div', { className: 'pt-3 border-t border-slate-100' },
-                    e('div', { className: 'flex flex-wrap gap-2' },
-                        unusedCols.map(col => e('button', {
-                            key: col.key, onClick: () => toggleColumn(col.key),
-                            className: `px-3 py-1.5 rounded-lg border text-xs font-black transition-all hover:scale-105 ${getColSourceClass(col.key)}`
-                        },
-                            '+ ' + col.label
-                        ))
-                    )
                 )
             ),
 
@@ -1384,9 +1435,15 @@ export function ExternalRequestManager({ supabase, sessionData }) {
                     `정렬: ${historySortOrder === 'desc' ? '최신순' : '과거순'}`
                 ),
                 e('button', {
+                    onClick: () => setShowSettings(!showSettings),
+                    className: `h-[38px] px-3.5 ml-auto border rounded-xl font-bold text-xs flex items-center gap-2 shadow-sm transition-all ${showSettings ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'}`
+                },
+                    e(Settings2, { size: 14, className: showSettings ? 'text-white' : 'text-indigo-600' }), '⚙️ 엑셀/컬럼 설정'
+                ),
+                e('button', {
                     onClick: downloadAllHistoryExcel,
                     disabled: historyLoading || historyData.length === 0,
-                    className: 'h-[38px] px-5 ml-auto bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-black rounded-xl shadow-md hover:from-emerald-700 hover:to-teal-700 flex items-center gap-2 text-xs transition-all active:scale-95 disabled:opacity-50'
+                    className: 'h-[38px] px-5 bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-black rounded-xl shadow-md hover:from-emerald-700 hover:to-teal-700 flex items-center gap-2 text-xs transition-all active:scale-95 disabled:opacity-50'
                 },
                     e(Download, { size: 16 }),
                     '📥 반기 전체 상세 엑셀 다운로드'
