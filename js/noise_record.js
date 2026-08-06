@@ -829,6 +829,7 @@ export function NoiseRecord({ user, supabase: supabaseProp }) {
                 '공정명': cur.work_process || '',
                 '작업자명': cur.worker_name || '',
                 '소음기번호': cur.noise_no || '',
+                '보정기번호': cur.calibrator_no ?? '',
                 '시작시간': formatTimeValue(cur.start_time),
                 '종료시간': formatTimeValue(cur.end_time),
                 '점심시간(분)': cur.lunch_time ?? '',
