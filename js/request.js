@@ -176,10 +176,7 @@ export function ExternalRequestManager({ supabase, sessionData }) {
         const tables = new Set();
         const addIfValid = (dateStr) => {
             if (!dateStr) return;
-            const d = new Date(dateStr);
-            if (d.getFullYear() >= 2026) {
-                tables.add(getTableName(dateStr));
-            }
+            tables.add(getTableName(dateStr));
         };
         addIfValid(start);
         let cur = new Date(start);
@@ -248,6 +245,14 @@ export function ExternalRequestManager({ supabase, sessionData }) {
         return result;
     };
 
+    // ── 공시료 판별 통합 함수 ──
+    const checkIsBlank = (row) => {
+        if (!row) return false;
+        const w = (row.worker_name || '').toLowerCase();
+        const sid = (row.sample_id || '').toUpperCase();
+        return w.includes('공시료') || sid.startsWith('DB') || sid.startsWith('SB') || sid.startsWith('RB');
+    };
+
     // ── 매핑용 정규화 키 생성 ──
     const getMappingKey = (com, date, hazard) => {
         const c = (com || '').replace(/\(주\)|㈜|\s/g, '');
@@ -255,6 +260,12 @@ export function ExternalRequestManager({ supabase, sessionData }) {
         // 유해인자명에서 / 나 ( 앞부분만 추출하여 매칭 유연성 확보함 (예: 질산/염산 -> 질산)
         const h = (hazard || '').split(/[/(]/)[0].replace(/\s/g, '');
         return `${c}_${d}_${h}`;
+    };
+
+    const getComDateKey = (com, date) => {
+        const c = (com || '').replace(/\(주\)|㈜|\s/g, '');
+        const d = date || '';
+        return `${c}_${d}`;
     };
 
     // ── Fetch New Mode Data ──
@@ -290,9 +301,16 @@ export function ExternalRequestManager({ supabase, sessionData }) {
             const hazardMap = new Map((hazardRes.data || []).map(h => [h.common_name, h]));
 
             const blankMap = new Map();
+            const comDateBlankMap = new Map();
+
             rawData.forEach(row => {
-                const isBlank = (row.worker_name?.includes('공시료')) || (row.sample_id?.startsWith('DB') || row.sample_id?.startsWith('SB'));
-                if (isBlank) {
+                if (checkIsBlank(row)) {
+                    const cKey = getComDateKey(row.com_name, row.m_date);
+                    if (!comDateBlankMap.has(cKey)) comDateBlankMap.set(cKey, []);
+                    if (!comDateBlankMap.get(cKey).includes(row.sample_id)) {
+                        comDateBlankMap.get(cKey).push(row.sample_id);
+                    }
+
                     // 유해인자가 복합인 경우(질산/염산 등) 분리하여 각각 매핑 테이블에 등록
                     const hazards = (row.common_name || '').split(/[/(]/).filter(Boolean);
                     hazards.forEach(hSub => {
@@ -306,23 +324,24 @@ export function ExternalRequestManager({ supabase, sessionData }) {
             });
 
             const enriched = rawData
-                .filter(row => {
-                    const isBlank = row.worker_name?.includes('공시료') || row.sample_id?.startsWith('DB') || row.sample_id?.startsWith('SB');
-                    return !isBlank; // 공시료 제외
-                })
+                .filter(row => !checkIsBlank(row)) // 공시료 제외
                 .map(row => {
                     const searchKey = row.common_name ? row.common_name.split('/')[0].trim() : '';
                     const hazardInfo = hazardMap.get(searchKey) || {};
                     const minutes = calculateMinutes(row.start_time, row.end_time, row.lunch_time);
                     const avgFlow = getRowFlowAvg(row) || flowMap.get(`${row.m_date}_${row.pump_no}`) || 0;
                     const gk = getMappingKey(row.com_name, row.m_date, row.common_name);
+                    const cKey = getComDateKey(row.com_name, row.m_date);
+                    const hazardBlanks = blankMap.get(gk) || [];
+                    const fallbackBlanks = comDateBlankMap.get(cKey) || [];
+                    const blanksToUse = hazardBlanks.length > 0 ? hazardBlanks : fallbackBlanks;
                     return {
                         ...hazardInfo, ...row,
                         corp_code: '',
                         collection_time: minutes > 0 ? minutes : '',
                         avg_flow: avgFlow > 0 ? avgFlow : '-',
                         air_volume: (minutes > 0 && avgFlow > 0) ? (minutes * avgFlow).toFixed(3) : '-',
-                        blank_sample_no: (blankMap.get(gk) || []).join('/')
+                        blank_sample_no: blanksToUse.join('/')
                     };
                 })
                 .filter(r => r.is_self && r.is_self !== '자체분석'); // ★ 외부의뢰만 필터링
@@ -594,11 +613,12 @@ export function ExternalRequestManager({ supabase, sessionData }) {
                     if (!error && data) allSamplesForDates = [...allSamplesForDates, ...data];
                 }
 
-                // 해당 '사업장+유해인자' 조합에 해당하는 공시료 필터링
-                const combinations = new Set(mainSamples.map(s => `${s.com_name}|${s.common_name}`));
+                // 해당 '사업장' 조합에 해당하는 공시료 필터링
+                const companyKeys = new Set(mainSamples.map(s => (s.com_name || '').replace(/\(주\)|㈜|\s/g, '')));
                 const blanks = allSamplesForDates.filter(s => {
-                    const isBlank = s.worker_name?.includes('공시료') || s.sample_id?.startsWith('DB') || s.sample_id?.startsWith('SB');
-                    return isBlank && combinations.has(`${s.com_name}|${s.common_name}`);
+                    const isBlank = checkIsBlank(s);
+                    const cKey = (s.com_name || '').replace(/\(주\)|㈜|\s/g, '');
+                    return isBlank && companyKeys.has(cKey);
                 });
 
                 // 상세 목록에는 의뢰된 원본 시료만 표시하되, 통계용으로 blanks 합산
@@ -650,9 +670,15 @@ export function ExternalRequestManager({ supabase, sessionData }) {
 
             // 3. 공시료 맵 생성
             const blankMap = new Map();
+            const comDateBlankMap = new Map();
             allSamples.forEach(r => {
-                const isBlank = (r.worker_name?.includes('공시료')) || (r.sample_id?.startsWith('DB') || r.sample_id?.startsWith('SB'));
-                if (isBlank) {
+                if (checkIsBlank(r)) {
+                    const cKey = getComDateKey(r.com_name, r.m_date);
+                    if (!comDateBlankMap.has(cKey)) comDateBlankMap.set(cKey, []);
+                    if (!comDateBlankMap.get(cKey).includes(r.sample_id)) {
+                        comDateBlankMap.get(cKey).push(r.sample_id);
+                    }
+
                     const hazards = (r.common_name || '').split(/[/(]/).filter(Boolean);
                     hazards.forEach(hSub => {
                         const gk = getMappingKey(r.com_name, r.m_date, hSub.trim());
@@ -691,6 +717,10 @@ export function ExternalRequestManager({ supabase, sessionData }) {
                 const minutes = calculateMinutes(r.start_time, r.end_time, r.lunch_time);
                 const avgFlow = getRowFlowAvg(r) || flowMap.get(`${r.m_date}_${r.pump_no}`) || 0;
                 const gk = getMappingKey(r.com_name, r.m_date, r.common_name);
+                const cKey = getComDateKey(r.com_name, r.m_date);
+                const hazardBlanks = blankMap.get(gk) || [];
+                const fallbackBlanks = comDateBlankMap.get(cKey) || [];
+                const blanksToUse = hazardBlanks.length > 0 ? hazardBlanks : fallbackBlanks;
 
                 return {
                     ...hazardInfo, ...r,
@@ -698,7 +728,7 @@ export function ExternalRequestManager({ supabase, sessionData }) {
                     collection_time: minutes > 0 ? minutes : '',
                     avg_flow: avgFlow > 0 ? avgFlow : '-',
                     air_volume: (minutes > 0 && avgFlow > 0) ? (minutes * avgFlow).toFixed(3) : '-',
-                    blank_sample_no: (blankMap.get(gk) || []).join('/')
+                    blank_sample_no: blanksToUse.join('/')
                 };
             });
 
@@ -785,9 +815,15 @@ export function ExternalRequestManager({ supabase, sessionData }) {
 
             // 4. 공시료 맵 생성
             const blankMap = new Map();
+            const comDateBlankMap = new Map();
             allSamples.forEach(r => {
-                const isBlank = (r.worker_name?.includes('공시료')) || (r.sample_id?.startsWith('DB') || r.sample_id?.startsWith('SB'));
-                if (isBlank) {
+                if (checkIsBlank(r)) {
+                    const cKey = getComDateKey(r.com_name, r.m_date);
+                    if (!comDateBlankMap.has(cKey)) comDateBlankMap.set(cKey, []);
+                    if (!comDateBlankMap.get(cKey).includes(r.sample_id)) {
+                        comDateBlankMap.get(cKey).push(r.sample_id);
+                    }
+
                     const hazards = (r.common_name || '').split(/[/(]/).filter(Boolean);
                     hazards.forEach(hSub => {
                         const gk = getMappingKey(r.com_name, r.m_date, hSub.trim());
@@ -860,7 +896,11 @@ export function ExternalRequestManager({ supabase, sessionData }) {
                 const minutes = calculateMinutes(r.start_time, r.end_time, r.lunch_time);
                 const avgFlow = getRowFlowAvg(r) || flowMap.get(`${r.m_date}_${r.pump_no}`) || 0;
                 const gk = getMappingKey(r.com_name, r.m_date, r.common_name);
-                const blankNo = (blankMap.get(gk) || []).join('/');
+                const cKey = getComDateKey(r.com_name, r.m_date);
+                const hazardBlanks = blankMap.get(gk) || [];
+                const fallbackBlanks = comDateBlankMap.get(cKey) || [];
+                const blanksToUse = hazardBlanks.length > 0 ? hazardBlanks : fallbackBlanks;
+                const blankNo = blanksToUse.join('/');
 
                 return [
                     req.request_date || '',
@@ -1055,7 +1095,7 @@ export function ExternalRequestManager({ supabase, sessionData }) {
                                     detailItems.forEach(item => {
                                         const name = item.common_name || '미지물질';
                                         if (!stats[name]) stats[name] = { main: 0, blank: 0 };
-                                        const isBlank = item.worker_name?.includes('공시료') || item.sample_id?.startsWith('DB') || item.sample_id?.startsWith('SB');
+                                        const isBlank = checkIsBlank(item);
                                         if (isBlank) stats[name].blank++;
                                         else stats[name].main++;
                                     });
@@ -1077,8 +1117,8 @@ export function ExternalRequestManager({ supabase, sessionData }) {
                                     )
                                 ),
                                 e('tbody', null,
-                                    detailItems.filter(item => !(item.worker_name?.includes('공시료') || item.sample_id?.startsWith('DB') || item.sample_id?.startsWith('SB'))).length === 0 ? e('tr', null, e('td', { colSpan: 6, className: 'py-24 text-center text-slate-400 font-bold' }, '표시할 시료가 없습니다.')) :
-                                        detailItems.filter(item => !(item.worker_name?.includes('공시료') || item.sample_id?.startsWith('DB') || item.sample_id?.startsWith('SB'))).map(item => e('tr', { key: item.sample_id, className: 'border-b border-slate-50 hover:bg-slate-50 transition-colors' },
+                                    detailItems.filter(item => !checkIsBlank(item)).length === 0 ? e('tr', null, e('td', { colSpan: 6, className: 'py-24 text-center text-slate-400 font-bold' }, '표시할 시료가 없습니다.')) :
+                                        detailItems.filter(item => !checkIsBlank(item)).map(item => e('tr', { key: item.sample_id, className: 'border-b border-slate-50 hover:bg-slate-50 transition-colors' },
                                             e('td', { className: 'px-4 py-3 text-center font-mono text-xs text-indigo-700 font-bold' }, item.sample_id),
                                             e('td', { className: 'px-4 py-3 text-center text-xs' }, item.m_date),
                                             e('td', { className: 'px-4 py-3 text-center text-xs font-bold' }, item.com_name),

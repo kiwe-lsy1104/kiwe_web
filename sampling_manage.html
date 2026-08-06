@@ -639,6 +639,13 @@
 
                 const hazardMap = new Map((hazardRes.data || []).map(h => [h.common_name, h]));
 
+                const checkIsBlank = (row) => {
+                    if (!row) return false;
+                    const w = (row.worker_name || '').toLowerCase();
+                    const sid = (row.sample_id || '').toUpperCase();
+                    return w.includes('공시료') || sid.startsWith('DB') || sid.startsWith('SB') || sid.startsWith('RB');
+                };
+
                 // ── 매핑용 정규화 키 생성 ──
                 const getMappingKey = (com, date, hazard) => {
                     const c = (com || '').replace(/\(주\)|㈜|\s/g, '');
@@ -647,10 +654,22 @@
                     return `${c}_${d}_${h}`;
                 };
 
+                const getComDateKey = (com, date) => {
+                    const c = (com || '').replace(/\(주\)|㈜|\s/g, '');
+                    const d = date || '';
+                    return `${c}_${d}`;
+                };
+
                 const blankMap = new Map();
+                const comDateBlankMap = new Map();
                 rawData.forEach(row => {
-                    const isBlank = (row.worker_name?.includes('공시료')) || (row.sample_id?.startsWith('DB') || row.sample_id?.startsWith('SB'));
-                    if (isBlank) {
+                    if (checkIsBlank(row)) {
+                        const cKey = getComDateKey(row.com_name, row.m_date);
+                        if (!comDateBlankMap.has(cKey)) comDateBlankMap.set(cKey, []);
+                        if (!comDateBlankMap.get(cKey).includes(row.sample_id)) {
+                            comDateBlankMap.get(cKey).push(row.sample_id);
+                        }
+
                         // 유해인자가 복합인 경우(질산/염산 등) 분리하여 각각 매핑 테이블에 등록
                         const hazards = (row.common_name || '').split(/[/(]/).filter(Boolean);
                         hazards.forEach(hSub => {
@@ -668,7 +687,7 @@
                         // 1. 소음 필터링 (시료대장/인계인수대장 모두에서 제외)
                         if (row.common_name && row.common_name.includes('소음')) return false;
 
-                        const isBlank = row.worker_name?.includes('공시료') || row.sample_id?.startsWith('DB') || row.sample_id?.startsWith('SB');
+                        const isBlank = checkIsBlank(row);
                         const resolvedTab = tabId || activeTabId;
                         
                         // 시료대장(ledger)과 인계인수대장(handover)은 D, DB 등을 포함한 모든 분석 시료 표시
@@ -756,7 +775,7 @@
                             collection_time: minutes > 0 ? minutes : '',
                             avg_flow: avgFlow > 0 ? avgFlow : '-',
                             air_volume: (minutes > 0 && avgFlow > 0) ? (minutes * avgFlow).toFixed(3) : '-',
-                            blank_sample_no: (blankMap.get(gk) || []).join('/'),
+                            blank_sample_no: (blankMap.get(gk) || comDateBlankMap.get(getComDateKey(row.com_name, row.m_date)) || []).join('/'),
                             analyzer: analyzerVal,
 
                             // 유량보정대장 통합 컬럼

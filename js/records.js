@@ -1145,7 +1145,8 @@ function RecordsManagement() {
 
                                 if (!blankMap[r.id]) blankMap[r.id] = { blanks: [], regularSubstances: new Set() };
 
-                                const isBlank = sample.worker_name && sample.worker_name.includes('공시료');
+                                const sidUpper = (sample.sample_id || '').toUpperCase();
+                                const isBlank = (sample.worker_name && sample.worker_name.includes('공시료')) || sidUpper.startsWith('DB') || sidUpper.startsWith('SB') || sidUpper.startsWith('RB');
                                 if (isBlank) {
                                     blankMap[r.id].blanks.push(sample);
                                 } else {
