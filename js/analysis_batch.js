@@ -200,39 +200,50 @@ function App() {
             const weightSamples = samplesRaw.filter(isWeightSample);
             const oilSamples    = samplesRaw.filter(isOilSample);
 
-            // 5. 유량 데이터 전체 조회 (kiwe_flow)
-            setLoadMsg('유량 데이터 조회 중...');
-            const allDates = [...new Set(samplesRaw.map(s => s.m_date).filter(Boolean))];
+            // 5. 유량 데이터 전체 조회 (kiwe_flow - 페이징 처리로 1000건 제한 해제)
+            setLoadMsg('유량 데이터 전체 조회 중...');
             const flowMap = new Map();
+            let flowRaw = [];
+            let fPage = 0;
+            while (true) {
+                setLoadMsg(`유량 데이터 읽는 중... (${flowRaw.length}건 수집됨)`);
+                const { data: fChunk, error: fErr } = await supabase
+                    .from('kiwe_flow')
+                    .select('m_date, pump_no, total_avg')
+                    .gte('m_date', startDate)
+                    .lte('m_date', endDate)
+                    .range(fPage * pageSize, (fPage + 1) * pageSize - 1);
 
-            if (allDates.length > 0) {
-                const dChunks = chunkArr(allDates, 200);
-                const fResults = await Promise.all(
-                    dChunks.map(dates =>
-                        supabase.from('kiwe_flow')
-                            .select('m_date, pump_no, total_avg')
-                            .in('m_date', dates)
-                    )
-                );
-                fResults.flatMap(r => r.data || []).forEach(f => {
-                    if (f.m_date && f.pump_no && parseFloat(f.total_avg) > 0)
-                        flowMap.set(`${f.m_date}_${f.pump_no}`, parseFloat(f.total_avg));
-                });
+                if (fErr || !fChunk || fChunk.length === 0) break;
+                flowRaw.push(...fChunk);
+                if (fChunk.length < pageSize) break;
+                fPage++;
             }
-            // 시료 데이터 자체의 인라인 유량 값 반영
-            samplesRaw.forEach(r => {
-                const avg = getRowFlowAvg(r);
-                if (avg > 0 && r.m_date && r.pump_no)
-                    flowMap.set(`${r.m_date}_${r.pump_no}`, avg);
+
+            flowRaw.forEach(f => {
+                if (f.m_date && f.pump_no && parseFloat(f.total_avg) > 0) {
+                    const key = `${f.m_date}_${String(f.pump_no).trim()}`;
+                    flowMap.set(key, parseFloat(f.total_avg));
+                }
             });
 
-            // 5. 처리 함수
+            // 시료 데이터 자체의 인라인 유량 값 반영 (우선 적용)
+            samplesRaw.forEach(r => {
+                const avg = getRowFlowAvg(r);
+                if (avg > 0 && r.m_date && r.pump_no) {
+                    const key = `${r.m_date}_${String(r.pump_no).trim()}`;
+                    flowMap.set(key, avg);
+                }
+            });
+
+            // 6. 처리 함수
             setLoadMsg('결과 계산 중...');
             const processSamples = (samples, isOil) => {
                 // 기초 처리
                 const processed = samples.map(s => {
                     const wm = wDataMap.get(s.sample_id) || {};
-                    const flow = getRowFlowAvg(s) || flowMap.get(`${s.m_date}_${s.pump_no}`) || 0;
+                    const flowKey = (s.m_date && s.pump_no) ? `${s.m_date}_${String(s.pump_no).trim()}` : '';
+                    const flow = getRowFlowAvg(s) || (flowKey ? flowMap.get(flowKey) : 0) || 0;
                     const duration = calcDuration(s.start_time, s.end_time, s.lunch_time);
                     const isBlank = !!(s.worker_name && s.worker_name.includes('공시료'));
                     const hazardInfo = hazardMap.get(s.common_name) || {};
