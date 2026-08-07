@@ -253,11 +253,18 @@ function App() {
                     const avg2 = w2Valid.length > 0 ? w2Valid.reduce((a, b) => a + b, 0) / w2Valid.length : 0; // g
                     const airVolume = flow * duration; // L
 
+                    const samplingMedia = s.sampling_media || hazardInfo.sampling_media || '';
+                    const analysisDate  = wm.analysis_date || '';
+                    const reportDate    = wm.report_date || '';
+
                     return {
                         ...s,
                         flow,
                         duration,
                         isBlank,
+                        samplingMedia,
+                        analysisDate,
+                        reportDate,
                         w1_1, w1_2, w1_3,
                         w2_1, w2_2, w2_3,
                         avg1,
@@ -376,13 +383,13 @@ function App() {
         const wb = XLSX.utils.book_new();
 
         const buildHeader = (isOil) => isOil
-            ? ['측정일', '사업장명', '시료번호', '구분', '근로자명', '유해인자',
+            ? ['측정일', '분석일자', '통보일자', '사업장명', '작업공정', '시료번호', '구분', '근로자명', '유해인자', '측정매체',
                '측정자', '분석자', '시작시간', '종료시간', '측정시간(분)',
                '평균유량(L/min)', '채기량(L)',
                '추출전(1회)', '추출전(2회)', '추출전(3회)', '추출전평균(g)',
                '추출후(1회)', '추출후(2회)', '추출후(3회)', '추출후평균(g)',
                '공시료보정치(g)', '분석량(mg)', '회수율', '농도(mg/m³)', 'TLV(mg/m³)', '판정']
-            : ['측정일', '사업장명', '시료번호', '구분', '근로자명', '유해인자',
+            : ['측정일', '분석일자', '통보일자', '사업장명', '작업공정', '시료번호', '구분', '근로자명', '유해인자', '측정매체',
                '측정자', '분석자', '시작시간', '종료시간', '측정시간(분)',
                '평균유량(L/min)', '채기량(L)',
                '채취전(1회)', '채취전(2회)', '채취전(3회)', '채취전평균(g)',
@@ -394,11 +401,15 @@ function App() {
             const judgment = s.isBlank ? '-' : (s.corrTLV > 0 ? (s.exceed ? '초과' : '적합') : '-');
             const base = [
                 s.m_date || '',
+                s.analysisDate || '',
+                s.reportDate || '',
                 s.com_name || '',
+                s.work_process || '',
                 s.sample_id || '',
                 isBlankLabel,
                 s.worker_name || '',
                 s.common_name || '',
+                s.samplingMedia || '',
                 s.measured_by || '',
                 s.analyst || '',
                 formatTime(s.start_time),
@@ -442,8 +453,8 @@ function App() {
         });
 
         const colWidths = (isOil) => isOil
-            ? [12, 22, 16, 7, 12, 18, 8, 8, 8, 8, 10, 12, 10, 14, 14, 14, 14, 14, 14, 14, 14, 14, 12, 8, 12, 10, 8].map(w => ({ wch: w }))
-            : [12, 22, 16, 7, 12, 18, 8, 8, 8, 8, 10, 12, 10, 14, 14, 14, 14, 14, 14, 14, 14, 14, 12, 12, 10, 8].map(w => ({ wch: w }));
+            ? [12, 12, 12, 22, 16, 16, 7, 12, 18, 14, 8, 8, 8, 8, 10, 12, 10, 14, 14, 14, 14, 14, 14, 14, 14, 14, 12, 8, 12, 10, 8].map(w => ({ wch: w }))
+            : [12, 12, 12, 22, 16, 16, 7, 12, 18, 14, 8, 8, 8, 8, 10, 12, 10, 14, 14, 14, 14, 14, 14, 14, 14, 14, 12, 12, 10, 8].map(w => ({ wch: w }));
 
         const addSheet = (rows, isOil, sheetName) => {
             if (rows.length === 0) return;
@@ -486,8 +497,8 @@ function App() {
             e('div', { style: { display: 'flex', alignItems: 'center', gap: '16px' } },
                 e('button', {
                     className: 'btn-secondary',
-                    onClick: () => window.location.href = 'sampling_manage.html'
-                }, '← 시료통계관리'),
+                    onClick: () => window.location.href = 'analysis_unified.html'
+                }, '← 분석결과통보서'),
                 e('div', null,
                     e('h1', { style: { fontSize: '1.25rem', fontWeight: 900, color: 'white', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' } },
                         '📊 반기 분석결과 일괄 출력'
@@ -616,11 +627,15 @@ function App() {
                         e('thead', null,
                             e('tr', null,
                                 e('th', null, '측정일'),
+                                e('th', null, '분석일자'),
+                                e('th', null, '통보일자'),
                                 e('th', null, '사업장'),
+                                e('th', null, '작업공정'),
                                 e('th', null, '시료번호'),
                                 e('th', null, '구분'),
                                 e('th', null, '근로자명'),
                                 e('th', null, '유해인자'),
+                                e('th', null, '측정매체'),
                                 e('th', null, '측정자'),
                                 e('th', null, '분석자'),
                                 e('th', null, '측정(분)'),
@@ -662,13 +677,17 @@ function App() {
 
                                 return e('tr', { key: `${s.sample_id}_${i}`, className: rowClass },
                                     e('td', null, s.m_date || '-'),
+                                    e('td', null, s.analysisDate || '-'),
+                                    e('td', null, s.reportDate || '-'),
                                     e('td', { style: { textAlign: 'left', paddingLeft: '8px', maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis' } }, s.com_name || '-'),
+                                    e('td', { style: { textAlign: 'left', paddingLeft: '6px', maxWidth: '120px', overflow: 'hidden', textOverflow: 'ellipsis' } }, s.work_process || '-'),
                                     e('td', { style: { fontFamily: 'monospace', fontWeight: 700, color: '#e2e8f0' } }, s.sample_id || '-'),
                                     e('td', null, e('span', {
                                         className: `badge ${s.isBlank ? 'badge-blank' : isOilTab ? 'badge-oil' : 'badge-weight'}`
                                     }, s.isBlank ? '공시료' : '시료')),
                                     e('td', null, s.worker_name || '-'),
                                     e('td', { style: { textAlign: 'left', paddingLeft: '6px', maxWidth: '130px', overflow: 'hidden', textOverflow: 'ellipsis' } }, s.common_name || '-'),
+                                    e('td', { style: { textAlign: 'left', paddingLeft: '6px', maxWidth: '110px', overflow: 'hidden', textOverflow: 'ellipsis' } }, s.samplingMedia || '-'),
                                     e('td', null, s.measured_by || '-'),
                                     e('td', null, s.analyst || '-'),
                                     e('td', null, s.duration > 0 ? s.duration : '-'),

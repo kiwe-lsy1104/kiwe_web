@@ -1191,8 +1191,7 @@
                         ),
                         e('div', { className: 'flex bg-slate-100 p-1 rounded-lg ml-6 gap-1' },
                             e('button', { onClick: () => setMainTab('statistics'), className: `px-4 py-1.5 rounded-md text-sm font-bold transition-all ${mainTab === 'statistics' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}` }, '시료대장'),
-                            e('button', { onClick: () => window.location.href = 'analysis_unified.html', className: "px-4 py-1.5 rounded-md text-sm font-bold text-slate-500 hover:text-slate-700 transition-all" }, '분석결과통보서'),
-                            e('button', { onClick: () => window.location.href = 'analysis_batch.html', className: "px-4 py-1.5 rounded-md text-sm font-bold text-emerald-700 hover:bg-white hover:shadow-sm transition-all flex items-center gap-1" }, '📊 반기 분석결과')
+                            e('button', { onClick: () => window.location.href = 'analysis_unified.html', className: "px-4 py-1.5 rounded-md text-sm font-bold text-slate-500 hover:text-slate-700 transition-all" }, '분석결과통보서')
                         ),
                         TABS.map(tab => e('button', {
                             key: tab.id, onClick: () => setActiveTabId(tab.id),

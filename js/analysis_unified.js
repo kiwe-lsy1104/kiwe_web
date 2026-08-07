@@ -40,6 +40,10 @@ function App() {
                     }, e(tab.icon, { size: 16 }), tab.name)),
                     e('div', { className: "w-px h-6 bg-slate-300 mx-2 self-center" }),
                     e('a', {
+                        href: 'analysis_batch.html',
+                        className: "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200"
+                    }, e(Download, { size: 16 }), "📊 반기 분석결과"),
+                    e('a', {
                         href: 'analysis.html',
                         className: "flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-bold transition-all text-slate-500 hover:text-slate-700 hover:bg-slate-200"
                     }, e(FlaskConical, { size: 16 }), "분석결과 입력 시스템"),
