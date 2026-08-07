@@ -25,6 +25,11 @@ const ALL_GRID_COLUMNS = [
     { key: 'worker_name', label: '근로자명' },
     { key: 'common_name', label: '유해인자(검색)' },
     { key: 'hazard_category', label: '카테고리' },
+    { key: 'sampling_media', label: '측정매체' },
+    { key: 'sampling', label: '채취방법' },
+    { key: 'instrument_name', label: '분석방법' },
+    { key: 'storage', label: '보관방법' },
+    { key: 'is_self', label: '분석구분' },
     { key: 'pump_no', label: '펌프번호' },
     { key: 'start_time', label: '시작시간' },
     { key: 'end_time', label: '종료시간' },
@@ -39,7 +44,10 @@ const ALL_GRID_COLUMNS = [
     { key: 'analyst', label: '분석자' },
     { key: 'measured_by', label: '측정자' },
     { key: 'received_by', label: '인수자/접수자' },
-    { key: 'received_date', label: '인수일' }
+    { key: 'received_date', label: '인수일' },
+    { key: 'status', label: '완료상태' },
+    { key: 'completed_at', label: '완료날짜' },
+    { key: 'remarks', label: '비고' }
 ];
 const DEFAULT_COLS = [
     'input_seq', 'm_date', 'com_name', 'work_process', 'worker_name', 'common_name',
@@ -1077,7 +1085,7 @@ function App() {
                         'lunch_time', 'occurrence_type', 'temp', 'humidity',
                         'analyst', 'measured_by', 'received_by', 'sample_id', 'condition',
                         'received_date', 'status', 'completed_at', 'instrument_name', 'hazard_category',
-                        'is_self', 'remarks', 'input_seq'
+                        'sampling_media', 'sampling', 'storage', 'is_self', 'remarks', 'input_seq'
                     ];
 
                     return data.map(item => {

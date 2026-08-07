@@ -183,7 +183,13 @@ export function initSampleGrid(container, mDate, comName, onHazardDoubleClick, o
         'received_by': { data: 'received_by', label: '인수자/접수자', width: 90, className: 'htCenter htMiddle' },
         'received_date': { data: 'received_date', label: '인수일', type: 'date', dateFormat: 'YYYY-MM-DD', width: 90, className: 'htCenter htMiddle' },
         'status': { data: 'status', label: '완료상태', renderer: statusRenderer, width: 80, className: 'htCenter htMiddle' },
-        'completed_at': { data: 'completed_at', label: '완료날짜', type: 'date', dateFormat: 'YYYY-MM-DD', width: 90, className: 'htCenter htMiddle' }
+        'completed_at': { data: 'completed_at', label: '완료날짜', type: 'date', dateFormat: 'YYYY-MM-DD', width: 90, className: 'htCenter htMiddle' },
+        'sampling_media': { data: 'sampling_media', label: '측정매체', renderer: autoShrinkRenderer, width: 110, className: 'htCenter htMiddle' },
+        'sampling': { data: 'sampling', label: '채취방법', renderer: autoShrinkRenderer, width: 110, className: 'htCenter htMiddle' },
+        'instrument_name': { data: 'instrument_name', label: '분석방법', renderer: autoShrinkRenderer, width: 100, className: 'htCenter htMiddle' },
+        'storage': { data: 'storage', label: '보관방법', renderer: autoShrinkRenderer, width: 100, className: 'htCenter htMiddle' },
+        'is_self': { data: 'is_self', label: '분석구분', width: 80, className: 'htCenter htMiddle' },
+        'remarks': { data: 'remarks', label: '비고', renderer: autoShrinkRenderer, width: 130, className: 'htCenter htMiddle' }
     };
 
     const activeColsRaw = dynamicColumns.length > 0 ? dynamicColumns : [
@@ -545,12 +551,19 @@ export async function loadGridData(hot, supabase, startDate, endDate, comName, u
         let newData = allData.map(d => {
             const searchKey = d.common_name ? d.common_name.split('/')[0].trim() : '';
             const hazardInfo = hazardsMap[searchKey] || {};
-
             const isBlank = d.worker_name && d.worker_name.includes('공시료');
+            const merged = { ...hazardInfo, ...d };
+            const hazardFallbackFields = ['sampling_media', 'sampling', 'storage', 'instrument_name', 'hazard_category', 'is_self'];
+            hazardFallbackFields.forEach(field => {
+                if (merged[field] === null || merged[field] === undefined || merged[field] === '') {
+                    if (hazardInfo[field] !== null && hazardInfo[field] !== undefined && hazardInfo[field] !== '') {
+                        merged[field] = hazardInfo[field];
+                    }
+                }
+            });
 
             return {
-                ...hazardInfo,
-                ...d,
+                ...merged,
                 start_time: formatTimeHHMM(d.start_time),
                 end_time: formatTimeHHMM(d.end_time),
                 condition: d.condition || d.sample_state || '양호',

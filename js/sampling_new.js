@@ -31,6 +31,11 @@ const ALL_GRID_COLUMNS = [
     { key: 'worker_name',  label: '근로자명' },
     { key: 'common_name',  label: '유해인자(검색)' },
     { key: 'hazard_category', label: '카테고리' },
+    { key: 'sampling_media',  label: '측정매체' },
+    { key: 'sampling',        label: '채취방법' },
+    { key: 'instrument_name', label: '분석방법' },
+    { key: 'storage',         label: '보관방법' },
+    { key: 'is_self',         label: '분석구분' },
     { key: 'pump_no',      label: '펌프번호' },
     { key: 'start_time',   label: '시작시간' },
     { key: 'end_time',     label: '종료시간' },
@@ -46,6 +51,9 @@ const ALL_GRID_COLUMNS = [
     { key: 'measured_by',  label: '측정자' },
     { key: 'received_by',  label: '인수자/접수자' },
     { key: 'received_date', label: '인수일' },
+    { key: 'status',       label: '완료상태' },
+    { key: 'completed_at', label: '완료날짜' },
+    { key: 'remarks',      label: '비고' },
     // ★ 유량보정 컬럼 (측정전/후 평균 각 1회)
     { key: 'pre_flow_avg',  label: '측정전평균유량' },
     { key: 'post_flow_avg', label: '측정후평균유량' },
@@ -218,10 +226,15 @@ function initSampleGridNew(container, mDate, comName, onHazardDoubleClick, onDel
         'received_date':   { data: 'received_date', label: '인수일', type: 'date', dateFormat: 'YYYY-MM-DD', width: 90, className: 'htCenter htMiddle' },
         'status':          { data: 'status', label: '완료상태', renderer: statusRenderer, width: 80, className: 'htCenter htMiddle' },
         'completed_at':    { data: 'completed_at', label: '완료날짜', type: 'date', dateFormat: 'YYYY-MM-DD', width: 90, className: 'htCenter htMiddle' },
+        'sampling_media':  { data: 'sampling_media', label: '측정매체', renderer: autoShrinkRenderer, width: 110, className: 'htCenter htMiddle' },
+        'sampling':        { data: 'sampling', label: '채취방법', renderer: autoShrinkRenderer, width: 110, className: 'htCenter htMiddle' },
+        'instrument_name': { data: 'instrument_name', label: '분석방법', renderer: autoShrinkRenderer, width: 100, className: 'htCenter htMiddle' },
+        'storage':         { data: 'storage', label: '보관방법', renderer: autoShrinkRenderer, width: 100, className: 'htCenter htMiddle' },
+        'is_self':         { data: 'is_self', label: '분석구분', width: 80, className: 'htCenter htMiddle' },
+        'remarks':         { data: 'remarks', label: '비고', renderer: autoShrinkRenderer, width: 130, className: 'htCenter htMiddle' },
         // ★ 유량보정 컬럼 — 측정전/후 평균유량 각 1회 입력
         'pre_flow_avg':    { data: 'pre_flow_avg',  label: '측정전\n평균유량', renderer: flowRenderer, type: 'numeric', numericFormat: { pattern: '0.000' }, width: 80, className: 'htCenter htMiddle' },
         'post_flow_avg':   { data: 'post_flow_avg', label: '측정후\n평균유량', renderer: flowRenderer, type: 'numeric', numericFormat: { pattern: '0.000' }, width: 80, className: 'htCenter htMiddle' },
-
     };
 
     const baseCols = [
