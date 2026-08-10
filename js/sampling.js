@@ -360,7 +360,27 @@ function App() {
                         if (prop === 'm_date') {
                             hot.setDataAtRowProp(visualRow, 'received_date', newVal, 'auto');
                         }
-                        if (['common_name', 'worker_name', 'instrument_name'].includes(prop)) {
+                        if (['common_name', 'worker_name', 'instrument_name', 'is_self'].includes(prop)) {
+                            // ★ 수동 타이핑 시 kiwe_hazard 마스터 정보 자동 연동
+                            if (prop === 'common_name') {
+                                const text = (newVal || '').trim();
+                                if (text && allHazardsRef.current) {
+                                    const baseName = text.split(/[/(]/)[0].trim();
+                                    const h = allHazardsRef.current.find(x => x.common_name === text || x.common_name === baseName);
+                                    if (h) {
+                                        if (h.is_self) hot.setDataAtRowProp(visualRow, 'is_self', h.is_self, 'auto');
+                                        if (h.instrument_name && !hot.getDataAtRowProp(visualRow, 'instrument_name')) {
+                                            hot.setDataAtRowProp(visualRow, 'instrument_name', h.instrument_name, 'auto');
+                                        }
+                                        if (h.sampling_media && !hot.getDataAtRowProp(visualRow, 'sampling_media')) {
+                                            hot.setDataAtRowProp(visualRow, 'sampling_media', h.sampling_media, 'auto');
+                                        }
+                                        if (h.hazard_category && !hot.getDataAtRowProp(visualRow, 'hazard_category')) {
+                                            hot.setDataAtRowProp(visualRow, 'hazard_category', h.hazard_category, 'auto');
+                                        }
+                                    }
+                                }
+                            }
                             rowsToProcess.add(row); // 피지컬 인덱스 수집
                         }
                     }
@@ -591,7 +611,6 @@ function App() {
             for (const rowIdx of rowIndices) {
                 const rowData = hot.getSourceDataAtRow(rowIdx);
                 if (!rowData) continue;
-                if (!forceAll && rowData.id) continue;
 
                 if (!rowData.com_name || !rowData.common_name) {
                     if (rowData.sample_id) hot.setDataAtRowProp(rowIdx, 'sample_id', null, 'auto');
@@ -607,8 +626,9 @@ function App() {
                 const worker = rowData.worker_name || '';
                 const common = rowData.common_name || '';
                 const mDate = rowData.m_date || startDate;
+                const rowIsSelf = rowData.is_self || '';
 
-                const prefixAlpha = getSamplePrefix(instName, worker, common);
+                const prefixAlpha = getSamplePrefix(instName, worker, common, rowIsSelf);
 
                 const dateObj = new Date(mDate);
                 if (isNaN(dateObj.getTime())) continue; // 날짜 없으면 스킵
@@ -619,6 +639,7 @@ function App() {
 
                 const fullPrefix = `${prefixAlpha}${year}${halfYear}-`;
 
+                // ★ 기존 시료번호의 접두어가 올바르면 스킵, 접두어가 변경되었으면(예: S->R) 재계산 허용
                 if (rowData.sample_id && rowData.sample_id.startsWith(fullPrefix)) continue;
 
                 if (!rowsByPrefix[fullPrefix]) {
@@ -675,11 +696,11 @@ function App() {
         return visualRow !== null ? hotInstance.current.getDataAtRowProp(visualRow, 'sample_id') : null;
     };
 
-    const getSamplePrefix = (instrumentName, workerName = '', commonName = '') => {
+    const getSamplePrefix = (instrumentName, workerName = '', commonName = '', rowIsSelf = '') => {
         // Step 4: Guard for data load. Use Ref for latest state in closures.
         const currentHazards = allHazardsRef.current;
         let inst = instrumentName;
-        let isSelf = '자체분석'; // 기본값: 자체분석
+        let isSelf = rowIsSelf || '자체분석'; // 기본값: rowIsSelf 또는 자체분석
         
         // kiwe_hazard 테이블에서 common_name으로 instrument_name 및 is_self 조회
         if (commonName && currentHazards.length > 0) {
@@ -694,7 +715,7 @@ function App() {
             
             if (h) {
                 inst = h.instrument_name || inst || '';
-                isSelf = h.is_self || '자체분석'; // kiwe_hazard.is_self 에서 자체분석/외부의뢰 판단
+                isSelf = h.is_self || isSelf; // kiwe_hazard.is_self 에서 자체분석/외부의뢰 판단
             }
         }
 
@@ -1140,17 +1161,18 @@ function App() {
                     input_seq: sanitizeInt(s.input_seq)
                 };
 
-                // ★ 수동 입력 시 is_self 누락 방지
-                if (!rowData.is_self) {
-                    const text = (rowData.common_name || '').trim();
-                    if (text && allHazardsRef.current && allHazardsRef.current.length > 0) {
-                        const baseName = text.split(/[/(]/)[0].trim();
-                        const h = allHazardsRef.current.find(x => x.common_name === text || x.common_name === baseName);
-                        if (h && h.is_self) {
-                            rowData.is_self = h.is_self;
-                        } else {
-                            rowData.is_self = '자체분석'; // 기본값
-                        }
+                // ★ 수동 입력 시 is_self 누락 방지 및 마스터 정보 동기화
+                const text = (rowData.common_name || '').trim();
+                if (text && text !== '소음' && allHazardsRef.current && allHazardsRef.current.length > 0) {
+                    const baseName = text.split(/[/(]/)[0].trim();
+                    const h = allHazardsRef.current.find(x => x.common_name === text || x.common_name === baseName);
+                    if (h) {
+                        if (h.is_self) rowData.is_self = h.is_self;
+                        if (h.instrument_name && !rowData.instrument_name) rowData.instrument_name = h.instrument_name;
+                        if (h.sampling_media && !rowData.sampling_media) rowData.sampling_media = h.sampling_media;
+                        if (h.hazard_category && !rowData.hazard_category) rowData.hazard_category = h.hazard_category;
+                    } else if (!rowData.is_self) {
+                        rowData.is_self = '자체분석'; // 기본값
                     }
                 }
 
@@ -1162,32 +1184,23 @@ function App() {
                 preparedData.push(rowData);
             }
 
-            // Validation: Ensure prefix matches analysis method
+            // ★ 오타/미등록 유해인자 엄격 검증 (저장 즉시 차단)
             const unmatchedHazards = [];
             for (const row of preparedData) {
                 const text = (row.common_name || '').trim();
-                if (!text) continue;
+                if (!text || text === '소음') continue;
                 const baseName = text.split(/[/(]/)[0].trim();
                 const exists = allHazardsRef.current.some(h => h.common_name === text || h.common_name === baseName);
                 if (allHazardsRef.current.length > 0 && !exists) {
                     unmatchedHazards.push(text);
                 }
-
-                const prefix = getSamplePrefix(row.instrument_name, row.worker_name, row.common_name);
-                if (row.sample_id && !row.sample_id.startsWith(prefix)) {
-                    if (!confirm(`시료번호 [${row.sample_id}]의 접두어가 분석방법(${row.instrument_name})과 일치하지 않습니다.\n권장 접두어: ${prefix}\n그대로 저장하시겠습니까?`)) {
-                        setLoading(false);
-                        return;
-                    }
-                }
             }
 
             if (unmatchedHazards.length > 0) {
                 const uniqueUnmatched = Array.from(new Set(unmatchedHazards));
-                if (!confirm(`다음 항목은 유해인자 목록에 없는 명칭입니다:\n[${uniqueUnmatched.join(', ')}]\n\n계속 진행하면 기본 접두어('S')가 시료번호에 적용됩니다. 그대로 저장하시겠습니까?`)) {
-                    setLoading(false);
-                    return;
-                }
+                alert(`❌ 저장 불가: 유해인자 목록(kiwe_hazard)에 등록되지 않은 명칭(오타 등)이 포함되어 있습니다:\n\n[ ${uniqueUnmatched.join(', ')} ]\n\n올바른 유해인자 명칭으로 수정한 후 다시 저장해 주세요.`);
+                setLoading(false);
+                return;
             }
 
             // ★ 공시료 누락 체크 (측정기록카드와 동일한 경고 제공)

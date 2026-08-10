@@ -765,10 +765,25 @@ function App() {
                         const visualRow = hot.toVisualRow(row);
                         if (visualRow === null) continue;
                         if (prop === 'm_date') hot.setDataAtRowProp(visualRow, 'received_date', newVal, 'auto');
-                        if (['common_name', 'worker_name', 'instrument_name'].includes(prop)) rowsToProcess.add(row);
+                        if (['common_name', 'worker_name', 'instrument_name', 'is_self'].includes(prop)) {
+                            if (prop === 'common_name') {
+                                const text = (newVal || '').trim();
+                                if (text && allHazardsRef.current) {
+                                    const baseName = text.split(/[/(]/)[0].trim();
+                                    const h = allHazardsRef.current.find(x => x.common_name === text || x.common_name === baseName);
+                                    if (h) {
+                                        if (h.is_self) hot.setDataAtRowProp(visualRow, 'is_self', h.is_self, 'auto');
+                                        if (h.instrument_name && !hot.getDataAtRowProp(visualRow, 'instrument_name')) hot.setDataAtRowProp(visualRow, 'instrument_name', h.instrument_name, 'auto');
+                                        if (h.sampling_media && !hot.getDataAtRowProp(visualRow, 'sampling_media')) hot.setDataAtRowProp(visualRow, 'sampling_media', h.sampling_media, 'auto');
+                                        if (h.hazard_category && !hot.getDataAtRowProp(visualRow, 'hazard_category')) hot.setDataAtRowProp(visualRow, 'hazard_category', h.hazard_category, 'auto');
+                                    }
+                                }
+                            }
+                            rowsToProcess.add(row);
+                        }
                     }
                 });
-                // if (rowsToProcess.size > 0) await applyBulkSampleIds(Array.from(rowsToProcess)); // 실시간 시료번호 자동 부여 비활성화 (저장 시 일괄 처리)
+                if (rowsToProcess.size > 0) await applyBulkSampleIds(Array.from(rowsToProcess));
             });
 
             hotInstance.current.addHook('afterCreateRow', (index, amount) => {
@@ -880,20 +895,12 @@ function App() {
             for (const rowIdx of rowIndices) {
                 const rowData = hot.getSourceDataAtRow(rowIdx);
                 if (!rowData) continue;
-                if (!forceAll && rowData.id) continue;
-                if (!rowData.com_name || !rowData.common_name) {
-                    if (rowData.sample_id) hot.setDataAtRowProp(rowIdx, 'sample_id', null, 'auto');
-                    continue;
-                }
-                if (rowData.common_name === '소음') {
-                    if (rowData.sample_id) hot.setDataAtRowProp(rowIdx, 'sample_id', null, 'auto');
-                    continue;
-                }
                 const instName = rowData.instrument_name || '';
                 const worker = rowData.worker_name || '';
                 const common = rowData.common_name || '';
                 const mDate = rowData.m_date || startDate;
-                const prefixAlpha = getSamplePrefix(instName, worker, common);
+                const rowIsSelf = rowData.is_self || '';
+                const prefixAlpha = getSamplePrefix(instName, worker, common, rowIsSelf);
                 const dateObj = new Date(mDate);
                 if (isNaN(dateObj.getTime())) continue;
                 const year = String(dateObj.getFullYear()).substring(2);
@@ -945,10 +952,10 @@ function App() {
         return visualRow !== null ? hotInstance.current.getDataAtRowProp(visualRow, 'sample_id') : null;
     };
 
-    const getSamplePrefix = (instrumentName, workerName = '', commonName = '') => {
+    const getSamplePrefix = (instrumentName, workerName = '', commonName = '', rowIsSelf = '') => {
         const currentHazards = allHazardsRef.current;
         let inst = instrumentName;
-        let isSelf = '자체분석';
+        let isSelf = rowIsSelf || '자체분석';
         
         if (commonName && currentHazards.length > 0) {
             let h = currentHazards.find(x => x.common_name === commonName.trim());
@@ -958,7 +965,7 @@ function App() {
             }
             if (h) {
                 inst = h.instrument_name || inst || '';
-                isSelf = h.is_self || '자체분석';
+                isSelf = h.is_self || isSelf;
             }
         }
         
@@ -1287,21 +1294,41 @@ function App() {
                     post_flow_avg: sanitizeFloat(s.post_flow_avg),
                 };
                 
-                // ★ 수동 입력 시 is_self 누락 방지
-                if (!rowData.is_self) {
-                    const text = (rowData.common_name || '').trim();
-                    if (text && allHazardsRef.current && allHazardsRef.current.length > 0) {
-                        const baseName = text.split(/[/(]/)[0].trim();
-                        const h = allHazardsRef.current.find(x => x.common_name === text || x.common_name === baseName);
-                        if (h && h.is_self) {
-                            rowData.is_self = h.is_self;
-                        } else {
-                            rowData.is_self = '자체분석'; // 기본값
-                        }
+                // ★ 수동 입력 시 is_self 누락 방지 및 마스터 정보 동기화
+                const text = (rowData.common_name || '').trim();
+                if (text && text !== '소음' && allHazardsRef.current && allHazardsRef.current.length > 0) {
+                    const baseName = text.split(/[/(]/)[0].trim();
+                    const h = allHazardsRef.current.find(x => x.common_name === text || x.common_name === baseName);
+                    if (h) {
+                        if (h.is_self) rowData.is_self = h.is_self;
+                        if (h.instrument_name && !rowData.instrument_name) rowData.instrument_name = h.instrument_name;
+                        if (h.sampling_media && !rowData.sampling_media) rowData.sampling_media = h.sampling_media;
+                        if (h.hazard_category && !rowData.hazard_category) rowData.hazard_category = h.hazard_category;
+                    } else if (!rowData.is_self) {
+                        rowData.is_self = '자체분석'; // 기본값
                     }
                 }
                 delete rowData.actions;
                 preparedData.push(rowData);
+            }
+
+            // ★ 오타/미등록 유해인자 엄격 검증 (저장 즉시 차단)
+            const unmatchedHazards = [];
+            for (const row of preparedData) {
+                const text = (row.common_name || '').trim();
+                if (!text || text === '소음') continue;
+                const baseName = text.split(/[/(]/)[0].trim();
+                const exists = allHazardsRef.current.some(h => h.common_name === text || h.common_name === baseName);
+                if (allHazardsRef.current.length > 0 && !exists) {
+                    unmatchedHazards.push(text);
+                }
+            }
+
+            if (unmatchedHazards.length > 0) {
+                const uniqueUnmatched = Array.from(new Set(unmatchedHazards));
+                alert(`❌ 저장 불가: 유해인자 목록(kiwe_hazard)에 등록되지 않은 명칭(오타 등)이 포함되어 있습니다:\n\n[ ${uniqueUnmatched.join(', ')} ]\n\n올바른 유해인자 명칭으로 수정한 후 다시 저장해 주세요.`);
+                setLoading(false);
+                return;
             }
 
             // DB 컬럼 기준 필터링

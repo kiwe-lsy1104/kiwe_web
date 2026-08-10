@@ -1,0 +1,8 @@
+ID: SB262-0011 | Common: '브롬화수소' | is_self: '자체분석' | inst: 'IC-CD' | date: 2026-08-07 | worker: '공시료1'
+ID: SB262-0012 | Common: '브롬화수소' | is_self: '자체분석' | inst: 'IC-CD' | date: 2026-08-07 | worker: '공시료2'
+ID: RB262-0007 | Common: '요오드' | is_self: '(주)SM작업환경측정센터' | inst: 'IC-CD' | date: 2026-08-07 | worker: '공시료1'
+ID: RB262-0008 | Common: '요오드' | is_self: '(주)SM작업환경측정센터' | inst: 'IC-CD' | date: 2026-08-07 | worker: '공시료2'
+ID: R262-0011 | Common: '요오드' | is_self: '(주)SM작업환경측정센터' | inst: 'IC-CD' | date: 2026-08-07 | worker: '이원호'
+ID: R262-0012 | Common: '요오드' | is_self: '(주)SM작업환경측정센터' | inst: 'IC-CD' | date: 2026-08-07 | worker: '최영규'
+ID: S262-0019 | Common: '브롬화수소' | is_self: '(주)SM작업환경측정센터' | inst: 'IC-CD' | date: 2026-08-07 | worker: '최영규'
+ID: S262-0015 | Common: '브롬화수소' | is_self: '자체분석' | inst: 'IC-CD' | date: 2026-08-07 | worker: '이원호'
