@@ -24,7 +24,7 @@ export function setupHazardSelection(gridRowRef, hotInstance, calculateSampleId,
             }
             if (!receivedBy) receivedBy = '이초롱';
 
-            if (isSelf === '자체분석') {
+            if (!isSelf || isSelf === '자체분석') {
                 analyst = receivedBy;
             } else {
                 analyst = isSelf;
@@ -46,11 +46,9 @@ export function setupHazardSelection(gridRowRef, hotInstance, calculateSampleId,
 
             hot.setDataAtRowProp(updates);
 
-            // sample_id generation AFTER instrument_name and worker_name are set
-            if (!hot.getDataAtRowProp(targetRow, 'sample_id')) {
-                const sampleId = await calculateSampleId(targetRow);
-                if (sampleId) hot.setDataAtRowProp(targetRow, 'sample_id', sampleId);
-            }
+            // ★ 유해인자 선택 후 시료번호 재계산 (is_self 변경으로 S↔R 접두어가 바뀔 수 있으므로 항상 재계산)
+            const sampleId = await calculateSampleId(targetRow);
+            if (sampleId) hot.setDataAtRowProp(targetRow, 'sample_id', sampleId);
         }
     };
 

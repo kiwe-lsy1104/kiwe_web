@@ -361,7 +361,7 @@ function App() {
                             hot.setDataAtRowProp(visualRow, 'received_date', newVal, 'auto');
                         }
                         if (['common_name', 'worker_name', 'instrument_name', 'is_self'].includes(prop)) {
-                            // ★ 수동 타이핑 시 kiwe_hazard 마스터 정보 자동 연동
+                            // ★ 수동 타이핑 시 kiwe_hazard 마스터 정보 자동 연동 및 분석자 자동 채움
                             if (prop === 'common_name') {
                                 const text = (newVal || '').trim();
                                 if (text && allHazardsRef.current) {
@@ -381,6 +381,16 @@ function App() {
                                     }
                                 }
                             }
+
+                            // ★ 분석구분(is_self)에 따른 분석자(analyst) 자동 설정 (자체분석: 이초롱, 외부기관: 기관명)
+                            const currentIsSelf = hot.getDataAtRowProp(visualRow, 'is_self');
+                            const defaultAnalyst = receiverDefaultRef.current || '이초롱';
+                            if (!currentIsSelf || currentIsSelf === '자체분석') {
+                                hot.setDataAtRowProp(visualRow, 'analyst', defaultAnalyst, 'auto');
+                            } else {
+                                hot.setDataAtRowProp(visualRow, 'analyst', currentIsSelf, 'auto');
+                            }
+
                             rowsToProcess.add(row); // 피지컬 인덱스 수집
                         }
                     }
@@ -458,6 +468,7 @@ function App() {
                         // 교대형태, 실근로시간, 점심시간, 발생형태 자동입력 해제 요청으로 제거
                         hot.setDataAtRowProp(row, 'condition', '양호');
                         hot.setDataAtRowProp(row, 'received_by', currentReceiver);
+                        hot.setDataAtRowProp(row, 'analyst', currentReceiver);
                         if (currentMDate) hot.setDataAtRowProp(row, 'received_date', currentMDate);
                     }
                 });
@@ -1173,6 +1184,16 @@ function App() {
                         if (h.hazard_category && !rowData.hazard_category) rowData.hazard_category = h.hazard_category;
                     } else if (!rowData.is_self) {
                         rowData.is_self = '자체분석'; // 기본값
+                    }
+                }
+
+                // ★ 저장 시 analyst 누락 방지 (자체분석이면 이초롱, 외부기관이면 기관명)
+                const defaultAnalyst = receiverDefaultRef.current || '이초롱';
+                if (!rowData.analyst || rowData.analyst === '자체분석') {
+                    if (!rowData.is_self || rowData.is_self === '자체분석') {
+                        rowData.analyst = defaultAnalyst;
+                    } else {
+                        rowData.analyst = rowData.is_self;
                     }
                 }
 

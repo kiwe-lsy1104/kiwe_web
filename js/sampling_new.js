@@ -779,6 +779,13 @@ function App() {
                                     }
                                 }
                             }
+                            const currentIsSelf = hot.getDataAtRowProp(visualRow, 'is_self');
+                            const defaultAnalyst = receiverDefaultRef.current || '이초롱';
+                            if (!currentIsSelf || currentIsSelf === '자체분석') {
+                                hot.setDataAtRowProp(visualRow, 'analyst', defaultAnalyst, 'auto');
+                            } else {
+                                hot.setDataAtRowProp(visualRow, 'analyst', currentIsSelf, 'auto');
+                            }
                             rowsToProcess.add(row);
                         }
                     }
@@ -805,6 +812,7 @@ function App() {
                         }
                         hot.setDataAtRowProp(row, 'condition', '양호');
                         hot.setDataAtRowProp(row, 'received_by', currentReceiver);
+                        hot.setDataAtRowProp(row, 'analyst', currentReceiver);
                         if (currentMDate) hot.setDataAtRowProp(row, 'received_date', currentMDate);
                     }
                 });
@@ -895,6 +903,17 @@ function App() {
             for (const rowIdx of rowIndices) {
                 const rowData = hot.getSourceDataAtRow(rowIdx);
                 if (!rowData) continue;
+
+                // ★ 사업장명/유해인자 없으면 시료번호 제거
+                if (!rowData.com_name || !rowData.common_name) {
+                    if (rowData.sample_id) hot.setDataAtRowProp(rowIdx, 'sample_id', null, 'auto');
+                    continue;
+                }
+                if (rowData.common_name === '소음') {
+                    if (rowData.sample_id) hot.setDataAtRowProp(rowIdx, 'sample_id', null, 'auto');
+                    continue;
+                }
+
                 const instName = rowData.instrument_name || '';
                 const worker = rowData.worker_name || '';
                 const common = rowData.common_name || '';
@@ -1306,6 +1325,14 @@ function App() {
                         if (h.hazard_category && !rowData.hazard_category) rowData.hazard_category = h.hazard_category;
                     } else if (!rowData.is_self) {
                         rowData.is_self = '자체분석'; // 기본값
+                    }
+                }
+                const defaultAnalyst = receiverDefaultRef.current || '이초롱';
+                if (!rowData.analyst || rowData.analyst === '자체분석') {
+                    if (!rowData.is_self || rowData.is_self === '자체분석') {
+                        rowData.analyst = defaultAnalyst;
+                    } else {
+                        rowData.analyst = rowData.is_self;
                     }
                 }
                 delete rowData.actions;
