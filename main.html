@@ -168,6 +168,15 @@
                         e('p', { className: "text-slate-500 mt-2 font-medium" }, "환영합니다, ", e('span', { className: "text-blue-600 font-bold" }, user.user_name), "님")
                     ),
                     e('div', { style: { display: 'flex', gap: '8px', alignItems: 'center' } },
+                        e('a', {
+                            href: 'https://kiwe-home.lsy1104.workers.dev',
+                            target: '_blank',
+                            rel: 'noopener noreferrer',
+                            className: "bg-blue-50 px-4 py-2 rounded-xl text-blue-700 hover:bg-blue-100 font-bold shadow-sm border border-blue-200 transition-colors flex items-center gap-2 text-sm",
+                            style: { textDecoration: 'none' }
+                        },
+                            "🏢 홈페이지 (내부 검토용)"
+                        ),
                         e('a', { href: 'sampling.html', className: "bg-cyan-50 px-4 py-2 rounded-xl text-cyan-700 hover:bg-cyan-100 font-bold shadow-sm border border-cyan-200 transition-colors flex items-center gap-2 text-sm", style: { textDecoration: 'none' } },
                             e('i', { 'data-lucide': "flask-conical", className: "w-4 h-4 text-cyan-600" }),
                             "상반기 시료대장"
