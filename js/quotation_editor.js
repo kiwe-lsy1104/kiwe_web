@@ -41,7 +41,7 @@ const YONGYEOK_DEFAULTS = [
 /**
  * 견적서 미리보기 팝업창을 여는 함수 (A4 용지 가시화 및 인쇄 최적화)
  */
-export function openPrintPreview(hdr, items, mgmtFee, itemsTotal, sub, disc, vat, total, supportInfo) {
+export function openPrintPreview(hdr, items, mgmtFee, itemsTotal, sub, disc, vat, total, supportInfo, page1Offset = 0) {
     const isYongYeok = hdr.quote_type === '용역';
     const isRental = hdr.quote_type === '장비대여';
     const isMeasurement = hdr.quote_type === '측정' || hdr.quote_type === '일반';
@@ -222,9 +222,9 @@ export function openPrintPreview(hdr, items, mgmtFee, itemsTotal, sub, disc, vat
 
     // 페이징 처리: 페이지 위치에 따라 수용 가능한 최대 행수 동적 할당
     // 10mm 여백(상하) 기준 최적화된 행 수 (여유 공간 확보)
-    const P1_WITH_FOOTER = Math.max(0, (isYongYeok ? 5 : 14) - rowsToReduce);  // 1페이지 (합계 포함)
-    const P1_NO_FOOTER = isYongYeok ? 15 : 21; // 1페이지 (합계 미포함)
-    const PN_WITH_FOOTER = Math.max(0, (isYongYeok ? 18 : 29) - rowsToReduce); // 이후페이지 (합계 포함)
+    const P1_WITH_FOOTER = Math.max(0, (isYongYeok ? 4 : 11) - rowsToReduce) + page1Offset;  // 1페이지 (합계 포함)
+    const P1_NO_FOOTER = (isYongYeok ? 10 : 17) + page1Offset; // 1페이지 (합계 미포함)
+    const PN_WITH_FOOTER = Math.max(0, (isYongYeok ? 22 : 33) - rowsToReduce); // 이후페이지 (합계 포함)
     const PN_NO_FOOTER = isYongYeok ? 25 : 35; // 이후페이지 (합계 미포함)
 
     let remainingItems = [...items];
@@ -252,6 +252,88 @@ export function openPrintPreview(hdr, items, mgmtFee, itemsTotal, sub, disc, vat
             });
         }
         pageIdxCounter++;
+    }
+
+    let sumBoxHtml = '';
+    if (isYongYeok) {
+        const laborCost = items.reduce((s, it) => s + (it.quantity * (Number(it.unit_type) || 1) * it.unit_price), 0);
+        const directExp = Math.floor(laborCost * 0.1);
+        const overhead = Math.floor(laborCost * 1.1);
+        const techFee = Math.floor((laborCost + overhead) * 0.2);
+        const indirectSum = directExp + overhead + techFee;
+        const subTotal = laborCost + indirectSum;
+        sumBoxHtml = `
+            <table class="bold-border" style="width: 100%; margin-bottom: 2mm; margin-top: 3mm;">
+                <colgroup>
+                    <col style="width: 20%;"><col style="width: 30%;">
+                    <col style="width: 20%;"><col style="width: 30%;">
+                </colgroup>
+                <tr>
+                    <th style="background:#f2f2f2; text-align:center;">인건비 소계</th><td style="text-align:right; font-weight:bold; padding-right:8px;">${fmt(laborCost)}</td>
+                    <th style="background:#f2f2f2; text-align:center;">간접비 소계</th><td style="text-align:right; font-weight:bold; padding-right:8px;">${fmt(indirectSum)}</td>
+                </tr>
+                <tr>
+                    <th style="background:#f2f2f2; text-align:center;">합계금액(인+간)</th><td style="text-align:right; font-weight:bold; padding-right:8px;">${fmt(subTotal)}</td>
+                    <th style="background:#f2f2f2; text-align:center;">부가가치세(10%)</th><td style="text-align:right; font-weight:bold; padding-right:8px;">${fmt(vat)}</td>
+                </tr>
+                <tr>
+                    <th style="background:#eee; text-align:center; font-size:11pt; height: 10mm;">최종견적금액</th>
+                    <td colspan="3" style="text-align:right; font-weight:900; font-size:16pt; letter-spacing: 2px; padding-right:15px;">
+                        ₩ ${fmt(total)} <span style="font-size:10pt; font-weight:normal;">(VAT포함)</span>
+                    </td>
+                </tr>
+            </table>
+        `;
+    } else if (isRental) {
+        sumBoxHtml = `
+            <table class="bold-border" style="width: 100%; margin-bottom: 2mm; margin-top: 3mm;">
+                <colgroup>
+                    <col style="width: 20%;"><col style="width: 30%;">
+                    <col style="width: 20%;"><col style="width: 30%;">
+                </colgroup>
+                <tr>
+                    <th style="background:#f2f2f2; text-align:center;">합계금액</th><td style="text-align:right; font-weight:bold; padding-right:8px;">${fmt(sub)}</td>
+                    <th style="background:#f2f2f2; text-align:center;">할인액</th><td style="text-align:right; color:#c00; padding-right:8px;">${disc > 0 ? '- ' + fmt(disc) : '-'}</td>
+                </tr>
+                <tr>
+                    <th style="background:#eee; text-align:center; font-size:11pt; height: 10mm;">최종견적금액</th>
+                    <td colspan="3" style="text-align:right; font-weight:900; font-size:16pt; letter-spacing: 2px; padding-right:15px;">
+                        ₩ ${fmt(total)}
+                    </td>
+                </tr>
+            </table>
+        `;
+    } else {
+        const isContractMode = hdr.support_type === '계약';
+        const prelimAmt = isContractMode ? ((hdr.preliminary_fee || 0) * (hdr.preliminary_days || 1)) : 0;
+        sumBoxHtml = `
+            <table class="bold-border" style="width: 100%; margin-bottom: 2mm; margin-top: 3mm;">
+                <colgroup>
+                    <col style="width: 20%;"><col style="width: 30%;">
+                    <col style="width: 20%;"><col style="width: 30%;">
+                </colgroup>
+                <tr>
+                    <th style="background:#f2f2f2; text-align:center;">${isContractMode && prelimAmt > 0 ? '예비조사 소계' : '기본관리비 소계'}</th>
+                    <td style="text-align:right; font-weight:bold; padding-right:8px;">${fmt(isContractMode && prelimAmt > 0 ? prelimAmt : mgmtFee)}</td>
+                    <th style="background:#f2f2f2; text-align:center;">분석수수료 합계</th>
+                    <td style="text-align:right; font-weight:bold; padding-right:8px;">${fmt(itemsTotal)}</td>
+                </tr>
+                <tr>
+                    <th style="background:#f2f2f2; text-align:center;">${isSupport ? '공단지원금' : (discRate > 0 ? '할인율(' + discRate + '%)' : '할인액')}</th>
+                    <td style="text-align:right; color:${isSupport ? '#059669' : '#c00'}; font-weight:bold; padding-right:8px;">
+                        ${isSupport ? '- ' + fmt(supportInfo.amount) : (disc > 0 ? '- ' + fmt(disc) : '-')}
+                    </td>
+                    <th style="background:#f2f2f2; text-align:center;">${isContractMode && prelimAmt > 0 ? '합계(예비+기본+분석)' : '합계(기본+분석)'}</th>
+                    <td style="text-align:right; font-weight:bold; padding-right:8px;">${fmt(sub)}</td>
+                </tr>
+                <tr>
+                    <th style="background:#eee; text-align:center; font-size:11pt; height: 10mm;">최종견적금액</th>
+                    <td colspan="3" style="text-align:right; font-weight:900; font-size:16pt; letter-spacing: 2px; padding-right:15px;">
+                        ₩ ${fmt(total)} <span style="font-size:10pt; font-weight:normal;">${isTaxable ? '(VAT포함)' : ''}</span>
+                    </td>
+                </tr>
+            </table>
+        `;
     }
 
     let cumulativeItems = 0;
@@ -359,57 +441,11 @@ export function openPrintPreview(hdr, items, mgmtFee, itemsTotal, sub, disc, vat
             `;
         }
 
-        let sumBoxHtml = '';
-        if (isLastPage) {
-            if (isYongYeok) {
-                const laborCost = items.reduce((s, it) => s + (it.quantity * (Number(it.unit_type) || 1) * it.unit_price), 0);
-                const directExp = Math.floor(laborCost * 0.1);
-                const overhead = Math.floor(laborCost * 1.1);
-                const techFee = Math.floor((laborCost + overhead) * 0.2);
-                const indirectSum = directExp + overhead + techFee;
-                const subTotal = laborCost + indirectSum;
-                sumBoxHtml = `
-                        <table class="sum-box" style="margin-bottom:2mm; margin-top:0;">
-                            <tr><th style="text-align:center;">인건비 소계</th><td style="text-align:right; font-weight:bold;">${fmt(laborCost)}</td></tr>
-                            <tr><th style="text-align:center;">간접비 소계</th><td style="text-align:right; font-weight:bold;">${fmt(indirectSum)}</td></tr>
-                            <tr><th style="text-align:center;">합계금액(인건비+간접비)</th><td style="text-align:right; font-weight:bold;">${fmt(subTotal)}</td></tr>
-                            ${disc > 0 ? `<tr><th>할인(조정)액</th><td style="text-align:right; color:#c00;">- ${fmt(disc)}</td></tr>` : ''}
-                            <tr><th style="text-align:center;">부가가치세(10%)</th><td style="text-align:right; font-weight:bold;">${fmt(vat)}</td></tr>
-                            <tr class="total-row"><th>최종견적금액 (VAT포함)</th><td style="text-align:right; font-size:15pt; padding:0 10px;">₩ ${fmt(total)}</td></tr>
-                        </table>
-                `;
-            } else if (isRental) {
-                sumBoxHtml = `
-                        <table class="sum-box" style="margin-bottom:2mm; margin-top:0;">
-                            <tr><th style="text-align:center;">합계금액</th><td style="text-align:right; font-weight:bold;">${fmt(sub)}</td></tr>
-                            ${disc > 0 ? `<tr><th>할인액</th><td style="text-align:right; color:#c00;">- ${fmt(disc)}</td></tr>` : ''}
-                            <tr class="total-row"><th>최종견적금액</th><td style="text-align:right; font-size:15pt; padding:0 10px;">₩ ${fmt(total)}</td></tr>
-                        </table>
-                `;
-            } else {
-                const isContractMode = hdr.support_type === '계약';
-                const prelimAmt = isContractMode ? ((hdr.preliminary_fee || 0) * (hdr.preliminary_days || 1)) : 0;
-                const sumLabel = isContractMode ? '합계금액(예비조사+기본관리비+분석수수료)' : '합계금액(기본관리비+분석수수료)';
-                sumBoxHtml = `
-                        <table class="sum-box" style="margin-bottom:2mm; margin-top:0;">
-                            ${isContractMode && prelimAmt > 0 ? `<tr><th style="text-align:center;">예비조사 소계</th><td style="text-align:right; font-weight:bold;">${fmt(prelimAmt)}</td></tr>` : ''}
-                            <tr><th style="text-align:center;">기본관리비 소계</th><td style="text-align:right; font-weight:bold;">${fmt(mgmtFee)}</td></tr>
-                            <tr><th style="text-align:center;">분석수수료 합계</th><td style="text-align:right; font-weight:bold;">${fmt(itemsTotal)}</td></tr>
-                            <tr><th style="text-align:center;">${sumLabel}</th><td style="text-align:right; font-weight:bold;">${fmt(sub)}</td></tr>
-                            ${isSupport ? `<tr><th style="color:#059669;">공단지원금</th><td style="text-align:right; color:#059669; font-weight:bold;">- ${fmt(supportInfo.amount)}</td></tr>` : ''}
-                            ${discRate > 0 ? `<tr><th>할인율(${discRate}%)</th><td style="text-align:right; color:#c00;">- ${fmt(disc)}</td></tr>` : ''}
-                            <tr class="total-row"><th>최종견적금액 ${isTaxable ? '(VAT포함)' : ''}</th><td style="text-align:right; font-size:15pt; padding:0 10px;">₩ ${fmt(total)}</td></tr>
-                        </table>
-                `;
-            }
-        }
+        // sumBoxHtml moved outside the loop and to the first page header
 
         const footerHtml = isLastPage ? `
             <div style="margin-top: auto; display: flex; flex-direction: column;">
                 ${indirectCostsHtml ? `<div>${indirectCostsHtml}</div>` : ''}
-                <div style="display:flex; justify-content:flex-end; margin-top: 2mm;">
-                    ${sumBoxHtml}
-                </div>
                 <div style="margin-top: 2mm; border:1.5px solid #000; padding:8px 10px; font-size:8.5pt; line-height:1.4; box-sizing:border-box; min-height:15mm; flex-shrink: 0; overflow: visible;">
                     <p style="font-weight:bold; margin-bottom:4px; text-decoration:underline;">[ 특기사항 및 안내 ]</p>
                     <div style="white-space: pre-wrap; word-break: break-all;">${hdr.notes || getDefaultNotes(hdr.quote_type, hdr.support_type)}</div>
@@ -513,6 +549,8 @@ export function openPrintPreview(hdr, items, mgmtFee, itemsTotal, sub, disc, vat
                     </table>
                 </div>
             </div>
+
+            ${sumBoxHtml}
 
             <p style="font-weight:bold; margin-bottom:4px; text-align:center; font-size:10pt;">${isMeasurement ? `${hdr.year}년 ${hdr.half_year} ` : ''}${hdr.title || fileNameTitle}${(() => {
                 const t = hdr.title || fileNameTitle;
@@ -720,6 +758,7 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
     const [showClientDrop, setShowClientDrop] = useState(false);
     const [saving, setSaving] = useState(false);
     const [initialPeriod, setInitialPeriod] = useState(null); // 로드 시점의 기간 정보 보관
+    const [page1Offset, setPage1Offset] = useState(0); // 1페이지 행수 강제 조절용
 
     // DB 단가 목록 (복구됨)
     const [mgmtPrices, setMgmtPrices] = useState(DEFAULT_MANAGEMENT_COSTS);
@@ -1265,7 +1304,7 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
 
                 cols.forEach((val, ci) => {
                     const f = fields[startCol + ci];
-                    if (!f || f === '_amount') return;
+                    if (!f || f === '_amount' || f === 'unit_price') return;
                     
                     // 통합 업데이트 함수 사용 (단가 연동 포함)
                     newItems[targetRow] = getUpdatedItem(newItems[targetRow], f, val.trim());
@@ -1318,18 +1357,22 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
             for (let r = selRange.r1; r <= selRange.r2; r++) {
                 for (let c = selRange.c1; c <= selRange.c2; c++) {
                     const f = fields[c];
-                    if (!f || f === 'work_process_ro' || f === 'hazard_name_ro' || f === '_amount') continue;
-                    newItems[r] = { ...newItems[r], [f]: (f === 'quantity' || f === 'unit_price') ? 0 : '' };
+                    if (!f || f === 'work_process_ro' || f === 'hazard_name_ro' || f === '_amount' || f === 'unit_price') continue;
+                    newItems[r] = { ...newItems[r], [f]: (f === 'quantity') ? 0 : '' };
                 }
             }
             setItems(newItems); return;
         }
 
+        // 제어 키 무시 (단순 보조키나 특수키는 편집모드 진입 방지)
+        if (['Control', 'Shift', 'Alt', 'Meta', 'CapsLock', 'Escape', 'PageUp', 'PageDown', 'Home', 'End'].includes(ev.key)) return;
+        if (ev.ctrlKey || ev.metaKey || ev.altKey) return;
+
         const isNav = ['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Tab','Enter'].includes(ev.key);
         if (!isNav) {
             // 일반 문자 입력 → 편집 모드 진입
             const f = fields[col];
-            if (f && f !== 'work_process_ro' && f !== 'hazard_name_ro' && f !== '_amount') {
+            if (f && f !== 'work_process_ro' && f !== 'hazard_name_ro' && f !== '_amount' && f !== 'unit_price') {
                 setEditCell({ row, col });
                 // 현재 셀 값을 비우고 새 문자를 입력받도록 (input의 defaultValue 를 다음 render에서 처리)
             }
@@ -1534,9 +1577,16 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
                                 hdr.status === '완료' ? 'bg-blue-100 text-blue-700 border-blue-200' : 'bg-amber-50 text-amber-700 border-amber-200')
                     }, ['작성중', '완료', '계약'].map(s => e('option', { key: s, value: s }, s)))
                 ),
-                e('div', { className: 'flex gap-2' },
+                e('div', { className: 'flex gap-2 items-center' },
+                    e('div', { className: 'flex items-center gap-1 mr-2 bg-slate-100 px-2 py-1.5 rounded-lg border border-slate-200', title: '1페이지에 들어가는 최대 행 수를 강제로 늘리거나 줄입니다. (여백 초과 시 잘릴 수 있음)' },
+                        e('label', { className: 'text-[11px] text-slate-500 font-bold whitespace-nowrap' }, '1페이지 행 보정'),
+                        e('input', { 
+                            type: 'number', value: page1Offset, onChange: ev => setPage1Offset(Number(ev.target.value)), 
+                            className: 'w-12 px-1 py-0.5 border border-slate-300 rounded text-xs text-center font-bold outline-none focus:border-blue-500' 
+                        })
+                    ),
                     e('button', {
-                        onClick: () => openPrintPreview(hdr, items, mgmtFee, itemsTotal, sub, discAmt, vat, total, supportInfo),
+                        onClick: () => openPrintPreview(hdr, items, mgmtFee, itemsTotal, sub, discAmt, vat, total, supportInfo, page1Offset),
                         className: 'flex items-center gap-2 px-5 py-2 bg-slate-100 text-slate-700 rounded-lg text-sm font-bold hover:bg-slate-200'
                     }, e(Eye, { size: 15 }), '미리보기'),
                     e('button', {
@@ -1912,12 +1962,24 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
                                             return e('tr', { key: it._id },
                                                 // No 열
                                                 e('td', {
-                                                    style: { padding: '0 2px', textAlign: 'center', fontSize: '10px', fontWeight: 700, color: '#64748b', background: '#f1f5f9', borderBottom: '1px solid #cbd5e1', borderRight: '1px solid #cbd5e1', userSelect: 'none' }
+                                                    onMouseDown: ev => {
+                                                        ev.preventDefault();
+                                                        setEditCell(null);
+                                                        setSelAnchor({ row: rowIdx, col: 0 });
+                                                        setSelFocus({ row: rowIdx, col: fields.length - 1 });
+                                                        setIsDragging(true);
+                                                    },
+                                                    onMouseEnter: () => {
+                                                        if (isDragging) {
+                                                            setSelFocus({ row: rowIdx, col: fields.length - 1 });
+                                                        }
+                                                    },
+                                                    style: { padding: '0 2px', textAlign: 'center', fontSize: '10px', fontWeight: 700, color: '#64748b', background: '#e2e8f0', borderBottom: '1px solid #cbd5e1', borderRight: '1px solid #cbd5e1', userSelect: 'none', cursor: 'pointer' }
                                                 }, rowIdx + 1),
 
                                                 // 데이터 셀 (fields 순서대로)
                                                 ...fields.map((field, colIdx) => {
-                                                    const isReadOnly = field === '_amount';
+                                                    const isReadOnly = field === '_amount' || field === 'unit_price';
                                                     const isEditing = editCell && editCell.row === rowIdx && editCell.col === colIdx;
                                                     const selected  = inRange(rowIdx, colIdx);
                                                     const anchor    = isAnchor(rowIdx, colIdx);
@@ -1956,6 +2018,15 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
                                                                         }, 150);
                                                                     },
                                                                     onKeyDown: ev => handleGridKeyDown(ev),
+                                                                    onPaste: ev => {
+                                                                        const txt = ev.clipboardData?.getData('text');
+                                                                        if (txt && (txt.includes('\t') || txt.includes('\n'))) {
+                                                                            ev.preventDefault();
+                                                                            ev.stopPropagation();
+                                                                            setEditCell(null);
+                                                                            pasteToGrid(txt);
+                                                                        }
+                                                                    },
                                                                     style: {
                                                                         width: '100%', height: '100%', padding: '2px 4px',
                                                                         border: 'none', outline: '2px solid #2563eb',
