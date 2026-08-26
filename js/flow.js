@@ -255,27 +255,46 @@ async function fetchData() {
     // 4. Merge: sampling data provides flow values, kiwe_flow provides calibration metadata
     const finalMap = new Map();
     samplingMap.forEach((samp, key) => {
-        finalMap.set(key, { m_date: samp.m_date, pump_no: samp.pump_no, ...samp });
+        const defaultPreCal = samp.m_date ? getPreviousWorkday(samp.m_date) : null;
+        const defaultPostCal = samp.m_date || null;
+        finalMap.set(key, {
+            m_date: samp.m_date,
+            pump_no: samp.pump_no,
+            calibrator_person: samp.measured_by || null,
+            pre_cal_date: defaultPreCal,
+            post_cal_date: defaultPostCal,
+            ...samp
+        });
     });
     (flowData || []).forEach(f => {
         const key = `${f.m_date}_${f.pump_no}`;
         if (finalMap.has(key)) {
             const ext = finalMap.get(key);
-            // ★ 제안1: 보정자(calibrator_person)가 kiwe_flow에 없으면 측정자(measured_by)로 자동 대체
+            // 보정자(calibrator_person)가 kiwe_flow에 없으면 측정자(measured_by)로 자동 대체
             const resolvedCalibratorPerson = f.calibrator_person || measuredByMap.get(key) || ext.measured_by || null;
+            // 전유량/후유량 보정일자가 kiwe_flow에 없으면 기본값(평일 전날/측정일) 적용
+            const resolvedPreCalDate = f.pre_cal_date || (f.m_date ? getPreviousWorkday(f.m_date) : null) || ext.pre_cal_date;
+            const resolvedPostCalDate = f.post_cal_date || f.m_date || ext.post_cal_date;
             // 시료대장의 유량값이 우선, kiwe_flow의 보정 메타데이터만 덮어씀
             finalMap.set(key, {
                 ...f, ...ext,
                 calibrator_no: f.calibrator_no,
                 calibrator_person: resolvedCalibratorPerson,
-                pre_cal_date: f.pre_cal_date, post_cal_date: f.post_cal_date,
+                pre_cal_date: resolvedPreCalDate,
+                post_cal_date: resolvedPostCalDate,
                 flow_id: f.flow_id
             });
         } else {
             // 시료대장에 없는 펌프지만 유량보정대장에는 있는 경우 (과거 데이터 등)
-            // ★ 제안1: 이 경우에도 calibrator_person 없으면 측정자로 fallback
             const resolvedCalibratorPerson = f.calibrator_person || measuredByMap.get(key) || null;
-            finalMap.set(key, { ...f, calibrator_person: resolvedCalibratorPerson });
+            const resolvedPreCalDate = f.pre_cal_date || (f.m_date ? getPreviousWorkday(f.m_date) : null);
+            const resolvedPostCalDate = f.post_cal_date || f.m_date || null;
+            finalMap.set(key, {
+                ...f,
+                calibrator_person: resolvedCalibratorPerson,
+                pre_cal_date: resolvedPreCalDate,
+                post_cal_date: resolvedPostCalDate
+            });
         }
     });
 
