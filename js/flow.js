@@ -20,14 +20,27 @@ const formatDate = (d) => {
     return `${y}-${m}-${d2}`;
 };
 
-// Helper: Get Workday Before (Mon -> Fri)
+// Helper: Get Workday Before (Mon -> Fri, timezone safe)
 const getPreviousWorkday = (dateStr) => {
-    let date = new Date(dateStr);
-    if (isNaN(date)) return '';
+    if (!dateStr) return '';
+    const parts = String(dateStr).trim().split('-');
+    if (parts.length < 3) return '';
+    const y = parseInt(parts[0], 10);
+    const m = parseInt(parts[1], 10) - 1;
+    const d = parseInt(parts[2], 10);
+    const date = new Date(y, m, d);
+    if (isNaN(date.getTime())) return '';
+
+    // 하루 전으로 이동
     date.setDate(date.getDate() - 1);
+    // 일요일(0)이면 금요일(-2)로, 토요일(6)이면 금요일(-1)로
     if (date.getDay() === 0) date.setDate(date.getDate() - 2);
     else if (date.getDay() === 6) date.setDate(date.getDate() - 1);
-    return formatDate(date);
+
+    const ry = date.getFullYear();
+    const rm = String(date.getMonth() + 1).padStart(2, '0');
+    const rd = String(date.getDate()).padStart(2, '0');
+    return `${ry}-${rm}-${rd}`;
 };
 
 // Check if Handsontable is available
