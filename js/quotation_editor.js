@@ -305,7 +305,7 @@ export function openPrintPreview(hdr, items, mgmtFee, itemsTotal, sub, disc, vat
         `;
     } else {
         const isContractMode = hdr.support_type === '계약';
-        const prelimAmt = isContractMode ? ((hdr.preliminary_fee || 0) * (hdr.preliminary_days || 1)) : 0;
+        const prelimAmt = isContractMode ? ((Number(hdr.preliminary_fee) || 0) * (hdr.preliminary_days !== undefined && hdr.preliminary_days !== null ? Number(hdr.preliminary_days) : 0)) : 0;
         sumBoxHtml = `
             <table class="bold-border" style="width: 100%; margin-bottom: 2mm; margin-top: 3mm;">
                 <colgroup>
@@ -754,6 +754,7 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
     const [hdr, setHdr] = useState(BLANK_HDR);
     const [items, setItems] = useState([BLANK_ITEM(0)]);
     const [clients, setClients] = useState([]);
+    const [contractClientIds, setContractClientIds] = useState(new Set());
     const [clientSearch, setClientSearch] = useState('');
     const [showClientDrop, setShowClientDrop] = useState(false);
     const [saving, setSaving] = useState(false);
@@ -938,8 +939,21 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
     }
 
     async function loadClients() {
-        const { data } = await sb.from('kiwe_quotation_clients').select('*').order('client_name');
-        setClients(data || []);
+        const [{ data: cList }, { data: pList }] = await Promise.all([
+            sb.from('kiwe_quotation_clients').select('*').order('client_name'),
+            sb.from('kiwe_price_settings').select('price_type').ilike('price_type', '계약_%')
+        ]);
+        setClients(cList || []);
+        if (pList && pList.length > 0) {
+            const ids = new Set();
+            pList.forEach(p => {
+                if (p.price_type && p.price_type.startsWith('계약_')) {
+                    const cid = Number(p.price_type.replace('계약_', ''));
+                    if (cid) ids.add(cid);
+                }
+            });
+            setContractClientIds(ids);
+        }
     }
 
     async function loadEdit(id) {
@@ -1010,7 +1024,7 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
     const isMeasurement = hdr.quote_type === '측정' || hdr.quote_type === '일반';
     const isContract = isMeasurement && hdr.support_type === '계약'; // 계약단가 모드
 
-    const prelimSub = isContract ? (hdr.preliminary_fee || 0) * (hdr.preliminary_days || 1) : 0;
+    const prelimSub = isContract ? (hdr.preliminary_fee || 0) * (hdr.preliminary_days !== undefined && hdr.preliminary_days !== null ? Number(hdr.preliminary_days) : 0) : 0;
     const mgmtFee = isMeasurement ? (hdr.management_fee || 0) * (hdr.sampling_days || 1) : 0;
     const itemsTotal = useMemo(() => items.reduce((s, it) => {
         if (isYongYeok || isRental) return s + (it.quantity * (Number(it.unit_type) || 1) * it.unit_price);
@@ -1488,7 +1502,7 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
                 management_fee: hdr.management_fee,
                 sampling_days: hdr.sampling_days || 1,
                 preliminary_fee: hdr.preliminary_fee || 0,
-                preliminary_days: hdr.preliminary_days || 1,
+                preliminary_days: hdr.preliminary_days !== undefined && hdr.preliminary_days !== null ? Number(hdr.preliminary_days) : 0,
                 contract_client_id: hdr.contract_client_id || null,
                 discount_rate: hdr.discount_rate,
                 discount_amount: hdr.discount_amount,
@@ -1689,11 +1703,14 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
                                         },
                                         className: 'w-full px-3 py-2 border-2 border-rose-200 rounded-lg text-sm font-bold outline-none focus:border-rose-500 bg-white'
                                     },
-                                        e('option', { value: '' }, '-- 거래처 선택 (계약단가 로드) --'),
-                                        clients.map(c => e('option', { key: c.id, value: c.id }, c.client_name))
+                                        e('option', { value: '' }, '-- 계약단가 설정 사업장 선택 --'),
+                                        clients
+                                            .filter(c => contractClientIds.has(c.id) || c.id === hdr.contract_client_id)
+                                            .map(c => e('option', { key: c.id, value: c.id }, c.client_name))
                                     )
                                 ),
-                                hdr.contract_client_id && e('div', { className: 'mt-1.5 text-[10px] text-rose-500 font-bold' }, `ℹ️ 계약단가 로드됨: ${clients.find(c => c.id === hdr.contract_client_id)?.client_name || ''} (price_type=계약_${hdr.contract_client_id})`)
+                                hdr.contract_client_id && e('div', { className: 'mt-1.5 text-[10px] text-rose-500 font-bold' }, `ℹ️ 계약단가 로드됨: ${clients.find(c => c.id === hdr.contract_client_id)?.client_name || ''} (price_type=계약_${hdr.contract_client_id})`),
+                                !hdr.contract_client_id && contractClientIds.size === 0 && e('div', { className: 'mt-1.5 text-[10px] text-slate-400 font-medium' }, '※ 현재 계약단가가 설정된 사업장이 없습니다. [설정 > 계약단가]에서 먼저 단가를 등록해주세요.')
                             ),
                             e('div', null, e('label', { className: labelCls }, '견적 종류'),
                                 e('div', { className: 'flex gap-2' },
@@ -1743,9 +1760,9 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
                                     e('label', { className: 'block text-[9px] font-black text-rose-400 mb-1.5 uppercase' }, '횟수 (Times)'),
                                     e('input', {
                                         type: 'number',
-                                        value: hdr.preliminary_days || 1,
-                                        min: 1,
-                                        onChange: ev => setH('preliminary_days', Number(ev.target.value)),
+                                        value: hdr.preliminary_days !== undefined && hdr.preliminary_days !== null ? hdr.preliminary_days : 0,
+                                        min: 0,
+                                        onChange: ev => setH('preliminary_days', Number(ev.target.value) || 0),
                                         className: 'w-20 px-3 py-2.5 border border-slate-200 rounded-xl text-sm font-black text-center bg-slate-50 focus:bg-white focus:ring-4 focus:ring-rose-100 focus:border-rose-500 outline-none transition-all'
                                     })
                                 ),
