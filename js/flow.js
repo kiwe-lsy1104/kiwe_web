@@ -102,6 +102,7 @@ export async function initFlowPage() {
     const startDateInput = document.getElementById('startDate');
     const endDateInput = document.getElementById('endDate');
     const pumpFilterInput = document.getElementById('pumpFilter');
+    const personFilterInput = document.getElementById('personFilter');
 
     if (paramDate) {
         if (startDateInput) startDateInput.value = paramDate;
@@ -123,6 +124,7 @@ export async function initFlowPage() {
     if (startDateInput) startDateInput.addEventListener('change', fetchData);
     if (endDateInput) endDateInput.addEventListener('change', fetchData);
     if (pumpFilterInput) pumpFilterInput.addEventListener('input', fetchData);
+    if (personFilterInput) personFilterInput.addEventListener('change', fetchData);
 
     document.getElementById('saveBtn')?.addEventListener('click', () => saveData(false));
     // document.getElementById('deleteBtn')?.addEventListener('click', deleteSelectedRows); // Removed external delete button
@@ -311,12 +313,38 @@ async function fetchData() {
         }
     });
 
-    const finalData = Array.from(finalMap.values()).sort((a,b) => {
+    const allData = Array.from(finalMap.values()).sort((a,b) => {
         if(a.m_date !== b.m_date) return (a.m_date || '').localeCompare(b.m_date || '');
         return (a.pump_no || '').localeCompare(b.pump_no || '');
     });
 
-    // 5. Calculate averages on the fly
+    // 5. Update personFilter dropdown options based on fetched records
+    const personFilterSelect = document.getElementById('personFilter');
+    if (personFilterSelect) {
+        const currentSelected = personFilterSelect.value;
+        const personSet = new Set();
+        allData.forEach(r => {
+            const p = (r.calibrator_person || r.measured_by || '').trim();
+            if (p) personSet.add(p);
+        });
+        const persons = Array.from(personSet).sort();
+
+        // Rebuild options preserving selection if possible
+        personFilterSelect.innerHTML = '<option value="">전체</option>' + 
+            persons.map(p => `<option value="${p}">${p}</option>`).join('');
+        if (currentSelected && personSet.has(currentSelected)) {
+            personFilterSelect.value = currentSelected;
+        } else {
+            personFilterSelect.value = '';
+        }
+    }
+
+    const personTerm = document.getElementById('personFilter')?.value;
+    const finalData = personTerm 
+        ? allData.filter(r => (r.calibrator_person === personTerm || r.measured_by === personTerm))
+        : allData;
+
+    // 6. Calculate averages on the fly
     finalData.forEach(row => {
         const preAvg = parseFloat(row.pre_flow_avg);
         const postAvg = parseFloat(row.post_flow_avg);
