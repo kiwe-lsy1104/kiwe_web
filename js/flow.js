@@ -225,15 +225,24 @@ async function fetchData() {
     );
     const rawData = rawArrays.flat();
 
+const roundFlow3 = (v) => {
+    if (v === null || v === undefined || v === '') return null;
+    const n = parseFloat(v);
+    if (isNaN(n)) return null;
+    return Number(Math.round(Number(n + 'e3')) + 'e-3');
+};
+
     // 3. Aggregate sampling data by m_date + pump_no (flow values from sampling take priority)
     // 상반기(pre_flow_1~3) / 하반기(pre_flow_avg) 두 형식 모두 지원
-    const calcAvgFromRuns = (v1, v2, v3) => {
+    const calcAvgFromRuns = (v1, v2, v3, mDate) => {
         let sum = 0, cnt = 0;
         const n1 = parseFloat(v1), n2 = parseFloat(v2), n3 = parseFloat(v3);
         if (!isNaN(n1) && n1 > 0) { sum += n1; cnt++; }
         if (!isNaN(n2) && n2 > 0) { sum += n2; cnt++; }
         if (!isNaN(n3) && n3 > 0) { sum += n3; cnt++; }
-        return cnt > 0 ? sum / cnt : NaN;
+        if (cnt === 0) return NaN;
+        const avg = sum / cnt;
+        return (mDate && mDate >= '2026-09-01') ? roundFlow3(avg) : avg;
     };
 
     // ★ 제안1: m_date+pump_no 기준으로 measured_by(측정자)도 집계 (보정자 fallback용)
@@ -252,11 +261,11 @@ async function fetchData() {
 
         // 상반기와 같이 pre_flow_avg가 없는 경우 1~3회에서 평균 계산
         if (isNaN(preAvg) || preAvg <= 0) {
-            const computed = calcAvgFromRuns(r.pre_flow_1, r.pre_flow_2, r.pre_flow_3);
+            const computed = calcAvgFromRuns(r.pre_flow_1, r.pre_flow_2, r.pre_flow_3, r.m_date);
             if (!isNaN(computed)) preAvg = computed;
         }
         if (isNaN(postAvg) || postAvg <= 0) {
-            const computed = calcAvgFromRuns(r.post_flow_1, r.post_flow_2, r.post_flow_3);
+            const computed = calcAvgFromRuns(r.post_flow_1, r.post_flow_2, r.post_flow_3, r.m_date);
             if (!isNaN(computed)) postAvg = computed;
         }
 
@@ -348,18 +357,34 @@ async function fetchData() {
     finalData.forEach(row => {
         const preAvg = parseFloat(row.pre_flow_avg);
         const postAvg = parseFloat(row.post_flow_avg);
+        const isNewStandard = row.m_date && row.m_date >= '2026-09-01';
         
-        row.pre_avg = !isNaN(preAvg) ? preAvg : null;
-        row.post_avg = !isNaN(postAvg) ? postAvg : null;
+        if (isNewStandard) {
+            row.pre_avg = !isNaN(preAvg) ? roundFlow3(preAvg) : null;
+            row.post_avg = !isNaN(postAvg) ? roundFlow3(postAvg) : null;
 
-        if (row.pre_avg !== null || row.post_avg !== null) {
-            let totalAvg = 0;
-            if (row.pre_avg !== null && row.post_avg !== null) totalAvg = (row.pre_avg + row.post_avg) / 2;
-            else if (row.pre_avg !== null) totalAvg = row.pre_avg;
-            else if (row.post_avg !== null) totalAvg = row.post_avg;
-            row.total_avg = Number(totalAvg.toFixed(3));
+            if (row.pre_avg !== null && row.post_avg !== null) {
+                row.total_avg = roundFlow3((row.pre_avg + row.post_avg) / 2);
+            } else if (row.pre_avg !== null) {
+                row.total_avg = row.pre_avg;
+            } else if (row.post_avg !== null) {
+                row.total_avg = row.post_avg;
+            } else {
+                row.total_avg = null;
+            }
         } else {
-            row.total_avg = null;
+            row.pre_avg = !isNaN(preAvg) ? preAvg : null;
+            row.post_avg = !isNaN(postAvg) ? postAvg : null;
+
+            if (row.pre_avg !== null || row.post_avg !== null) {
+                let totalAvg = 0;
+                if (row.pre_avg !== null && row.post_avg !== null) totalAvg = (row.pre_avg + row.post_avg) / 2;
+                else if (row.pre_avg !== null) totalAvg = row.pre_avg;
+                else if (row.post_avg !== null) totalAvg = row.post_avg;
+                row.total_avg = Number(totalAvg.toFixed(3));
+            } else {
+                row.total_avg = null;
+            }
         }
     });
 
@@ -489,9 +514,9 @@ function renderGrid(data) {
             { data: 'calibrator_no', type: 'numeric', width: 60, className: centerClass },
             { data: 'calibrator_person', type: 'text', width: 70, className: centerClass },
             { data: 'pre_cal_date', type: 'date', dateFormat: 'YYYY-MM-DD', renderer: autoShrinkRenderer, width: 95, className: centerClass },
-            { data: 'pre_avg', type: 'numeric', numericFormat: { pattern: '0.000' }, readOnly: true, width: 95, className: centerClass + ' font-bold bg-slate-100' },
+            { data: 'pre_avg', type: 'numeric', numericFormat: { pattern: '0.000' }, readOnly: true, renderer: autoShrinkRenderer, width: 95, className: centerClass + ' font-bold bg-slate-100' },
             { data: 'post_cal_date', type: 'date', dateFormat: 'YYYY-MM-DD', renderer: autoShrinkRenderer, width: 95, className: centerClass },
-            { data: 'post_avg', type: 'numeric', numericFormat: { pattern: '0.000' }, readOnly: true, width: 95, className: centerClass + ' font-bold bg-slate-100' },
+            { data: 'post_avg', type: 'numeric', numericFormat: { pattern: '0.000' }, readOnly: true, renderer: autoShrinkRenderer, width: 95, className: centerClass + ' font-bold bg-slate-100' },
             { data: 'total_avg', type: 'numeric', numericFormat: { pattern: '0.000' }, readOnly: true, renderer: autoShrinkRenderer, width: 120, className: 'htCenter htMiddle font-bold text-indigo-700 bg-indigo-50/50' }
         ],
         wordWrap: false,
@@ -530,9 +555,18 @@ function renderGrid(data) {
                 const calcTotalAvg = () => {
                     const pre = parseFloat(this.getDataAtRowProp(row, 'pre_avg'));
                     const post = parseFloat(this.getDataAtRowProp(row, 'post_avg'));
+                    const mDate = this.getDataAtRowProp(row, 'm_date');
+                    const isNewStandard = mDate && mDate >= '2026-09-01';
+
                     if (!isNaN(pre) && !isNaN(post)) {
-                        const total = Number(((pre + post) / 2).toFixed(3));
+                        const total = isNewStandard
+                            ? roundFlow3((roundFlow3(pre) + roundFlow3(post)) / 2)
+                            : Number(((pre + post) / 2).toFixed(3));
                         this.setDataAtRowProp(row, 'total_avg', total);
+                    } else if (!isNaN(pre)) {
+                        this.setDataAtRowProp(row, 'total_avg', isNewStandard ? roundFlow3(pre) : Number(pre.toFixed(3)));
+                    } else if (!isNaN(post)) {
+                        this.setDataAtRowProp(row, 'total_avg', isNewStandard ? roundFlow3(post) : Number(post.toFixed(3)));
                     }
                 };
 

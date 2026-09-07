@@ -255,6 +255,19 @@ export function ExternalRequestManager({ supabase, sessionData }) {
         const hasPre = !isNaN(preAvg) && preAvg > 0;
         const hasPost = !isNaN(postAvg) && postAvg > 0;
 
+        // 2026-09-01 (삼창유화) 이후 측정 데이터는 사사오입 반올림(소수점 3자리) 적용
+        const isNewStandard = r.m_date && r.m_date >= '2026-09-01';
+        if (isNewStandard) {
+            const round3 = (v) => Number(Math.round(Number(v + 'e3')) + 'e-3');
+            const preR = hasPre ? round3(preAvg) : null;
+            const postR = hasPost ? round3(postAvg) : null;
+
+            if (preR !== null && postR !== null) return round3((preR + postR) / 2);
+            if (preR !== null) return preR;
+            if (postR !== null) return postR;
+            return 0;
+        }
+
         if (hasPre && hasPost) return Number(((preAvg + postAvg) / 2).toFixed(3));
         if (hasPre) return Number(preAvg.toFixed(3));
         if (hasPost) return Number(postAvg.toFixed(3));

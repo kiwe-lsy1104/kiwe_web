@@ -135,9 +135,14 @@ function initSampleGridNew(container, mDate, comName, onHazardDoubleClick, onDel
         return td;
     };
 
-    // 유량 컬럼 전용 렌더러 (녹색 계열 강조)
+    // 유량 컬럼 전용 렌더러 (녹색 계열 강조, 소수점 3자리 고정 표기)
     const flowRenderer = function (instance, td, row, col, prop, value, cellProperties) {
-        Handsontable.renderers.TextRenderer.apply(this, [instance, td, row, col, prop, value, cellProperties]);
+        let displayVal = value;
+        if (value !== null && value !== undefined && value !== '' && !isNaN(parseFloat(value))) {
+            const num = parseFloat(value);
+            displayVal = (Math.round(Number(num + 'e3')) / 1000).toFixed(3);
+        }
+        Handsontable.renderers.TextRenderer.apply(this, [instance, td, row, col, prop, displayVal, cellProperties]);
         td.style.backgroundColor = '#f0fdf4';
         td.style.color = '#15803d';
         td.style.fontWeight = '700';
@@ -1308,9 +1313,9 @@ function App() {
                     shift_type:      sanitizeStr(s.shift_type),
                     condition:       sanitizeStr(s.condition) || '양호',
                     input_seq:       sanitizeInt(s.input_seq),
-                    // ★ 유량보정 필드 (측정전/후 평균 각 1회)
-                    pre_flow_avg:  sanitizeFloat(s.pre_flow_avg),
-                    post_flow_avg: sanitizeFloat(s.post_flow_avg),
+                    // ★ 유량보정 필드 (측정전/후 평균 각 1회, 2026-09-01 이후 반올림 소수점 3자리 적용)
+                    pre_flow_avg:  s.m_date && s.m_date >= '2026-09-01' ? (sanitizeFloat(s.pre_flow_avg) !== null ? Number(Math.round(Number(sanitizeFloat(s.pre_flow_avg) + 'e3')) + 'e-3') : null) : sanitizeFloat(s.pre_flow_avg),
+                    post_flow_avg: s.m_date && s.m_date >= '2026-09-01' ? (sanitizeFloat(s.post_flow_avg) !== null ? Number(Math.round(Number(sanitizeFloat(s.post_flow_avg) + 'e3')) + 'e-3') : null) : sanitizeFloat(s.post_flow_avg),
                 };
                 
                 // ★ 수동 입력 시 is_self 누락 방지 및 마스터 정보 동기화
