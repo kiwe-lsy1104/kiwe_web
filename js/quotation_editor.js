@@ -17,6 +17,7 @@ const BLANK_HDR = {
     discount_rate: 0, discount_amount: 0, round_unit: 0, // 0:없음, 1:1,000원, 2:10,000원
     payment_terms: '현금',
     support_amount: 0, // M열: 공단지원금 (전용 컬럼)
+    is_manual_support: false, // M열 수동 입력 여부 (기본은 80%/100% 자동 계산)
     actual_amount: 0,  // L열: 합계금액(기본관리비+분석수수료)
     preliminary_fee: 0,   // 예비조사 단가 (계약단가 모드에서만 사용)
     preliminary_days: 1,  // 예비조사 횟수
@@ -987,12 +988,31 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
 
                 setInitialPeriod({ year: q.year, half_year: q.half_year, quote_date: q.quote_date });
 
+                // 지원금 수동 입력 여부 판별 및 과거 오류값(한도 80% 초과) 자동 보정
+                const isSupportMode = real_support === '신규지원' || real_support === '기존지원';
+                const subAmt = Number(q.actual_amount) || 0;
+                const savedSupAmt = Number(q.support_amount) || 0;
+                let isManualSup = false;
+                if (isSupportMode && savedSupAmt > 0) {
+                    const maxRate = real_support === '신규지원' ? 1.0 : 0.8;
+                    const maxLimit = real_support === '신규지원' ? 1000000 : 400000;
+                    const expectedCalc = Math.min(Math.floor(subAmt * maxRate), maxLimit);
+                    // 저장된 값이 subAmt * maxRate를 초과하는 오류값(예: 460290원인데 400000원)이거나 expectedCalc와 같으면 자동계산 상태
+                    if (savedSupAmt === expectedCalc || (savedSupAmt > Math.floor(subAmt * maxRate))) {
+                        isManualSup = false;
+                    } else {
+                        isManualSup = true;
+                    }
+                }
+
                 setHdr({
                     ...BLANK_HDR,
                     ...q,
                     ...cInfo,
                     support_type: real_support,
                     is_discount: is_disc,
+                    is_manual_support: isManualSup,
+                    support_amount: isManualSup ? savedSupAmt : 0,
                     management_fee: Number(q.management_fee) || 0,
                     manager_name: q.manager_name || q.created_by || '이승용',
                     title: q.title || '작업환경측정 견적서',
@@ -1045,7 +1065,7 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
 
     // ── 비용지원 정보 및 기초 금액 계산 ──────────────────────────
     const supportInfo = useMemo(() => {
-        if (!isSupport) return { rate: 0, amount: 0, limit: 0, userPay: sub, actualAmt: sub };
+        if (!isSupport) return { rate: 0, amount: 0, limit: 0, userPay: sub, actualAmt: sub, isManual: false };
 
         const prefix = hdr.support_type === '신규지원' ? '신규' : '기존';
         const rate = supportPolicies[`${prefix}_지원율`] || (hdr.support_type === '신규지원' ? 100 : 80);
@@ -1054,13 +1074,14 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
         let calcAmt = Math.floor(sub * (rate / 100));
         if (calcAmt > limit) calcAmt = limit;
 
-        // 사용자가 명시적으로 M열 값을 입력했다면 그 값을 우선, 아니면 자동 계산값 사용
-        const finalAmt = (hdr.support_amount && hdr.support_amount > 0) ? hdr.support_amount : calcAmt;
-        const afterSubsidy = sub - finalAmt;
+        // 사용자가 명시적으로 M열 수동 입력을 활성화한 경우에만 수동 입력값 사용, 아니면 항상 자동 계산값(기존 80%/신규 100%) 사용
+        const isManual = !!hdr.is_manual_support && hdr.support_amount !== undefined && hdr.support_amount !== null && Number(hdr.support_amount) >= 0;
+        const finalAmt = isManual ? Number(hdr.support_amount) : calcAmt;
+        const afterSubsidy = Math.max(0, sub - finalAmt);
         const actualRate = sub > 0 ? Math.round((finalAmt / sub) * 100) : 0;
 
-        return { rate: actualRate, amount: finalAmt, limit, userPay: afterSubsidy, actualAmt: sub };
-    }, [sub, isSupport, hdr.support_type, hdr.support_amount, supportPolicies]);
+        return { rate: actualRate, amount: finalAmt, limit, userPay: afterSubsidy, actualAmt: sub, isManual };
+    }, [sub, isSupport, hdr.support_type, hdr.support_amount, hdr.is_manual_support, supportPolicies]);
 
     // ── 최종 견적금액 및 할인 계산 ──────────────────────────────
     // 1. 기초 금액 (지원금 제외 후 금액)
@@ -1107,6 +1128,11 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
                         next.notes = getDefaultNotes(next.quote_type, next.support_type);
                     }
                 }
+            }
+            // support_type 변경 시 수동 지원금 입력 리셋 (자동 재계산 모드)
+            if (k === 'support_type') {
+                next.is_manual_support = false;
+                next.support_amount = 0;
             }
             // 계약 → 다른 타입으로 전환 시 계약 관련 필드 초기화
             if (k === 'support_type' && v !== '계약') {
@@ -1873,8 +1899,25 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
                                 ),
                                 e('div', { className: 'grid grid-cols-2 gap-4' },
                                     e('div', null,
-                                        e('label', { className: labelCls + ' text-blue-600' }, '공단지원금 (M열)'),
-                                        e('input', { type: 'text', value: fmt(supportInfo.amount), onChange: ev => setH('support_amount', unf(ev.target.value)), className: 'w-full px-3 py-2 border border-slate-200 rounded-lg text-sm text-right font-black bg-white focus:ring-2 focus:ring-blue-300' })
+                                        e('div', { className: 'flex items-center justify-between mb-1' },
+                                            e('label', { className: labelCls + ' text-blue-600 mb-0 flex items-center gap-1.5' },
+                                                '공단지원금 (M열)',
+                                                isSupport && e('span', { className: `px-1.5 py-0.5 text-[9px] rounded font-bold ${hdr.is_manual_support ? 'bg-amber-500 text-white' : 'bg-blue-600 text-white'}` },
+                                                    hdr.is_manual_support ? '수동입력' : (hdr.support_type === '신규지원' ? '100% 자동 (최대100만)' : '80% 자동 (최대40만)')
+                                                )
+                                            ),
+                                            isSupport && hdr.is_manual_support && e('button', {
+                                                type: 'button',
+                                                onClick: () => setHdr(p => ({ ...p, support_amount: 0, is_manual_support: false })),
+                                                className: 'text-[10px] text-blue-600 hover:text-blue-800 font-bold underline cursor-pointer'
+                                            }, '자동계산 복원')
+                                        ),
+                                        e('input', {
+                                            type: 'text',
+                                            value: fmt(supportInfo.amount),
+                                            onChange: ev => setHdr(p => ({ ...p, support_amount: unf(ev.target.value), is_manual_support: true })),
+                                            className: `w-full px-3 py-2 border rounded-lg text-sm text-right font-black bg-white focus:ring-2 focus:ring-blue-300 ${hdr.is_manual_support ? 'border-amber-400 bg-amber-50/20' : 'border-slate-200'}`
+                                        })
                                     ),
                                     e('div', null,
                                         e('label', { className: labelCls + ' text-slate-500' }, '분석수수료'),

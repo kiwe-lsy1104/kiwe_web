@@ -124,7 +124,18 @@
                                             e('td', { className: "p-3 text-right font-bold text-blue-600" }, (Number(r.subsidy) || 0).toLocaleString(), "원"),
                                             e('td', { className: "p-3 text-center" },
                                                 e('div', { className: "flex flex-col gap-1 items-center" },
-                                                    e('span', { className: `px-2 py-0.5 rounded-[4px] text-[10px] font-black ${isBizPaid ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}` }, isBizPaid ? '사업장:완료' : '사업장:미납'),
+                                                    (() => {
+                                                        if (isBizPaid) return e('span', { className: 'px-2 py-0.5 rounded-[4px] text-[10px] font-black bg-emerald-100 text-emerald-700' }, '사업장:완료');
+                                                        if ((Number(r.billing_amt) || 0) === 0) {
+                                                            if (r.is_new === '신규' && (Number(r.actual_amt) || 0) === (Number(r.subsidy) || 0)) {
+                                                                return e('span', { className: 'px-2 py-0.5 rounded-[4px] text-[10px] font-black bg-blue-100 text-blue-700' }, '100%지원');
+                                                            } else {
+                                                                return e('span', { className: 'px-2 py-0.5 rounded-[4px] text-[10px] font-black bg-slate-100 text-slate-700' }, '청구금액없음');
+                                                            }
+                                                        }
+                                                        if (!r.billing_date) return e('span', { className: 'px-2 py-0.5 rounded-[4px] text-[10px] font-black bg-amber-100 text-amber-700' }, '사업장:미청구');
+                                                        return e('span', { className: 'px-2 py-0.5 rounded-[4px] text-[10px] font-black bg-rose-100 text-rose-700' }, '사업장:미납');
+                                                    })(),
                                                     isFunded && e('span', { className: `px-2 py-0.5 rounded-[4px] text-[10px] font-black ${isSubPaid ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'}` }, isSubPaid ? '공단:완료' : '공단:미납')
                                                 )
                                             )
@@ -257,16 +268,16 @@
                     items = enrich(statsBaseData);
                     title = '조회된 기록 목록';
                 } else if (type === 'unbilled') {
-                    items = enrich(statsBaseData.filter(r => !r.billing_date));
+                    items = enrich(statsBaseData.filter(r => !r.billing_date && (Number(r.billing_amt) || 0) > 0));
                     title = '미청구 목록';
                 } else if (type === 'unpaid') {
-                    items = enrich(statsBaseData.filter(r => r.billing_date && !r.deposit_date));
+                    items = enrich(statsBaseData.filter(r => r.billing_date && !r.deposit_date && (Number(r.billing_amt) || 0) > 0));
                     title = '사업장 미수금 목록';
                 } else if (type === 'noReport') {
                     items = enrich(statsBaseData.filter(r => !r.report_date && r.work_type === '측정'));
                     title = '전산미보고 목록';
                 } else if (type === 'unpaidSubsidy') {
-                    items = enrich(statsBaseData.filter(r => r.is_funded === '대상' && !r.subsidy_date));
+                    items = enrich(statsBaseData.filter(r => r.is_funded === '대상' && !r.subsidy_date && (Number(r.subsidy) || 0) > 0));
                     title = '지원금 미수금액 목록';
                 }
 

@@ -231,6 +231,30 @@ export default function ExcelImporter({ onClose, onComplete }) {
             }
 
             if (items.length > 0) {
+                // 비용지원인 경우 공단지원금 계산: 기존지원은 80%(최대 40만), 신규지원은 100%(최대 100만)
+                let finalSupportAmt = sAmount;
+                let finalTotalAmt = tAmt;
+                if (isSupport) {
+                    const rate = supportType === '신규지원' ? 1.0 : 0.8;
+                    const limit = supportType === '신규지원' ? 1000000 : 400000;
+                    const autoAmt = Math.min(Math.floor(aAmt * rate), limit);
+                    // 엑셀 M열 값이 비어있거나, 또는 지원율(aAmt * rate)을 초과한 오류값인 경우 올바른 자동 계산값 적용
+                    if (!sAmount || sAmount > limit || (sAmount > Math.floor(aAmt * rate))) {
+                        finalSupportAmt = autoAmt;
+                    }
+                    if (finalSupportAmt !== sAmount) {
+                        const afterSub = Math.max(0, aAmt - finalSupportAmt);
+                        let recalcTotal = afterSub;
+                        if (dAmt > 0) recalcTotal = dAmt;
+                        else if (dRate > 0) recalcTotal = Math.round(afterSub * (1 - dRate / 100));
+
+                        const roundUnit = Number(row[VBA_MAPPING.round_unit] || 0);
+                        if (roundUnit === 1) recalcTotal = Math.floor(recalcTotal / 1000) * 1000;
+                        else if (roundUnit === 2) recalcTotal = Math.floor(recalcTotal / 10000) * 10000;
+                        finalTotalAmt = recalcTotal;
+                    }
+                }
+
                 results.push({
                     quote_no: String(row[VBA_MAPPING.quote_no] || ''),
                     quote_date: qDate,
@@ -243,13 +267,13 @@ export default function ExcelImporter({ onClose, onComplete }) {
                     sampling_days: sDays,
                     discount_rate: dRate,
                     discount_amount: dAmt,
-                    total_amount: tAmt,
+                    total_amount: finalTotalAmt,
                     actual_amount: aAmt,
                     client_manager: cManager,
                     author: author,
                     year: year,
                     half_year: half,
-                    support_amount: sAmount || 0, // M열 공단지원금
+                    support_amount: finalSupportAmt || 0, // M열 공단지원금
                     notes: getDefaultNotes(qType, supportType),
                     items
                 });

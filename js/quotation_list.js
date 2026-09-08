@@ -202,7 +202,14 @@ function calcQuoteTotals(q, items = []) {
     let baseTotal;
     if (isSupport && Number(q.actual_amount || 0) > 0) {
         // 비용지원 + 실금액 있음: 실금액 - 공단지원금 → 할인율 적용
-        const afterSubsidy = Number(q.actual_amount) - Number(q.support_amount || 0);
+        let supAmt = Number(q.support_amount || 0);
+        const maxRate = q.support_type === '신규지원' ? 1.0 : 0.8;
+        const maxLimit = q.support_type === '신규지원' ? 1000000 : 400000;
+        const autoAmt = Math.min(Math.floor(Number(q.actual_amount) * maxRate), maxLimit);
+        if (!supAmt || supAmt > Math.floor(Number(q.actual_amount) * maxRate)) {
+            supAmt = autoAmt;
+        }
+        const afterSubsidy = Number(q.actual_amount) - supAmt;
         baseTotal = q.discount_rate > 0
             ? Math.round(afterSubsidy * (1 - Number(q.discount_rate) / 100))
             : afterSubsidy;
