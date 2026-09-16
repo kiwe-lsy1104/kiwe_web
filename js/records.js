@@ -249,6 +249,8 @@ function RecordModal({
     const [quotations, setQuotations] = useState([]);
     const [loadingQuotes, setLoadingQuotes] = useState(false);
     const [showQuoteDropdown, setShowQuoteDropdown] = useState(false);
+    const [quoteSearchTerm, setQuoteSearchTerm] = useState('');
+    const [selectedQuoteInfo, setSelectedQuoteInfo] = useState(null);
 
     useEffect(() => {
         if (formData.com_name) setCompanySearchTerm(formData.com_name);
@@ -256,29 +258,95 @@ function RecordModal({
     }, [formData.com_name]);
 
     useEffect(() => {
-        if (!selectedCompany) {
+        if (!isOpen) {
+            setShowQuoteDropdown(false);
+            setQuoteSearchTerm('');
+            setSelectedQuoteInfo(null);
+        }
+    }, [isOpen]);
+
+    // 사업장명에서 검색용 핵심 키워드들을 추출하는 함수
+    const extractKeywords = (comName) => {
+        if (!comName) return [];
+        // 법인격/특수문자 제거
+        const cleaned = comName
+            .replace(/\(주\)|㈜|\(학\)|학교법인|의료법인|재단법인|사단법인|\(유\)|주식회사/g, ' ')
+            .trim();
+        // 공백 및 기호로 토큰 분리 (2글자 이상)
+        const tokens = cleaned.split(/[\s,·\/\-_()]+/).filter(t => t.length >= 2);
+        const extra = [];
+        tokens.forEach(tok => {
+            if (tok.length > 5) {
+                extra.push(tok.substring(0, 4));
+                extra.push(tok.substring(tok.length - 4));
+            }
+            if (tok.includes('용인세브란스')) extra.push('용인세브란스');
+            if (tok.includes('세브란스')) extra.push('세브란스');
+            if (tok.includes('연세대학교')) extra.push('연세대학교');
+        });
+        return Array.from(new Set([...tokens, ...extra])).filter(k => k.length >= 2);
+    };
+
+    useEffect(() => {
+        const targetName = (selectedCompany?.com_name || formData.com_name || '').trim();
+        if (!targetName) {
             setQuotations([]);
+            setSelectedQuoteInfo(null);
             return;
         }
 
         async function fetchQuotations() {
             setLoadingQuotes(true);
             try {
-                const cleanName = selectedCompany.com_name.replace(/\(주\)|㈜|\s/g, '');
-                const { data, error } = await supabase
-                    .from('kiwe_quotations')
-                    .select('id, quote_no, quote_date, client_name, actual_amount, total_amount, support_amount, year, half_year, support_type')
-                    .ilike('client_name', `%${cleanName}%`)
-                    .order('quote_date', { ascending: false });
+                const allKeywords = extractKeywords(targetName);
+                const normalize = (s) => (s || '').replace(/[\s\(\)\[\]㈜주학법인\-_·]/g, '').toLowerCase();
+                const targetNorm = normalize(targetName);
 
-                if (error) throw error;
+                let rawData = [];
 
-                const normalize = (s) => (s || '').replace(/\(주\)|㈜|\s/g, '');
-                const targetNorm = normalize(selectedCompany.com_name);
-                const matched = (data || []).filter(q => {
+                if (allKeywords.length > 0) {
+                    // 키워드들을 or 조건으로 조회
+                    const orFilters = allKeywords.map(k => `client_name.ilike.%${k}%`).join(',');
+                    const { data, error } = await supabase
+                        .from('kiwe_quotations')
+                        .select('id, quote_no, quote_date, client_name, actual_amount, total_amount, support_amount, year, half_year, support_type, quote_type')
+                        .or(orFilters)
+                        .order('quote_date', { ascending: false });
+
+                    if (!error && data) {
+                        rawData = data;
+                    }
+                }
+
+                // 만약 키워드 검색으로 안 나왔을 경우 대비: 공백 없는 이름 또는 앞 4글자로 재시도
+                if (rawData.length === 0 && targetNorm.length >= 2) {
+                    const fallbackPrefix = targetNorm.substring(0, Math.min(4, targetNorm.length));
+                    const { data: fbData } = await supabase
+                        .from('kiwe_quotations')
+                        .select('id, quote_no, quote_date, client_name, actual_amount, total_amount, support_amount, year, half_year, support_type, quote_type')
+                        .ilike('client_name', `%${fallbackPrefix}%`)
+                        .order('quote_date', { ascending: false });
+                    if (fbData) rawData = fbData;
+                }
+
+                // 점수 계산 및 필터링
+                const scored = rawData.map(q => {
                     const qNorm = normalize(q.client_name);
-                    return qNorm.includes(targetNorm) || targetNorm.includes(qNorm);
+                    let score = 0;
+                    if (qNorm === targetNorm) score += 100;
+                    else if (qNorm.includes(targetNorm) || targetNorm.includes(qNorm)) score += 50;
+
+                    allKeywords.forEach(k => {
+                        const kNorm = normalize(k);
+                        if (qNorm.includes(kNorm)) score += 10;
+                    });
+
+                    return { ...q, _score: score };
                 });
+
+                const matched = scored
+                    .filter(q => q._score > 0)
+                    .sort((a, b) => b._score - a._score || (b.quote_date || '').localeCompare(a.quote_date || ''));
 
                 setQuotations(matched);
             } catch (err) {
@@ -290,7 +358,38 @@ function RecordModal({
         }
 
         fetchQuotations();
-    }, [selectedCompany]);
+    }, [selectedCompany, formData.com_name]);
+
+    // 견적번호 또는 상호명으로 Supabase 실시간 수동 검색
+    const searchQuotationsManual = async (term) => {
+        if (!term || !term.trim()) return;
+        setLoadingQuotes(true);
+        try {
+            const cleanTerm = term.trim();
+            const { data, error } = await supabase
+                .from('kiwe_quotations')
+                .select('id, quote_no, quote_date, client_name, actual_amount, total_amount, support_amount, year, half_year, support_type, quote_type')
+                .or(`quote_no.ilike.%${cleanTerm}%,client_name.ilike.%${cleanTerm}%`)
+                .order('quote_date', { ascending: false })
+                .limit(25);
+
+            if (error) throw error;
+            if (data && data.length > 0) {
+                setQuotations(prev => {
+                    const existingIds = new Set(prev.map(p => p.id));
+                    const newItems = data.filter(d => !existingIds.has(d.id));
+                    return [...newItems, ...prev];
+                });
+            } else {
+                alert(`'${cleanTerm}' 검색 결과가 없습니다.`);
+            }
+        } catch (err) {
+            console.error('견적서 수동 검색 실패:', err);
+            alert('견적서 검색 중 오류가 발생했습니다.');
+        } finally {
+            setLoadingQuotes(false);
+        }
+    };
 
     const handleQuoteSelect = (q) => {
         const isFunded = q.support_type && q.support_type !== '일반' && q.support_type !== '계약' ? '대상' : '비대상';
@@ -301,6 +400,7 @@ function RecordModal({
             billing_amt: Number(q.total_amount) || 0,
             is_funded: isFunded
         }));
+        setSelectedQuoteInfo(q);
         setShowQuoteDropdown(false);
     };
 
@@ -635,7 +735,7 @@ function RecordModal({
                                 "3. 주기 및 지원 현황"
                             ),
                             e('div', { className: "space-y-4" },
-                                selectedCompany && e('div', { className: "relative space-y-1" },
+                                (selectedCompany || formData.com_name) && e('div', { className: "relative space-y-1" },
                                     e('label', { className: "text-[12px] font-extrabold text-indigo-600 ml-1 flex justify-between items-center" },
                                         e('span', null, "연계 견적서 선택"),
                                         loadingQuotes && e('span', { className: "text-[10px] text-slate-400 animate-pulse" }, "조회 중...")
@@ -643,33 +743,96 @@ function RecordModal({
                                     e('button', {
                                         type: "button",
                                         onClick: () => setShowQuoteDropdown(prev => !prev),
-                                        onBlur: () => setTimeout(() => setShowQuoteDropdown(false), 200),
                                         className: "w-full px-3 py-2 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 rounded-lg text-xs font-bold text-indigo-700 text-left flex justify-between items-center transition-colors"
                                     },
-                                        e('span', null, "견적서를 선택하여 자동 입력..."),
-                                        e('span', { className: "text-[10px] bg-indigo-200 text-indigo-800 px-1.5 py-0.5 rounded-full" }, `${quotations.length}건`)
+                                        e('div', { className: "truncate flex-1 mr-2" },
+                                            selectedQuoteInfo
+                                                ? e('span', { className: "text-indigo-900 font-extrabold flex items-center gap-1.5 truncate" },
+                                                    e(CheckCircle2, { size: 13, className: "text-indigo-600 flex-shrink-0" }),
+                                                    `${selectedQuoteInfo.quote_no || '선택'} (실: ${(selectedQuoteInfo.actual_amount || 0).toLocaleString()}원)`
+                                                )
+                                                : e('span', null, "견적서를 선택하여 자동 입력...")
+                                        ),
+                                        e('span', { className: "text-[10px] bg-indigo-200 text-indigo-800 px-1.5 py-0.5 rounded-full font-mono flex-shrink-0" }, `${quotations.length}건`)
                                     ),
-                                    showQuoteDropdown && e('div', { className: "absolute z-50 w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl max-h-48 overflow-y-auto" },
-                                        quotations.length === 0 ?
-                                            e('div', { className: "px-4 py-3 text-xs text-slate-400 text-center font-bold" }, "연계된 견적서가 없습니다.") :
-                                            quotations.map(q => {
-                                                const typeStr = q.quote_type === '일반' ? '측정' : q.quote_type;
-                                                const isSupport = q.support_type && q.support_type !== '일반' && q.support_type !== '계약';
-                                                return e('div', {
-                                                    key: q.id,
-                                                    onMouseDown: () => handleQuoteSelect(q),
-                                                    className: "px-4 py-2 hover:bg-indigo-50 cursor-pointer text-xs border-b border-slate-50 last:border-0"
-                                                },
-                                                    e('div', { className: "flex justify-between items-center" },
-                                                        e('span', { className: "font-black text-slate-700 font-mono" }, q.quote_no || `No. ${q.id}`),
-                                                        e('span', { className: "text-[10px] text-slate-400 font-mono" }, q.quote_date)
-                                                    ),
-                                                    e('div', { className: "flex justify-between items-center mt-1 text-[11px] font-bold" },
-                                                        e('span', { className: "text-slate-500" }, `${q.year}년 ${q.half_year} [${typeStr}${isSupport ? '/지원' : ''}]`),
-                                                        e('span', { className: "text-indigo-600 font-mono" }, `청구금액: ${(q.total_amount || 0).toLocaleString()}원` + (q.actual_amount ? ` (실: ${q.actual_amount.toLocaleString()}원)` : ''))
-                                                    )
-                                                );
-                                            })
+                                    showQuoteDropdown && e('div', {
+                                        className: "absolute z-50 w-full mt-1 bg-white border border-slate-200 rounded-2xl shadow-2xl max-h-72 overflow-hidden flex flex-col animate-in fade-in zoom-in duration-150"
+                                    },
+                                        // 상단 직접 검색 바
+                                        e('div', { className: "p-2.5 bg-slate-50 border-b border-slate-100 flex items-center gap-1.5" },
+                                            e('div', { className: "relative flex-1" },
+                                                e(Search, { size: 13, className: "absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" }),
+                                                e('input', {
+                                                    type: "text",
+                                                    placeholder: "견적번호(예: 222) 또는 거래처명...",
+                                                    value: quoteSearchTerm,
+                                                    onChange: (ev) => setQuoteSearchTerm(ev.target.value),
+                                                    onKeyDown: (ev) => {
+                                                        if (ev.key === 'Enter') {
+                                                            ev.preventDefault();
+                                                            searchQuotationsManual(quoteSearchTerm);
+                                                        }
+                                                    },
+                                                    className: "w-full pl-7 pr-2 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold focus:ring-1 focus:ring-indigo-500 outline-none"
+                                                })
+                                            ),
+                                            e('button', {
+                                                type: "button",
+                                                onClick: () => searchQuotationsManual(quoteSearchTerm),
+                                                className: "px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold whitespace-nowrap shadow-sm transition-colors"
+                                            }, "검색"),
+                                            e('button', {
+                                                type: "button",
+                                                onClick: () => setShowQuoteDropdown(false),
+                                                className: "p-1.5 hover:bg-slate-200 text-slate-400 rounded-lg transition-colors"
+                                            }, e(X, { size: 14 }))
+                                        ),
+                                        // 견적서 리스트
+                                        e('div', { className: "flex-1 overflow-y-auto divide-y divide-slate-50 max-h-56" },
+                                            (() => {
+                                                const displayQuotes = quotations.filter(q => {
+                                                    if (!quoteSearchTerm) return true;
+                                                    const term = quoteSearchTerm.trim().toLowerCase();
+                                                    const noMatch = (q.quote_no || '').toLowerCase().includes(term);
+                                                    const nameMatch = (q.client_name || '').toLowerCase().includes(term);
+                                                    const yearMatch = String(q.year || '').includes(term);
+                                                    return noMatch || nameMatch || yearMatch;
+                                                });
+
+                                                if (displayQuotes.length === 0) {
+                                                    return e('div', { className: "px-4 py-6 text-center text-slate-400 text-xs flex flex-col items-center gap-1.5" },
+                                                        e('p', { className: "font-bold text-slate-500" }, "연계된 견적서를 찾을 수 없습니다."),
+                                                        e('p', { className: "text-[11px] text-slate-400" }, "위 검색창에 견적번호(예: 222)를 입력 후 [검색]을 눌러보세요.")
+                                                    );
+                                                }
+
+                                                return displayQuotes.map(q => {
+                                                    const typeStr = q.quote_type === '일반' ? '측정' : (q.quote_type || '측정');
+                                                    const isSupport = q.support_type && q.support_type !== '일반' && q.support_type !== '계약';
+                                                    const isSelected = selectedQuoteInfo && selectedQuoteInfo.id === q.id;
+
+                                                    return e('div', {
+                                                        key: q.id,
+                                                        onClick: () => handleQuoteSelect(q),
+                                                        className: `px-4 py-2.5 hover:bg-indigo-50/70 cursor-pointer text-xs transition-colors ${isSelected ? 'bg-indigo-50 border-l-4 border-indigo-600' : ''}`
+                                                    },
+                                                        e('div', { className: "flex justify-between items-center" },
+                                                            e('span', { className: "font-black text-slate-800 font-mono text-sm" }, q.quote_no || `No. ${q.id}`),
+                                                            e('span', { className: "text-[10px] text-slate-400 font-mono" }, q.quote_date)
+                                                        ),
+                                                        e('div', { className: "text-[11px] text-indigo-600 font-bold truncate mt-0.5" },
+                                                            `거래처: ${q.client_name || '-'}`
+                                                        ),
+                                                        e('div', { className: "flex justify-between items-center mt-1 text-[11px] font-bold" },
+                                                            e('span', { className: "text-slate-500" }, `${q.year || ''}년 ${q.half_year || ''} [${typeStr}${isSupport ? '/지원' : ''}]`),
+                                                            e('span', { className: "text-slate-700 font-mono" },
+                                                                `청구: ${(q.total_amount || 0).toLocaleString()}원` + (q.actual_amount ? ` (실: ${Number(q.actual_amount).toLocaleString()}원)` : '')
+                                                            )
+                                                        )
+                                                    );
+                                                });
+                                            })()
+                                        )
                                     )
                                 ),
                                 e('div', { className: "space-y-1" },
