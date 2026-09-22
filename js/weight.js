@@ -181,8 +181,10 @@ function VerificationModal({ isOpen, onClose, data, deltaB }) {
                     ),
                     e('tbody', { className: "divide-y divide-slate-100" },
                         data.map(row => {
-                            const avg1 = row.w1.filter(v => v > 0).reduce((a, b) => a + b, 0) / row.w1.length / 1000000 || 0;
-                            const avg2 = row.w2.filter(v => v > 0).reduce((a, b) => a + b, 0) / row.w2.length / 1000000 || 0;
+                            const validW1 = row.w1.filter(v => v > 0);
+                            const validW2 = row.w2.filter(v => v > 0);
+                            const avg1 = validW1.length > 0 ? (validW1.reduce((a, b) => a + b, 0) / validW1.length / 1000000) : 0;
+                            const avg2 = validW2.length > 0 ? (validW2.reduce((a, b) => a + b, 0) / validW2.length / 1000000) : 0;
                             const amount = ((avg2 - avg1) * 1000) - deltaB;
                             const hasError = amount < 0;
 
@@ -270,13 +272,21 @@ function App() {
         if (blankSamples.length === 0) return 0;
         let sumAfter = 0, sumBefore = 0;
         blankSamples.forEach(b => {
-            const bAvg = b.w1.filter(v => v > 0).reduce((a, x) => a + x, 0) / b.w1.length || 0;
-            const aAvg = b.w2.filter(v => v > 0).reduce((a, x) => a + x, 0) / b.w2.length || 0;
+            const validW1 = b.w1.filter(v => v > 0);
+            const validW2 = b.w2.filter(v => v > 0);
+            const bAvg = validW1.length > 0 ? validW1.reduce((a, x) => a + x, 0) / validW1.length : 0;
+            const aAvg = validW2.length > 0 ? validW2.reduce((a, x) => a + x, 0) / validW2.length : 0;
             sumBefore += bAvg;
             sumAfter += aAvg;
         });
-        return (sumAfter / 1000000 - sumBefore / 1000000) * 1000;
-    }, [blankSamples]);
+
+        // 측정일(m_date) 기준: 2026-09-18 이후는 공시료 평균치 적용, 9/18 이전은 기존 합산치 유지 (기존 출력본 정합성)
+        const targetDate = measureDate || (blankSamples.length > 0 ? blankSamples[0].m_date : '') || (mainSamples.length > 0 ? mainSamples[0].m_date : '') || startDate || '';
+        const isAverageStandard = targetDate >= '2026-09-18';
+        const divisor = isAverageStandard ? (blankSamples.length || 1) : 1;
+
+        return ((sumAfter / 1000000 - sumBefore / 1000000) * 1000) / divisor;
+    }, [blankSamples, measureDate, mainSamples, startDate]);
 
     // --- Fetching ---
     useEffect(() => {
@@ -636,7 +646,16 @@ function App() {
                     e('p', { className: "text-sm text-slate-500 mt-1" }, "근로자명에 '공시료'가 포함된 시료 목록")
                 ),
                 e('div', { className: "text-right" },
-                    e('span', { className: "text-xs font-bold text-slate-400 block" }, "보정치 (g)"),
+                    e('div', { className: "flex items-center justify-end gap-1.5 mb-1" },
+                        e('span', { className: "text-xs font-bold text-slate-400" }, "보정치 (g)"),
+                        e('span', {
+                            className: `text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                (measureDate || startDate) >= '2026-09-18' 
+                                    ? 'bg-emerald-100 text-emerald-700 border border-emerald-300' 
+                                    : 'bg-amber-100 text-amber-700 border border-amber-300'
+                            }`
+                        }, (measureDate || startDate) >= '2026-09-18' ? '평균치 (9/18~)' : '합산치 (~9/17)')
+                    ),
                     e('span', { className: "text-3xl font-black text-indigo-600" }, (deltaB / 1000).toFixed(6), e('small', { className: "text-base ml-1" }, "g"))
                 )
             ),
@@ -762,8 +781,10 @@ function App() {
                                 pageData.length === 0 ? e('tr', null, e('td', { colSpan: 16, className: "py-20 text-center" }, "데이터 없음")) :
                                     pageData.map((s) => {
                                         const sIdx = s.globalIdx;
-                                        const avg1 = s.w1.filter(v => v > 0).reduce((a, b) => a + b, 0) / s.w1.length / 1000000;
-                                        const avg2 = s.w2.filter(v => v > 0).reduce((a, b) => a + b, 0) / s.w2.length / 1000000;
+                                        const validW1 = s.w1.filter(v => v > 0);
+                                        const validW2 = s.w2.filter(v => v > 0);
+                                        const avg1 = validW1.length > 0 ? (validW1.reduce((a, b) => a + b, 0) / validW1.length / 1000000) : 0;
+                                        const avg2 = validW2.length > 0 ? (validW2.reduce((a, b) => a + b, 0) / validW2.length / 1000000) : 0;
                                         const amount = ((avg2 - avg1) * 1000) - deltaB;
                                         const volM3 = (s.flow || 0) * (s.duration || 0) / 1000;
                                         const conc = volM3 > 0 ? amount / volM3 : 0;

@@ -320,9 +320,13 @@ function App() {
                     });
                     // 중량분석: ΔB = (채취후평균 - 채취전평균) * 1000  [mg]
                     // 오일분석: ΔB = (추출전평균 - 추출후평균) * 1000   [mg]
+                    // 측정일(m_date) 기준: 2026-09-18 이후는 평균치 적용, 9/18 이전은 기존 결과보고서 정합성을 위해 합산치 유지
+                    const sampleDate = bList[0]?.m_date || '';
+                    const isAverageStandard = isOil || (sampleDate >= '2026-09-18');
+                    const divisor = isAverageStandard ? cnt : 1;
                     const deltaB = isOil
                         ? ((sumBefore / cnt) - (sumAfter / cnt)) * 1000
-                        : ((sumAfter  / cnt) - (sumBefore / cnt)) * 1000;
+                        : ((sumAfter  / divisor) - (sumBefore / divisor)) * 1000;
                     deltaBMap.set(key, deltaB);
                 });
 
