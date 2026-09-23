@@ -25,7 +25,7 @@ const ALL_COLUMNS = [
     { key: 'work_process', label: '공정명', width: 130, editable: false, inputType: 'text' },
     { key: 'worker_name', label: '작업자명', width: 90, editable: false, inputType: 'text' },
     { key: 'noise_no', label: '소음기번호', width: 90, editable: false, inputType: 'text' },
-    { key: 'calibrator_no', label: '보정기번호', width: 90, editable: true, inputType: 'select', options: ['', '1', '2', '3', '4'] },
+    { key: 'calibrator_no', label: '보정기번호', width: 90, editable: true, inputType: 'text', options: ['1', '2', '3', '4'] },
     { key: 'start_time', label: '시작시간', width: 90, editable: false, inputType: 'text' },
     { key: 'end_time', label: '종료시간', width: 90, editable: false, inputType: 'text' },
     { key: 'lunch_time', label: '점심(분)', width: 70, editable: false, inputType: 'number' },
@@ -989,6 +989,7 @@ export function NoiseRecord({ user, supabase: supabaseProp }) {
         },
             e('input', {
                 type: col.inputType === 'number' ? 'number' : col.inputType === 'date' ? 'date' : 'text',
+                list: col.options ? `${col.key}-options` : undefined,
                 step: col.inputType === 'number' ? '0.1' : undefined,
                 value: displayVal,
                 onChange: ev => handleCellChange(row, col.key, ev.target.value),
@@ -996,7 +997,7 @@ export function NoiseRecord({ user, supabase: supabaseProp }) {
                 'data-row-idx': row.__idx,
                 'data-col-key': col.key,
                 className: `w-full bg-transparent outline-none text-center text-xs focus:ring-1 focus:ring-inset focus:ring-indigo-400 rounded px-1 py-0.5 ${col.inputType === 'number' ? 'hide-spin-buttons' : ''}`,
-                placeholder: col.label,
+                placeholder: col.key === 'calibrator_no' ? '1~4' : col.label,
             })
         );
     };
@@ -1022,6 +1023,13 @@ export function NoiseRecord({ user, supabase: supabaseProp }) {
                 -moz-appearance: textfield;
             }
         `),
+
+        // ── datalist 목록 (보정기 번호 등 1~4 추천 및 직접 입력 지원)
+        ...ALL_COLUMNS.filter(c => c.options && c.inputType !== 'select').map(c =>
+            e('datalist', { key: `${c.key}-options`, id: `${c.key}-options` },
+                c.options.filter(Boolean).map(opt => e('option', { key: opt, value: opt }))
+            )
+        ),
 
         // ── 통계 모달
         e(StatsModal, { isOpen: showStats, onClose: () => setShowStats(false), data: filteredRows }),
