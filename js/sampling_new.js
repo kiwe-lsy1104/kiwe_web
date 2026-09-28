@@ -488,13 +488,53 @@ async function loadGridDataNew(hot, supabase, startDate, endDate, comName, user,
         });
 
         if (idFilter === 's') {
-            newData = newData.filter(d => { const p = (d.sample_id || '').match(/^[A-Z]+/)?.[0] || ''; return p === 'S'; });
+            newData = newData.filter(d => {
+                const isNoise = d.common_name && d.common_name.includes('소음');
+                if (isNoise) return false;
+                if (!d.sample_id) return true;
+                const p = (d.sample_id || '').match(/^[A-Z]+/)?.[0] || '';
+                return p === 'S';
+            });
         } else if (idFilter === 'd') {
-            newData = newData.filter(d => { const p = (d.sample_id || '').match(/^[A-Z]+/)?.[0] || ''; return p === 'D'; });
+            newData = newData.filter(d => {
+                const isNoise = d.common_name && d.common_name.includes('소음');
+                if (isNoise) return false;
+                if (!d.sample_id) return true;
+                const p = (d.sample_id || '').match(/^[A-Z]+/)?.[0] || '';
+                return p === 'D';
+            });
+        } else if (idFilter === 'r') {
+            newData = newData.filter(d => {
+                const isNoise = d.common_name && d.common_name.includes('소음');
+                if (isNoise) return false;
+                if (!d.sample_id) return true;
+                const p = (d.sample_id || '').match(/^[A-Z]+/)?.[0] || '';
+                return p === 'R';
+            });
         } else if (idFilter === 'sb') {
-            newData = newData.filter(d => { const p = (d.sample_id || '').match(/^[A-Z]+/)?.[0] || ''; return p === 'SB'; });
+            newData = newData.filter(d => {
+                const isNoise = d.common_name && d.common_name.includes('소음');
+                if (isNoise) return false;
+                if (!d.sample_id) return false;
+                const p = (d.sample_id || '').match(/^[A-Z]+/)?.[0] || '';
+                return p === 'SB';
+            });
         } else if (idFilter === 'db') {
-            newData = newData.filter(d => { const p = (d.sample_id || '').match(/^[A-Z]+/)?.[0] || ''; return p === 'DB'; });
+            newData = newData.filter(d => {
+                const isNoise = d.common_name && d.common_name.includes('소음');
+                if (isNoise) return false;
+                if (!d.sample_id) return false;
+                const p = (d.sample_id || '').match(/^[A-Z]+/)?.[0] || '';
+                return p === 'DB';
+            });
+        } else if (idFilter === 'rb') {
+            newData = newData.filter(d => {
+                const isNoise = d.common_name && d.common_name.includes('소음');
+                if (isNoise) return false;
+                if (!d.sample_id) return false;
+                const p = (d.sample_id || '').match(/^[A-Z]+/)?.[0] || '';
+                return p === 'RB';
+            });
         }
 
         hot.loadData(newData);
@@ -1628,12 +1668,20 @@ function App() {
                             e('div', { className: "flex flex-col gap-1" },
                                 e('label', { className: "text-[11px] font-extrabold text-slate-400 block uppercase" }, "시료 분류 필터"),
                                 e('div', { className: "flex bg-slate-100 p-1 rounded-xl gap-1 border border-slate-200" },
-                                    ['all','s','d','sb','db'].map(f =>
+                                    [
+                                        { key: 'all', label: '전체' },
+                                        { key: 's',   label: '🔬 시료(S)' },
+                                        { key: 'd',   label: '🔬 시료(D)' },
+                                        { key: 'r',   label: '🔬 시료(R)' },
+                                        { key: 'sb',  label: '🧪 공시료(SB)' },
+                                        { key: 'db',  label: '🧪 공시료(DB)' },
+                                        { key: 'rb',  label: '🧪 공시료(RB)' },
+                                    ].map(item =>
                                         e('button', {
-                                            key: f,
-                                            onClick: () => setIdFilter(f),
-                                            className: `px-3 py-1.5 text-[11px] font-bold rounded-lg transition-all whitespace-nowrap ${idFilter === f ? 'bg-white text-purple-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`
-                                        }, f === 'all' ? '전체' : f === 'sb' ? '🧪 공시료(SB)' : f === 'db' ? '🧪 공시료(DB)' : `🔬 시료(${f.toUpperCase()})`)
+                                            key: item.key,
+                                            onClick: () => setIdFilter(item.key),
+                                            className: `px-3 py-1.5 text-[11px] font-bold rounded-lg transition-all whitespace-nowrap ${idFilter === item.key ? 'bg-white text-purple-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`
+                                        }, item.label)
                                     )
                                 )
                             ),
