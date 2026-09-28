@@ -2,8 +2,8 @@
  * KiWE 측정관리 매뉴얼 데이터
  * 버전 및 공지사항은 Supabase에서 동적으로 로드됩니다.
  */
-const MANUAL_VERSION = '2.1.0';
-const MANUAL_UPDATED = '2026-04-14';
+const MANUAL_VERSION = '2.2.0';
+const MANUAL_UPDATED = '2026-09-28';
 
 const MANUAL_SECTIONS = [
   {
@@ -19,12 +19,12 @@ const MANUAL_SECTIONS = [
         <li>📋 <strong>측정기록 관리</strong> – 보고서 작성 및 조회</li>
         <li>🏢 <strong>사업장 관리</strong> – 사업장 DB 등록/수정</li>
         <li>📅 <strong>측정계획관리</strong> – 차기 측정 일정 수립</li>
-        <li>📄 <strong>견적 관리</strong> – 견적서 작성 및 발행</li>
-        <li>🧪 <strong>시료대장 작성</strong> – 시료 채취 및 분석 기록</li>
-        <li>🗓️ <strong>일정/장비 관리</strong> – 스케줄 및 장비 예약</li>
+        <li>📄 <strong>견적 관리</strong> – 견적서 작성 및 발행 관리</li>
+        <li>🧪 <strong>시료채취기록대장 (하반기 통합)</strong> – 유량보정 통합 · 공시료 자동 체크 · S/D/R 시료번호 체계</li>
+        <li>🗓️ <strong>일정 및 장비 관리</strong> – 스케줄 및 장비 예약</li>
         <li>📊 <strong>분석결과통보서</strong> – 유기화합물 및 전체 보고서</li>
         <li>📈 <strong>시료통계관리</strong> – 분석 현황 조회 및 인쇄</li>
-        <li>🚗 <strong>차량운행일지</strong> – 법인 차량 운행 기록 관리</li>
+        <li>🚗 <strong>법인 전기차 운행일지</strong> – 법인 차량 운행 기록 및 국세청 양식 출력</li>
         <li>⚙️ <strong>평가원 관리 및 설정</strong> – 직원 권한 및 시스템 설정</li>
       </ul>
       <div class="tip-box">💡 처음 사용하신다면 <strong>사업장 관리</strong>에서 사업장을 먼저 등록하신 후, 측정기록을 추가하시기 바랍니다.</div>
@@ -163,34 +163,45 @@ const MANUAL_SECTIONS = [
   },
   {
     id: 'section-sampling',
-    title: '시료대장 (시료채취기록대장)',
+    title: '시료채취기록대장 (하반기 통합)',
     icon: '🧪',
-    tags: ['시료', '채취', '대장', '시료대장', '시료ID', '작업자', '자동부여', '유량', '도구'],
+    tags: ['시료', '채취', '대장', '시료대장', '시료ID', '작업자', '자동부여', '유량', '유량보정', '공시료', '번호재부여'],
     content: `
-      <p>시료대장 작성은 현장에서 포집한 공기/유기화합물 시료 내역을 기록하여 분석 기관에 의뢰하기 전까지 <strong>데이터 정합성과 시료 번호를 관리</strong>하는 가장 중요한 기능입니다.</p>
+      <p>하반기 통합 시료채취기록대장은 현장에서 포집한 공기/유기화합물 시료 내역을 기록하고, <strong>유량보정 컬럼 통합</strong>과 <strong>S/D/R 3원화 시료번호 체계</strong>, <strong>공시료 2건 누락방지 자동 검증</strong>을 지원하는 핵심 모듈입니다.</p>
       
       <h4>✨ 상단 툴바 및 필터 기능</h4>
       <ul>
-        <li><strong>시료 분류 필터</strong>: <code>시료(S)</code>, <code>시료(D)</code>, <code>공시료(SB)</code>, <code>공시료(DB)</code> 버튼을 클릭해 원하는 종류만 즉시 필터링합니다.</li>
-        <li><strong>정렬 기준</strong>: <code>시료번호순</code>, <code>작업자순</code>으로 그리드를 재정렬합니다.</li>
-        <li><button class="px-2 py-1 bg-white border border-slate-200 rounded text-xs">⚙️ 컬럼설정</button> : 사용자 편의에 맞게 화면에 보이는 테이블 열(컬럼)을 숨기거나 순서를 드래그 앤 드롭으로 재배치합니다.</li>
-        <li><button class="px-2 py-1 bg-white border border-slate-200 rounded text-xs">🌐 공유 저장</button> : 현재 화면의 컬럼 순서/숨김 상태를 클라우드에 영구 저장하여 다른 PC에서도 동일한 표 환경을 제공합니다.</li>
+        <li><strong>시료 분류 필터</strong>: <code>전체</code>, <code>🔬 시료(S)</code>, <code>🔬 시료(D)</code>, <code>🔬 시료(R)</code>, <code>🧪 공시료(SB)</code>, <code>🧪 공시료(DB)</code>, <code>🧪 공시료(RB)</code> 버튼을 클릭해 원하는 종류만 즉시 필터링합니다.</li>
+        <li><strong>정렬 기준</strong>: <code>📝 입력순</code>, <code>🔢 번호순</code>으로 그리드를 재정렬합니다.</li>
+        <li><button class="px-2 py-1 bg-white border border-purple-200 text-purple-600 rounded text-xs">⚙️ 컬럼설정</button> : 화면에 보이는 컬럼을 숨기거나 드래그 앤 드롭으로 순서를 재배치합니다.</li>
+        <li><button class="px-2 py-1 bg-purple-600 text-white rounded text-xs">🌐 공유 저장</button> : 컬럼 순서/숨김 상태를 클라우드 DB에 저장하여 다른 PC에서도 동일하게 유지합니다.</li>
+        <li><button class="px-2 py-1 bg-emerald-600 text-white rounded text-xs">📥 엑셀 다운로드</button> : 현재 화면에 표시된 기록대장을 Excel 파일(.xlsx)로 즉시 내보냅니다.</li>
+        <li><button class="px-2 py-1 bg-amber-50 border border-amber-200 text-amber-600 rounded text-xs font-bold">↺ 번호 재부여</button> : 정렬을 바꾸거나 중간에 행을 끼워넣어 번호가 꼬였을 때, 현재 화면에 <strong>보이는 순서대로</strong> 순번과 시료번호를 차례대로 재할당합니다. (이미 저장된 데이터 포함 여부 선택 가능)</li>
+        <li><button class="px-2 py-1 bg-slate-500 text-white rounded text-xs">+ 10줄 추가</button> / <button class="px-2 py-1 bg-slate-600 text-white rounded text-xs">+ 50줄 추가</button> : 작업할 빈 행을 빠르게 확장합니다.</li>
       </ul>
 
-      <h4>📊 데이터 그리드 조작 및 시료 ID</h4>
-      <p>이곳은 엑셀 시트와 거의 동일하게 작동하도록 특수 설계되었습니다.</p>
+      <h4>📊 유량보정 통합 모드 & 데이터 입력</h4>
       <ul>
-        <li><strong>시료 ID (Sample ID) 자동 발급</strong>: <code>사업장명</code>과 <code>유해인자</code>가 모두 채워지면 시스템이 <strong>접두어 판별</strong>(일반: S, 중량: D, 공시료: SB/DB)과 날짜를 융합하여 <code>S241-0012</code> 처럼 <strong>시료 번호를 절대 중복없이 자동 부여</strong>합니다.</li>
-        <li><button class="px-2 py-1 bg-indigo-50 border border-indigo-200 text-indigo-700 rounded text-xs">시료번호 재계산</button> : 정렬을 바꾸거나 중간에 시료가 끼어들어갔을 때, 현재 화면에 <strong>보이는 순서대로</strong> ID를 1번부터 차례대로 재할당해 주는 복구 기능입니다!</li>
-        <li><strong>행 추가 / 삭제</strong>: 우클릭 메뉴를 통해 <strong>현재 줄 밑에 10줄 추가</strong> 등을 손쉽게 할 수 있습니다.</li>
+        <li><strong>유량보정 통합 컬럼</strong>: 별도 화면 이동 없이 각 행 우측의 <code>측정전평균유량</code>, <code>측정후평균유량</code>(녹색 컬럼)에 보정 유량을 직접 입력하고 관리할 수 있습니다.</li>
+        <li><strong>측정시간 자동 계산</strong>: <code>시작시간</code>과 <code>종료시간</code>, <code>점심시간(분)</code>을 입력하면 <strong>측정시간(분/계산)</strong>이 자동으로 산출됩니다.</li>
       </ul>
 
-      <h4>🖨️ 출력 및 연동 기능</h4>
+      <h4>🔢 시료번호(Sample ID) 3원화 체계</h4>
+      <p>사업장명과 유해인자가 입력되면 유해인자 DB의 분석구분 및 분석방법에 따라 시료번호가 자동 발급됩니다.</p>
       <ul>
-        <li><button class="px-2 py-1 bg-indigo-600 text-white rounded text-xs">저장버튼</button> : <strong>[저장]</strong>을 누르기 전까지는 DB에 시료가 확정되지 않습니다. 반드시 임시 작성 후 저장 버튼을 클릭하세요!</li>
-        <li><strong>🧪 시료채취기록표 출력</strong>: 우상단 녹색 버튼 클릭 시 현장용 '기록표 전용 인쇄 팝업창'이 표시됩니다.</li>
+        <li><code>S262-0001</code> : 자체분석 일반 시료 (접두어 <strong>S</strong>)</li>
+        <li><code>D262-0001</code> : 자체분석 중량분석 시료 (접두어 <strong>D</strong>)</li>
+        <li><code>R262-0001</code> : 위탁분석 시료 (접두어 <strong>R</strong>)</li>
+        <li><code>SB262-0001</code>, <code>DB262-0001</code>, <code>RB262-0001</code> : 각 시료 유형별 공시료 (근로자명에 '공시료' 포함 시 자동 부여)</li>
       </ul>
-      <div class="tip-box">💡 <strong>꿀팁! 유해인자 팝업</strong><br>유해인자 셀을 <code>더블클릭</code>하면 물질 검색 트리 팝업이 올라옵니다! 약어만 치고 엔터를 쳐도 똑똑하게 Full Name으로 치환됩니다!</div>
+
+      <h4>🛡️ 공시료 2건 누락방지 스마트 검증</h4>
+      <ul>
+        <li><strong>저장 시 자동 점검</strong>: 동일 측정일·사업장·카테고리·측정매체·탈착용매 조합별로 공시료가 <strong>최소 2건</strong> 등록되어 있는지 시스템이 자동으로 검증합니다.</li>
+        <li><strong>공시료 2건 일괄 생성</strong>: 공시료가 부족할 경우 안내 팝업이 뜨며, 버튼 클릭 한 번으로 부족한 공시료 행을 자동으로 추가해 줍니다.</li>
+      </ul>
+
+      <div class="tip-box">💡 <strong>유해인자 검색 팁</strong><br>유해인자 셀을 <code>더블클릭</code>하면 유해인자 검색 팝업이 열립니다. 물질명을 검색하여 선택하면 분석방법, 측정매체, 분석구분(자체/위탁) 등이 자동으로 채워집니다!</div>
     `
   },
   {
@@ -358,8 +369,12 @@ const MANUAL_SECTIONS = [
         <p>A. 견적 번호는 <code>KIWE-연도-순번</code> 형식입니다. 순번이 이상할 경우 관리자에게 DB 점검을 요청하세요.</p>
       </div>
       <div class="faq-item">
-        <h4>Q. 시료 ID가 중복됩니다.</h4>
-        <p>A. 행 삽입/삭제 후 반드시 <strong>[ID 재정렬]</strong> 기능을 실행하거나 페이지를 새로고침하세요.</p>
+        <h4>Q. 시료번호 순서가 꼬였거나 다시 부여하고 싶습니다.</h4>
+        <p>A. 시료채취기록대장 상단 툴바의 <strong>[번호 재부여]</strong> 버튼을 클릭하세요. 확인창에서 기존 저장 데이터 포함 여부를 선택하면 현재 화면에 정렬된 순서대로 순번과 시료번호가 1번부터 일괄 재계산됩니다. 재계산 후 반드시 <strong>[데이터 저장]</strong>을 눌러 최종 반영하세요.</p>
+      </div>
+      <div class="faq-item">
+        <h4>Q. 시료번호 접두어(S, D, R)는 무슨 뜻인가요?</h4>
+        <p>A. <strong>S</strong>는 자체분석 일반 시료, <strong>D</strong>는 중량분석 시료, <strong>R</strong>은 외부 위탁분석 시료를 뜻합니다. 공시료는 각각 <strong>SB</strong>, <strong>DB</strong>, <strong>RB</strong>로 자동 발급됩니다.</p>
       </div>
       <div class="faq-item">
         <h4>Q. PDF 출력 시 레이아웃이 깨집니다.</h4>
