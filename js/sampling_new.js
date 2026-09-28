@@ -897,6 +897,53 @@ function App() {
         } catch (err) { console.error("Max suffix 조회 오류:", err); return 0; }
     };
 
+    const getMaxInputSeqBeforeDB = async (date, excludeIds = []) => {
+        try {
+            const tableName = FIXED_TABLE;
+            if (!tableName) return 0;
+
+            // 1. 해당 날짜 이전(lt)의 최대 input_seq 조회
+            let maxSeq = 0;
+            const { data: beforeData, error: beforeError } = await supabase
+                .from(tableName)
+                .select('input_seq')
+                .lt('m_date', date)
+                .order('input_seq', { ascending: false })
+                .limit(1);
+
+            if (beforeError) throw beforeError;
+            if (beforeData && beforeData.length > 0) {
+                maxSeq = parseInt(beforeData[0].input_seq, 10) || 0;
+            }
+
+            // 2. 해당 날짜(eq)이면서 그리드에 있는 ID들을 제외한 다른 데이터의 최대 input_seq 조회
+            let queryOnDate = supabase
+                .from(tableName)
+                .select('input_seq')
+                .eq('m_date', date)
+                .order('input_seq', { ascending: false });
+
+            const validExclude = excludeIds.filter(id => id && !String(id).startsWith('temp_'));
+            if (validExclude.length > 0) {
+                queryOnDate = queryOnDate.not('id', 'in', `(${validExclude.join(',')})`);
+            }
+
+            const { data: onDateData, error: onDateError } = await queryOnDate.limit(1);
+            if (onDateError) throw onDateError;
+            if (onDateData && onDateData.length > 0) {
+                const onDateMax = parseInt(onDateData[0].input_seq, 10) || 0;
+                if (onDateMax > maxSeq) {
+                    maxSeq = onDateMax;
+                }
+            }
+
+            return maxSeq;
+        } catch (err) {
+            console.error("Error fetching max input_seq before date:", err);
+            return 0;
+        }
+    };
+
     const applyBulkSampleIds = async (rowIndices, forceAll = false) => {
         const hot = hotInstance.current;
         if (!hot) return;
@@ -931,7 +978,7 @@ function App() {
                 const month = dateObj.getMonth() + 1;
                 const halfYear = month <= 6 ? 1 : 2;
                 const fullPrefix = `${prefixAlpha}${year}${halfYear}-`;
-                if (rowData.sample_id && rowData.sample_id.startsWith(fullPrefix)) continue;
+                if (!forceAll && rowData.sample_id && rowData.sample_id.startsWith(fullPrefix)) continue;
                 if (!rowsByPrefix[fullPrefix]) rowsByPrefix[fullPrefix] = { rows: [] };
                 rowsByPrefix[fullPrefix].rows.push(rowIdx);
             }
@@ -1050,6 +1097,61 @@ function App() {
         const ws = XLSX.utils.aoa_to_sheet(exportRows);
         XLSX.utils.book_append_sheet(wb, ws, '시료채취기록대장(하반기통합)');
         XLSX.writeFile(wb, `시료채취기록대장_하반기통합_${startDate}_${endDate}.xlsx`);
+    };
+
+    const reassignAllSampleIds = async () => {
+        const hot = hotInstance.current;
+        if (!hot) return;
+
+        const includeSaved = confirm('이미 저장된 데이터의 시료번호도 현재 순서대로 다시 매기시겠습니까?\n(취소를 누르면 미저장 데이터만 재계산합니다)');
+
+        // ★ 화면에 보이는 데이터 중 가장 빠른 날짜를 기준으로 시작 순번 결정
+        const rowCount = hot.countRows();
+        let minDate = null;
+        const idsInGrid = [];
+        for (let i = 0; i < rowCount; i++) {
+            const date = hot.getDataAtRowProp(i, 'm_date');
+            if (date && (!minDate || date < minDate)) minDate = date;
+
+            const id = hot.getDataAtRowProp(i, 'id');
+            if (id) idsInGrid.push(id);
+        }
+
+        let startSeq = 0;
+        if (minDate) {
+            startSeq = await getMaxInputSeqBeforeDB(minDate, idsInGrid);
+        }
+
+        const physicalIndicesToProcess = [];
+
+        hot.batch(() => {
+            let currentSeq = startSeq;
+            for (let i = 0; i < rowCount; i++) {
+                const physicalIdx = hot.toPhysicalRow(i);
+                if (physicalIdx === null) continue;
+
+                const rowData = hot.getSourceDataAtRow(physicalIdx);
+                if (!rowData) continue;
+
+                // 조건: 유효한 데이터이면서 (미저장이거나 사용자가 저장데이터 포함을 선택했을 때)
+                if ((rowData.com_name || rowData.common_name) && (!rowData.id || includeSaved)) {
+                    currentSeq++;
+                    // 1. 입력순번(input_seq) 재설정
+                    hot.setDataAtRowProp(i, 'input_seq', currentSeq, 'auto');
+
+                    // 2. 기존 번호를 지워서 새로 생성 유도
+                    hot.setDataAtRowProp(i, 'sample_id', null, 'auto');
+                    physicalIndicesToProcess.push(physicalIdx);
+                }
+            }
+        });
+
+        if (physicalIndicesToProcess.length > 0) {
+            await applyBulkSampleIds(physicalIndicesToProcess, includeSaved);
+            alert(`시료번호가 ${startSeq + 1}번부터 현재 화면 순서대로 재계산되었습니다.\n[데이터 저장]을 눌러야 최종 반영됩니다.`);
+        } else {
+            alert('재계산할 데이터가 없습니다.');
+        }
     };
 
     // ─── 공시료 일괄 생성 (혼합 유해인자 고도화) ───────────────────────────────────────
@@ -1608,6 +1710,9 @@ function App() {
                             ),
                             e('button', { onClick: downloadExcel, className: "px-4 py-2 bg-emerald-600 text-white rounded-lg font-bold hover:bg-emerald-700 transition-all flex items-center gap-1 shadow-sm" },
                                 e(Download, { size: 14 }), "엑셀 다운로드"
+                            ),
+                            e('button', { onClick: reassignAllSampleIds, className: "px-4 py-2 bg-amber-50 text-amber-600 border border-amber-200 rounded-lg font-bold hover:bg-amber-100 transition-all flex items-center gap-1 shadow-sm", title: "미저장 데이터 또는 전체 데이터의 시료번호를 화면 순서대로 다시 매깁니다." },
+                                e(RotateCcw, { size: 14 }), "번호 재부여"
                             ),
                             e('button', { onClick: () => addRows(10), className: "px-4 py-2 bg-slate-500 text-white rounded-lg font-bold hover:bg-slate-600 transition-all flex items-center gap-1" },
                                 e(Plus, { size: 14 }), "10줄 추가"
