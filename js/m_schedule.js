@@ -17,6 +17,20 @@ function getSupabase() {
 // Global State
 let selectedCompany = null;
 
+// Display logged-in user in header
+try {
+    const user = JSON.parse(localStorage.getItem('kiwe_user') || '{}');
+    const nameEl = document.getElementById('mUserName');
+    if (nameEl && user.user_name) {
+        nameEl.textContent = `${user.user_name}님`;
+    }
+    if (window.lucide) {
+        window.lucide.createIcons();
+    }
+} catch (e) {
+    console.error('Header user info error:', e);
+}
+
 // ==========================================
 // Utility Functions
 // ==========================================
