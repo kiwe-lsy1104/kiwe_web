@@ -14,6 +14,9 @@ const BLANK_HDR = {
     client_id: null, client_name: '', client_manager: '', client_tel: '', client_fax: '', client_address: '', client_ceo: '',
     quote_type: '일반', support_type: '일반', // '일반', '신규지원', '기존지원', '계약'
     workplace_size: '', management_fee: 0, sampling_days: 1,
+    // 계약단가 모드에서 규모별 기본관리비를 여러 행으로 관리
+    // [{ size: '100~299인', count: '2개소', fee: 130000, days: 3 }, ...]
+    mgmt_fee_rows: [],
     discount_rate: 0, discount_amount: 0, round_unit: 0, // 0:없음, 1:1,000원, 2:10,000원
     payment_terms: '현금',
     support_amount: 0, // M열: 공단지원금 (전용 컬럼)
@@ -42,7 +45,7 @@ const YONGYEOK_DEFAULTS = [
 /**
  * 견적서 미리보기 팝업창을 여는 함수 (A4 용지 가시화 및 인쇄 최적화)
  */
-export function openPrintPreview(hdr, items, mgmtFee, itemsTotal, sub, disc, vat, total, supportInfo, page1Offset = 0) {
+export function openPrintPreview(hdr, items, mgmtFee, itemsTotal, sub, disc, vat, total, supportInfo, page1Offset = 0, mgmtFeeRows = []) {
     const isYongYeok = hdr.quote_type === '용역';
     const isRental = hdr.quote_type === '장비대여';
     const isMeasurement = hdr.quote_type === '측정' || hdr.quote_type === '일반';
@@ -565,12 +568,37 @@ export function openPrintPreview(hdr, items, mgmtFee, itemsTotal, sub, disc, vat
 
             ${isMeasurement ? `
             <div style="font-weight:bold; margin-bottom:2mm; font-size:10pt;">1. 기본관리비</div>
+            ${(hdr.support_type === '계약' && mgmtFeeRows && mgmtFeeRows.length > 0) ? `
             <table class="bold-border" style="margin-bottom:3mm;">
                 <colgroup>
-                    <col style="width: 15%;">
-                    <col style="width: 35%;">
-                    <col style="width: 15%;">
-                    <col style="width: 35%;">
+                    <col style="width: 30%;"><col style="width: 15%;">
+                    <col style="width: 20%;"><col style="width: 10%;"><col style="width: 25%;">
+                </colgroup>
+                <tr style="background:#f2f2f2; font-weight:bold; text-align:center;">
+                    <td class="label">규 격</td>
+                    <td class="label">개소수</td>
+                    <td class="label">기본단가</td>
+                    <td class="label">측정일수</td>
+                    <td class="label">소 계</td>
+                </tr>
+                ${mgmtFeeRows.map(r => `
+                <tr>
+                    <td style="text-align:center;">${r.size || '-'}</td>
+                    <td style="text-align:center;">${r.count || '-'}</td>
+                    <td style="text-align:right; padding-right:8px;">₩ ${fmt(r.fee)}</td>
+                    <td style="text-align:center;">${r.days || 1}일</td>
+                    <td style="text-align:right; padding-right:8px; font-weight:bold; background:#f9f9f9;">₩ ${fmt((Number(r.fee)||0)*(Number(r.days)||1))}</td>
+                </tr>`).join('')}
+                <tr style="background:#f2f2f2; font-weight:bold;">
+                    <td colspan="4" style="text-align:center; font-weight:bold;">합 계</td>
+                    <td style="text-align:right; padding-right:8px; font-weight:900; background:#efefef;">₩ ${fmt(mgmtFee)}</td>
+                </tr>
+            </table>
+            ` : `
+            <table class="bold-border" style="margin-bottom:3mm;">
+                <colgroup>
+                    <col style="width: 15%;"><col style="width: 35%;">
+                    <col style="width: 15%;"><col style="width: 35%;">
                 </colgroup>
                 <tr>
                     <td class="label">규 격</td>
@@ -585,7 +613,9 @@ export function openPrintPreview(hdr, items, mgmtFee, itemsTotal, sub, disc, vat
                     <td style="text-align:right; padding-right:10px; font-weight:bold; background:#f2f2f2;">₩ ${fmt(mgmtFee)}</td>
                 </tr>
             </table>
+            `}
             ` : ''}
+
         ` : '';
 
         const tableTitle = isFirstPage ?
@@ -1023,6 +1053,12 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
                     }
                 }
 
+                // mgmt_fee_rows: DB에서 JSON 문자열로 저장된 것을 파싱
+                let parsedMgmtFeeRows = [];
+                if (q.mgmt_fee_rows) {
+                    try { parsedMgmtFeeRows = JSON.parse(q.mgmt_fee_rows); } catch (_) { parsedMgmtFeeRows = []; }
+                }
+
                 setHdr({
                     ...BLANK_HDR,
                     ...q,
@@ -1032,6 +1068,7 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
                     is_manual_support: isManualSup,
                     support_amount: isManualSup ? savedSupAmt : 0,
                     management_fee: Number(q.management_fee) || 0,
+                    mgmt_fee_rows: parsedMgmtFeeRows,
                     manager_name: q.manager_name || q.created_by || '이승용',
                     title: q.title || '작업환경측정 견적서',
                     total_amount: Number(q.total_amount) || 0
@@ -1063,7 +1100,15 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
     const isContract = isMeasurement && hdr.support_type === '계약'; // 계약단가 모드
 
     const prelimSub = isContract ? (hdr.preliminary_fee || 0) * (hdr.preliminary_days !== undefined && hdr.preliminary_days !== null ? Number(hdr.preliminary_days) : 0) : 0;
-    const mgmtFee = isMeasurement ? (hdr.management_fee || 0) * (hdr.sampling_days || 1) : 0;
+    // 계약단가 모드에서 mgmt_fee_rows가 1개 이상 있으면 다중 행 합산, 아니면 기존 단일 계산
+    const mgmtFeeRowsTotal = isContract && hdr.mgmt_fee_rows && hdr.mgmt_fee_rows.length > 0
+        ? hdr.mgmt_fee_rows.reduce((s, r) => s + ((Number(r.fee) || 0) * (Number(r.days) || 1)), 0)
+        : 0;
+    const mgmtFee = isMeasurement
+        ? (isContract && hdr.mgmt_fee_rows && hdr.mgmt_fee_rows.length > 0
+            ? mgmtFeeRowsTotal
+            : (hdr.management_fee || 0) * (hdr.sampling_days || 1))
+        : 0;
     const itemsTotal = useMemo(() => items.reduce((s, it) => {
         if (isYongYeok || isRental) return s + (it.quantity * (Number(it.unit_type) || 1) * it.unit_price);
         return s + it.quantity * it.unit_price;
@@ -1563,6 +1608,10 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
                 workplace_size: hdr.workplace_size,
                 management_fee: hdr.management_fee,
                 sampling_days: hdr.sampling_days || 1,
+                // 계약단가 다중 기본관리비 행: JSON 문자열로 저장
+                mgmt_fee_rows: (isContract && hdr.mgmt_fee_rows && hdr.mgmt_fee_rows.length > 0)
+                    ? JSON.stringify(hdr.mgmt_fee_rows)
+                    : null,
                 preliminary_fee: hdr.preliminary_fee || 0,
                 preliminary_days: hdr.preliminary_days !== undefined && hdr.preliminary_days !== null ? Number(hdr.preliminary_days) : 0,
                 contract_client_id: hdr.contract_client_id || null,
@@ -1670,7 +1719,7 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
                         })
                     ),
                     e('button', {
-                        onClick: () => openPrintPreview(hdr, items, mgmtFee, itemsTotal, sub, discAmt, vat, total, supportInfo, page1Offset),
+                        onClick: () => openPrintPreview(hdr, items, mgmtFee, itemsTotal, sub, discAmt, vat, total, supportInfo, page1Offset, hdr.mgmt_fee_rows || []),
                         className: 'flex items-center gap-2 px-5 py-2 bg-slate-100 text-slate-700 rounded-lg text-sm font-bold hover:bg-slate-200'
                     }, e(Eye, { size: 15 }), '미리보기'),
                     // 1) 아직 견적번호가 없거나 기간이 변경된 경우:
@@ -1865,73 +1914,190 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
                             )
                         )
                     ),
-                    // 기본관리비 섹션 (계약모드: 1-1, 일반모드: 2)
+                    // 기본관리비 섹션 (계약모드: 1-1 다중행, 일반모드: 2 단일)
                     isMeasurement && e('div', { className: 'bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm hover:shadow-md transition-shadow shrink-0' },
                         e('div', { className: 'bg-slate-50 px-5 py-3 border-b flex items-center justify-between' },
                             e('h3', { className: 'text-sm font-black text-slate-700 flex items-center gap-2' },
                                 e('span', { className: `w-6 h-5 ${isContract ? 'bg-rose-500' : 'bg-emerald-600'} text-white rounded text-[9px] flex items-center justify-center font-black shadow-sm` }, isContract ? '1-1' : '2'),
-                                isContract ? '기본관리비 (측정)' : '기본관리비 (사업장 단위)'
+                                isContract ? '기본관리비 (규모별 다중 입력)' : '기본관리비 (사업장 단위)'
                             ),
-                            e('div', { className: 'text-[9px] font-bold text-slate-400 bg-white px-2 py-1 rounded-full border border-slate-200' }, '규격 선택 시 자동 입력')
+                            e('div', { className: 'text-[9px] font-bold text-slate-400 bg-white px-2 py-1 rounded-full border border-slate-200' },
+                                isContract ? '행 추가로 규모별 사업소 입력' : '규격 선택 시 자동 입력'
+                            )
                         ),
                         e('div', { className: 'p-5 flex flex-col gap-5' },
-                            e('div', { className: isContract ? 'flex' : 'grid grid-cols-2 gap-8' },
-                                // 일반/계약 규격 버튼
-                                e('div', { className: 'space-y-3 flex-1' },
-                                    e('div', { className: 'flex items-center gap-2' },
-                                        e('span', { className: `w-1 h-3 ${isContract ? 'bg-rose-400' : 'bg-emerald-400'} rounded-full` }),
-                                        e('div', { className: 'text-[10px] font-black text-slate-500 uppercase tracking-widest' }, isContract ? '계약단가 규격' : '일반 사업장')
+                            // ── 계약단가 모드: 다중 행 테이블 ──
+                            isContract ? e('div', { className: 'flex flex-col gap-3' },
+                                // 다중 행 입력 테이블
+                                e('table', { className: 'w-full text-xs border-collapse' },
+                                    e('thead', null,
+                                        e('tr', { className: 'bg-rose-50' },
+                                            e('th', { className: 'border border-rose-200 px-2 py-1.5 text-[10px] font-black text-rose-600 text-center w-[30%]' }, '규 격'),
+                                            e('th', { className: 'border border-rose-200 px-2 py-1.5 text-[10px] font-black text-rose-600 text-center w-[12%]' }, '개소수'),
+                                            e('th', { className: 'border border-rose-200 px-2 py-1.5 text-[10px] font-black text-rose-600 text-center w-[22%]' }, '기본단가 (₩)'),
+                                            e('th', { className: 'border border-rose-200 px-2 py-1.5 text-[10px] font-black text-rose-600 text-center w-[12%]' }, '측정일수'),
+                                            e('th', { className: 'border border-rose-200 px-2 py-1.5 text-[10px] font-black text-rose-600 text-center w-[22%]' }, '소계 (₩)'),
+                                            e('th', { className: 'border border-rose-200 px-1 py-1.5 w-[8%]' })
+                                        )
                                     ),
-                                    e('div', { className: 'grid grid-cols-4 gap-1.5' },
-                                        mgmtPrices.map(m => e('button', {
-                                            key: m.item_name, onClick: () => selectMgmt(m.item_name),
-                                            className: `px-1 py-2.5 rounded-lg text-[10px] font-bold border transition-all ${hdr.workplace_size === m.item_name ? (isContract ? 'bg-rose-600 text-white border-rose-600 shadow-md transform -translate-y-0.5' : 'bg-emerald-600 text-white border-emerald-600 shadow-md transform -translate-y-0.5') : 'bg-white text-slate-500 border-slate-200 hover:border-emerald-300 hover:bg-emerald-50'}`
-                                        }, m.item_name.replace('사업장', '').trim()))
+                                    e('tbody', null,
+                                        (hdr.mgmt_fee_rows && hdr.mgmt_fee_rows.length > 0
+                                            ? hdr.mgmt_fee_rows
+                                            : [{ size: '', count: '', fee: hdr.management_fee || 0, days: hdr.sampling_days || 1 }]
+                                        ).map((row, ri) => {
+                                            const rowSub = (Number(row.fee) || 0) * (Number(row.days) || 1);
+                                            const updateRow = (field, val) => {
+                                                setHdr(p => {
+                                                    const rows = p.mgmt_fee_rows && p.mgmt_fee_rows.length > 0
+                                                        ? [...p.mgmt_fee_rows]
+                                                        : [{ size: '', count: '', fee: p.management_fee || 0, days: p.sampling_days || 1 }];
+                                                    rows[ri] = { ...rows[ri], [field]: val };
+                                                    return { ...p, mgmt_fee_rows: rows };
+                                                });
+                                            };
+                                            // 규격 선택 드롭다운에서 단가 자동 연동
+                                            const onSizeChange = (sizeName) => {
+                                                const found = mgmtPrices.find(m => m.item_name === sizeName);
+                                                setHdr(p => {
+                                                    const rows = p.mgmt_fee_rows && p.mgmt_fee_rows.length > 0
+                                                        ? [...p.mgmt_fee_rows]
+                                                        : [{ size: '', count: '', fee: p.management_fee || 0, days: p.sampling_days || 1 }];
+                                                    rows[ri] = { ...rows[ri], size: sizeName, fee: found ? Number(found.unit_price) || 0 : rows[ri].fee };
+                                                    return { ...p, mgmt_fee_rows: rows };
+                                                });
+                                            };
+                                            return e('tr', { key: ri, className: ri % 2 === 0 ? 'bg-white' : 'bg-rose-50/30' },
+                                                e('td', { className: 'border border-slate-200 p-1' },
+                                                    e('select', {
+                                                        value: row.size || '',
+                                                        onChange: ev => onSizeChange(ev.target.value),
+                                                        className: 'w-full px-1 py-1 text-[11px] font-bold border border-rose-200 rounded focus:outline-none focus:border-rose-500 bg-white'
+                                                    },
+                                                        e('option', { value: '' }, '-- 규격 선택 --'),
+                                                        mgmtPrices.map(m => e('option', { key: m.item_name, value: m.item_name },
+                                                            m.item_name.replace('사업장', '').trim()
+                                                        ))
+                                                    )
+                                                ),
+                                                e('td', { className: 'border border-slate-200 p-1' },
+                                                    e('input', {
+                                                        type: 'text', value: row.count || '',
+                                                        onChange: ev => updateRow('count', ev.target.value),
+                                                        placeholder: '예: 2개소',
+                                                        className: 'w-full px-1 py-1 text-[11px] text-center border border-rose-200 rounded focus:outline-none focus:border-rose-500'
+                                                    })
+                                                ),
+                                                e('td', { className: 'border border-slate-200 p-1' },
+                                                    e('input', {
+                                                        type: 'text', value: fmt(row.fee),
+                                                        onChange: ev => updateRow('fee', unf(ev.target.value)),
+                                                        className: 'w-full px-1 py-1 text-[11px] text-right font-bold border border-rose-200 rounded focus:outline-none focus:border-rose-500'
+                                                    })
+                                                ),
+                                                e('td', { className: 'border border-slate-200 p-1' },
+                                                    e('input', {
+                                                        type: 'number', value: row.days || 1, min: 1,
+                                                        onChange: ev => updateRow('days', Number(ev.target.value) || 1),
+                                                        className: 'w-full px-1 py-1 text-[11px] text-center border border-rose-200 rounded focus:outline-none focus:border-rose-500'
+                                                    })
+                                                ),
+                                                e('td', { className: 'border border-slate-200 p-1 text-right font-black text-[11px] text-rose-700 bg-rose-50/50' },
+                                                    fmt(rowSub)
+                                                ),
+                                                e('td', { className: 'border border-slate-200 p-1 text-center' },
+                                                    e('button', {
+                                                        onClick: () => setHdr(p => {
+                                                            const rows = p.mgmt_fee_rows && p.mgmt_fee_rows.length > 0
+                                                                ? p.mgmt_fee_rows.filter((_, i) => i !== ri)
+                                                                : [];
+                                                            return { ...p, mgmt_fee_rows: rows };
+                                                        }),
+                                                        className: 'text-slate-300 hover:text-red-500 transition-colors',
+                                                        title: '행 삭제'
+                                                    }, e(Trash2, { size: 12 }))
+                                                )
+                                            );
+                                        })
                                     )
                                 ),
-                                // 비용지원 사업장 (일반모드에서만)
-                                !isContract && e('div', { className: 'space-y-3 border-l border-slate-100 pl-8' },
+                                // 행 추가 버튼 + 합계
+                                e('div', { className: 'flex items-center justify-between' },
+                                    e('button', {
+                                        onClick: () => setHdr(p => {
+                                            const rows = p.mgmt_fee_rows && p.mgmt_fee_rows.length > 0
+                                                ? [...p.mgmt_fee_rows]
+                                                : [{ size: p.workplace_size || '', count: '', fee: p.management_fee || 0, days: p.sampling_days || 1 }];
+                                            rows.push({ size: '', count: '', fee: 0, days: 1 });
+                                            return { ...p, mgmt_fee_rows: rows };
+                                        }),
+                                        className: 'flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 border border-rose-200 text-rose-600 rounded-lg text-[11px] font-black hover:bg-rose-100 transition-colors'
+                                    }, e(Plus, { size: 12 }), '규모별 행 추가'),
                                     e('div', { className: 'flex items-center gap-2' },
-                                        e('span', { className: 'w-1 h-3 bg-slate-400 rounded-full' }),
-                                        e('div', { className: 'text-[10px] font-black text-slate-500 uppercase tracking-widest' }, '비용지원 사업장')
-                                    ),
-                                    e('div', { className: 'grid grid-cols-4 gap-1.5' },
-                                        supportMgmtPrices.map(m => e('button', {
-                                            key: m.item_name, onClick: () => selectMgmt(m.item_name),
-                                            className: `px-1 py-2.5 rounded-lg text-[10px] font-bold border transition-all ${hdr.workplace_size === m.item_name ? 'bg-slate-700 text-white border-slate-700 shadow-md transform -translate-y-0.5' : 'bg-white text-slate-500 border-slate-200 hover:border-slate-400 hover:bg-slate-50'}`
-                                        }, m.item_name.replace('사업장', '').trim()))
+                                        e('span', { className: 'text-[10px] font-bold text-slate-400' }, '기본관리비 합계'),
+                                        e('span', { className: 'text-xl font-black text-rose-600' }, '₩ ', fmt(mgmtFee))
                                     )
                                 )
-                            ),
-                            // 단가 및 일수 입력 영역
-                            e('div', { className: 'flex items-center justify-between pt-5 border-t border-slate-100 mt-1' },
-                                e('div', { className: 'flex items-center gap-5' },
-                                    e('div', null,
-                                        e('label', { className: 'block text-[9px] font-black text-slate-400 mb-1.5 ml-1 uppercase' }, '기본단가 (₩)'),
-                                        e('input', {
-                                            type: 'text',
-                                            value: fmt(hdr.management_fee),
-                                            onChange: ev => setH('management_fee', unf(ev.target.value)),
-                                            className: 'w-32 px-4 py-2.5 border border-slate-200 rounded-xl text-sm font-black text-right bg-slate-50 focus:bg-white focus:ring-4 focus:ring-emerald-100 focus:border-emerald-500 outline-none transition-all'
-                                        })
+                            )
+                            // ── 일반 모드: 기존 단일 규격 UI ──
+                            : e('div', null,
+                                e('div', { className: 'grid grid-cols-2 gap-8' },
+                                    // 일반/계약 규격 버튼
+                                    e('div', { className: 'space-y-3 flex-1' },
+                                        e('div', { className: 'flex items-center gap-2' },
+                                            e('span', { className: 'w-1 h-3 bg-emerald-400 rounded-full' }),
+                                            e('div', { className: 'text-[10px] font-black text-slate-500 uppercase tracking-widest' }, '일반 사업장')
+                                        ),
+                                        e('div', { className: 'grid grid-cols-4 gap-1.5' },
+                                            mgmtPrices.map(m => e('button', {
+                                                key: m.item_name, onClick: () => selectMgmt(m.item_name),
+                                                className: `px-1 py-2.5 rounded-lg text-[10px] font-bold border transition-all ${hdr.workplace_size === m.item_name ? 'bg-emerald-600 text-white border-emerald-600 shadow-md transform -translate-y-0.5' : 'bg-white text-slate-500 border-slate-200 hover:border-emerald-300 hover:bg-emerald-50'}`
+                                            }, m.item_name.replace('사업장', '').trim()))
+                                        )
                                     ),
-                                    e('div', { className: 'flex items-center pt-5 text-slate-300' }, e(Plus, { size: 14, className: 'rotate-45 opacity-50' })),
-                                    e('div', null,
-                                        e('label', { className: 'block text-[9px] font-black text-slate-400 mb-1.5 ml-1 uppercase' }, '측정일수 (Day)'),
-                                        e('input', {
-                                            type: 'number',
-                                            value: hdr.sampling_days || 1,
-                                            min: 1,
-                                            onChange: ev => setH('sampling_days', Number(ev.target.value)),
-                                            className: 'w-20 px-3 py-2.5 border border-slate-200 rounded-xl text-sm font-black text-center bg-slate-50 focus:bg-white focus:ring-4 focus:ring-emerald-100 focus:border-emerald-500 outline-none transition-all'
-                                        })
+                                    // 비용지원 사업장
+                                    e('div', { className: 'space-y-3 border-l border-slate-100 pl-8' },
+                                        e('div', { className: 'flex items-center gap-2' },
+                                            e('span', { className: 'w-1 h-3 bg-slate-400 rounded-full' }),
+                                            e('div', { className: 'text-[10px] font-black text-slate-500 uppercase tracking-widest' }, '비용지원 사업장')
+                                        ),
+                                        e('div', { className: 'grid grid-cols-4 gap-1.5' },
+                                            supportMgmtPrices.map(m => e('button', {
+                                                key: m.item_name, onClick: () => selectMgmt(m.item_name),
+                                                className: `px-1 py-2.5 rounded-lg text-[10px] font-bold border transition-all ${hdr.workplace_size === m.item_name ? 'bg-slate-700 text-white border-slate-700 shadow-md transform -translate-y-0.5' : 'bg-white text-slate-500 border-slate-200 hover:border-slate-400 hover:bg-slate-50'}`
+                                            }, m.item_name.replace('사업장', '').trim()))
+                                        )
                                     )
                                 ),
-                                e('div', { className: 'text-right min-w-[180px]' },
-                                    e('label', { className: 'block text-[10px] font-black text-slate-400 mb-1 uppercase tracking-tighter' }, 'Selected Management Fee TOTAL'),
-                                    e('div', { className: 'text-3xl font-black text-emerald-600 tracking-tight' },
-                                        e('span', { className: 'text-lg mr-1 opacity-50' }, '₩'),
-                                        fmt(mgmtFee)
+                                // 단가 및 일수 입력 영역
+                                e('div', { className: 'flex items-center justify-between pt-5 border-t border-slate-100 mt-1' },
+                                    e('div', { className: 'flex items-center gap-5' },
+                                        e('div', null,
+                                            e('label', { className: 'block text-[9px] font-black text-slate-400 mb-1.5 ml-1 uppercase' }, '기본단가 (₩)'),
+                                            e('input', {
+                                                type: 'text',
+                                                value: fmt(hdr.management_fee),
+                                                onChange: ev => setH('management_fee', unf(ev.target.value)),
+                                                className: 'w-32 px-4 py-2.5 border border-slate-200 rounded-xl text-sm font-black text-right bg-slate-50 focus:bg-white focus:ring-4 focus:ring-emerald-100 focus:border-emerald-500 outline-none transition-all'
+                                            })
+                                        ),
+                                        e('div', { className: 'flex items-center pt-5 text-slate-300' }, e(Plus, { size: 14, className: 'rotate-45 opacity-50' })),
+                                        e('div', null,
+                                            e('label', { className: 'block text-[9px] font-black text-slate-400 mb-1.5 ml-1 uppercase' }, '측정일수 (Day)'),
+                                            e('input', {
+                                                type: 'number',
+                                                value: hdr.sampling_days || 1,
+                                                min: 1,
+                                                onChange: ev => setH('sampling_days', Number(ev.target.value)),
+                                                className: 'w-20 px-3 py-2.5 border border-slate-200 rounded-xl text-sm font-black text-center bg-slate-50 focus:bg-white focus:ring-4 focus:ring-emerald-100 focus:border-emerald-500 outline-none transition-all'
+                                            })
+                                        )
+                                    ),
+                                    e('div', { className: 'text-right min-w-[180px]' },
+                                        e('label', { className: 'block text-[10px] font-black text-slate-400 mb-1 uppercase tracking-tighter' }, 'Selected Management Fee TOTAL'),
+                                        e('div', { className: 'text-3xl font-black text-emerald-600 tracking-tight' },
+                                            e('span', { className: 'text-lg mr-1 opacity-50' }, '₩'),
+                                            fmt(mgmtFee)
+                                        )
                                     )
                                 )
                             )
