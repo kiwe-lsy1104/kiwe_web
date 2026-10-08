@@ -1493,10 +1493,21 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
         if (gridRef.current && selAnchor && !editCell) gridRef.current.focus();
     }, [selAnchor, editCell]);
 
-    // 저장 로직 개편: 중간저장(Draft) vs 최종발행(Finalize)
-    async function handleSave(isFinalize = false) {
+    // 저장 로직 개편:
+    // 'draft': 같은 견적번호 유지(또는 번호 미부여 상태 유지) 저장
+    // 'finalize': 번호 없는 상태에서 첫 정식 견적번호 부여 발행
+    // 'new_revision': 기존 견적서는 히스토리로 보존하고, 새 견적번호를 추가 채번하여 신규 견적으로 저장
+    async function handleSave(mode = 'draft') {
         if (!hdr.client_name.trim()) return alert('거래처명을 입력하세요.');
-        if (isFinalize && !confirm('견적번호를 부여하고 최종 발행하시겠습니까?')) return;
+        
+        const isNewRevision = mode === 'new_revision';
+        const isFinalize = mode === 'finalize';
+
+        if (isNewRevision) {
+            if (!confirm(`기존 견적서(${hdr.quote_no})는 히스토리로 보존하고,\n새 견적번호를 추가 부여하여 신규 견적서로 저장하시겠습니까?`)) return;
+        } else if (isFinalize) {
+            if (!confirm('견적번호를 부여하고 최종 발행하시겠습니까?')) return;
+        }
         
         setSaving(true);
         try {
@@ -1505,16 +1516,20 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
             let qno = hdr.quote_no || null;
             let nextSeq = hdr.quote_seq || null;
 
-            // ★ 기간(날짜/연도/반기)이 변경된 경우, 기존 기록 수정이 정황상 신규 발행이므로 
-            //   editId와 quote_no를 비워 신규 INSERT 및 신규 채번이 일어날 수 있도록 함.
-            if (isPeriodChanged) {
+            // 기간 변경 감지 또는 새 견적번호 추가(new_revision)인 경우:
+            // 신규 레코드 INSERT 및 새 번호 채번을 수행
+            if (isPeriodChanged || isNewRevision) {
                 qId = null;
                 qno = null;
                 nextSeq = null;
             }
 
-            // 1. 견적번호 발행(Finalize) 요청 시에만 번호 채번
-            if (isFinalize && !qno) {
+            // 견적번호 채번:
+            // 1) finalize 모드이면서 아직 번호가 없는 경우
+            // 2) new_revision 모드 (새 견적번호 추가)
+            // 3) isPeriodChanged 후 저장 시
+            const needNewNumber = isNewRevision || (isFinalize && !qno) || (isPeriodChanged && isFinalize);
+            if (needNewNumber) {
                 const { data: qData } = await sb.from('kiwe_quotations')
                     .select('quote_seq, quote_no')
                     .eq('year', hdr.year);
@@ -1559,7 +1574,7 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
                 actual_amount: sub,
                 total_amount: total,
                 payment_terms: hdr.payment_terms, notes: hdr.notes, 
-                status: isFinalize ? '완료' : hdr.status,
+                status: (isFinalize || isNewRevision) ? '완료' : hdr.status,
                 manager_name: (() => {
                     const title = user.position || user.job_title || '';
                     return user.user_name ? `${user.user_name}${title ? ' ' + title : ''}` : (hdr.manager_name || '이승용');
@@ -1569,8 +1584,8 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
                 quote_seq: nextSeq
             };
 
-            // 신규 작성 시에만 created_by 추가
-            if (!editId) {
+            // 신규 작성 또는 새 견적번호 추가 시 created_by 추가
+            if (!editId || isNewRevision) {
                 payload.created_by = payload.manager_name;
             }
 
@@ -1586,7 +1601,9 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
 
             // 3. 아이템 저장: 기존 것 삭제 후 재삽입 (동기화)
             if (qId) {
-                await sb.from('kiwe_quotation_items').delete().eq('quotation_id', qId);
+                if (editId && !isNewRevision) {
+                    await sb.from('kiwe_quotation_items').delete().eq('quotation_id', qId);
+                }
                 if (items.length > 0) {
                     await sb.from('kiwe_quotation_items').insert(items.map((it, i) => ({
                         quotation_id: qId, sort_order: i,
@@ -1597,7 +1614,13 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
                 }
             }
 
-            alert(isFinalize ? `견적서가 최종 발행되었습니다.\n견적번호: ${qno}` : '저장되었습니다. (중간저장)');
+            if (isNewRevision) {
+                alert(`새로운 견적서가 추가 발행되었습니다! (기존 견적서는 보존됨)\n새 견적번호: ${qno}`);
+            } else if (isFinalize) {
+                alert(`견적서가 최종 발행되었습니다.\n견적번호: ${qno}`);
+            } else {
+                alert(qno ? `저장되었습니다. (견적번호: ${qno} 유지)` : '임시 저장되었습니다. (견적번호 미부여)');
+            }
             
             // 저장 후 편집 모드로 전환하여 현재 ID 유지
             await loadEdit(qId);
@@ -1650,18 +1673,31 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
                         onClick: () => openPrintPreview(hdr, items, mgmtFee, itemsTotal, sub, discAmt, vat, total, supportInfo, page1Offset),
                         className: 'flex items-center gap-2 px-5 py-2 bg-slate-100 text-slate-700 rounded-lg text-sm font-bold hover:bg-slate-200'
                     }, e(Eye, { size: 15 }), '미리보기'),
-                    e('button', {
-                        onClick: () => handleSave(false), disabled: saving,
-                        className: 'flex items-center gap-2 px-5 py-2 bg-white text-blue-600 border border-blue-200 rounded-lg text-sm font-bold hover:bg-blue-50 transition-all shadow-sm'
-                    }, e(Save, { size: 15 }), saving ? '저장 중...' : '중간저장'),
+                    // 1) 아직 견적번호가 없거나 기간이 변경된 경우:
                     (!hdr.quote_no || isPeriodChanged) && e('button', {
-                        onClick: () => handleSave(true), disabled: saving,
-                        className: 'flex items-center gap-2 px-5 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 shadow-md transform active:scale-95 transition-all'
+                        onClick: () => handleSave('draft'), disabled: saving,
+                        className: 'flex items-center gap-2 px-4 py-2 bg-white text-blue-600 border border-blue-200 rounded-lg text-sm font-bold hover:bg-blue-50 transition-all shadow-sm',
+                        title: '견적번호를 부여하지 않고 임시 저장합니다.'
+                    }, e(Save, { size: 15 }), saving ? '저장 중...' : '중간저장'),
+
+                    (!hdr.quote_no || isPeriodChanged) && e('button', {
+                        onClick: () => handleSave('finalize'), disabled: saving,
+                        className: 'flex items-center gap-2 px-5 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 shadow-md transform active:scale-95 transition-all',
+                        title: '견적번호를 채번하여 정식 견적서로 최종 발행합니다.'
                     }, e(Printer, { size: 15 }), saving ? '발행 중...' : '견적서 최종발행'),
+
+                    // 2) 이미 견적번호가 부여된 견적서인 경우 (예: KIWE-2026-246):
                     (hdr.quote_no && !isPeriodChanged) && e('button', {
-                        onClick: () => handleSave(false), disabled: saving,
-                        className: 'flex items-center gap-2 px-5 py-2 bg-slate-700 text-white rounded-lg text-sm font-bold hover:bg-slate-800'
-                    }, e(Save, { size: 15 }), '변경사항 저장'),
+                        onClick: () => handleSave('draft'), disabled: saving,
+                        className: 'flex items-center gap-2 px-4 py-2 bg-white text-slate-700 border border-slate-300 rounded-lg text-sm font-bold hover:bg-slate-50 transition-all shadow-sm',
+                        title: `기존 견적번호(${hdr.quote_no})를 유지한 채 수정 내용을 덮어씁니다.`
+                    }, e(Save, { size: 15 }), saving ? '저장 중...' : '중간저장 (같은 견적번호)'),
+
+                    (hdr.quote_no && !isPeriodChanged) && e('button', {
+                        onClick: () => handleSave('new_revision'), disabled: saving,
+                        className: 'flex items-center gap-2 px-5 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 shadow-md transform active:scale-95 transition-all',
+                        title: `기존 견적서(${hdr.quote_no})는 히스토리로 보존하고, 새 견적번호를 추가 부여하여 신규 견적으로 저장합니다.`
+                    }, e(Plus, { size: 15 }), saving ? '추가 발행 중...' : '변경사항 저장 (새 견적번호 추가)'),
                     e('button', { onClick: onCancel, className: 'p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg ml-2' }, e(X, { size: 22 }))
                 )
             ),
