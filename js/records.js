@@ -1841,6 +1841,30 @@ function RecordsManagement() {
 
     const officeFilterOptions = ['안산', '경기', '평택', '서울서부', '기타'];
 
+    // 지청별 현재 지정현황 요약 (코드 좌측)
+    const agencySummary = useMemo(() => {
+        const offices = ['안산', '경기', '서울서부', '평택'];
+        const result = {};
+        offices.forEach(name => { result[name] = { under5: 0, over5: 0 }; });
+        // agencies: approval_date 오름차순, 지청별 가장 마지막 행이 현재 한도
+        const groups = {};
+        agencies.forEach(a => {
+            const n = a.office_name || '기타';
+            if (!groups[n]) groups[n] = [];
+            groups[n].push(a);
+        });
+        offices.forEach(name => {
+            const list = groups[name] || [];
+            if (list.length > 0) {
+                // 날짜 오름차순 정렬 후 마지막 항목
+                const sorted = [...list].sort((a, b) => (a.approval_date || '').localeCompare(b.approval_date || ''));
+                const last = sorted[sorted.length - 1];
+                result[name] = { under5: Number(last.limit_under_5) || 0, over5: Number(last.limit_over_5) || 0 };
+            }
+        });
+        return offices.map(name => ({ name, ...result[name] }));
+    }, [agencies]);
+
     const stats = useMemo(() => {
         const unreported = filteredRecords.filter(r => r.end_date && !r.report_date && r.work_type === '측정').length;
 
@@ -1912,7 +1936,7 @@ function RecordsManagement() {
         ),
         e('main', { className: "flex-1 p-6" },
             e(React.Fragment, null,
-                e('div', { className: "grid gap-6 mb-6 grid-cols-1 md:grid-cols-3" },
+                e('div', { className: "grid gap-6 mb-6 grid-cols-1 md:grid-cols-4" },
                         e('div', { className: "bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex items-center gap-5" },
                             e('div', { className: "bg-indigo-50 p-3 rounded-xl text-indigo-600" }, e(ClipboardList, { size: 24 })),
                             e('div', { className: "truncate" }, e('p', { className: "text-xs font-bold text-slate-400 uppercase" }, "조회된 기록"), e('p', { className: "text-2xl font-extrabold text-slate-800" }, stats.totalCount.toLocaleString(), "건"))
@@ -1923,6 +1947,26 @@ function RecordsManagement() {
                         },
                             e('div', { className: "bg-amber-50 p-3 rounded-xl text-amber-600" }, e(AlertCircle, { size: 24 })),
                             e('div', { className: "truncate" }, e('p', { className: "text-xs font-bold text-slate-400 uppercase" }, "전산 미보고"), e('p', { className: "text-2xl font-extrabold text-red-600" }, (stats.unreported || 0).toLocaleString(), "건"))
+                        ),
+                        // 지정현황관리 카드 (지청별 5인 미만/5인 이상 한눈에)
+                        e('div', { className: "bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex flex-col gap-2" },
+                            e('p', { className: "text-xs font-bold text-slate-400 uppercase flex items-center gap-2 mb-1" },
+                                e('div', { className: "w-2 h-2 rounded-full bg-blue-500" }),
+                                "지정현황관리"
+                            ),
+                            e('div', { className: "grid grid-cols-2 gap-x-3 gap-y-1" },
+                                agencySummary.map(s =>
+                                    e('div', { key: s.name, className: "flex flex-col border-b border-slate-50 pb-1" },
+                                        e('span', { className: "text-[10px] font-black text-slate-400" }, s.name),
+                                        e('span', { className: "text-xs font-bold" },
+                                            e('span', { className: "text-blue-600" }, s.under5.toLocaleString()),
+                                            e('span', { className: "text-slate-300 mx-0.5" }, "/"),
+                                            e('span', { className: "text-indigo-600" }, s.over5.toLocaleString()),
+                                            e('span', { className: "text-[9px] text-slate-400 ml-0.5" }, "개소")
+                                        )
+                                    )
+                                )
+                            )
                         ),
                         e('div', { className: "bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex flex-col justify-center gap-2" },
                             e('p', { className: "text-sm font-bold text-slate-400 uppercase flex items-center gap-2" }, e('div', { className: "w-2 h-2 rounded-full bg-emerald-500" }), stats.serialInfo.label),
