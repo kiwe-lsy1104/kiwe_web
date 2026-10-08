@@ -1308,7 +1308,7 @@
             const loadClients = async () => {
                 const [{ data: qClients }, { data: companies }] = await Promise.all([
                     supabase.from('kiwe_quotation_clients').select('id, client_name, com_id').order('client_name'),
-                    supabase.from('kiwe_companies').select('com_id, com_name, com_reg_no, address, ceo_name, tel, fax, biz_type, main_product').order('com_name')
+                    supabase.from('kiwe_companies').select('com_id, com_name, com_reg_no, address, ceo_name, manager_name, tel, fax, biz_type, main_product').order('com_name')
                 ]);
 
                 const registeredMap = (qClients || []).reduce((acc, c) => {
@@ -1361,7 +1361,7 @@
                         biz_reg_no: c.comData.com_reg_no,
                         address: c.comData.address,
                         ceo_name: c.comData.ceo_name,
-                        manager_name: c.comData.ceo_name,
+                        manager_name: c.comData.manager_name || '',
                         tel: c.comData.tel,
                         fax: c.comData.fax,
                         biz_type: c.comData.biz_type,

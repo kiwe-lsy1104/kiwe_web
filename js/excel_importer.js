@@ -293,7 +293,7 @@ export default function ExcelImporter({ onClose, onComplete }) {
         setLoading(true);
         try {
             // 사업장 데이터 미리 로드 (매칭용)
-            const { data: companyList } = await sb.from('kiwe_companies').select('com_id, com_name, com_reg_no, ceo_name, address, tel, fax, biz_type');
+            const { data: companyList } = await sb.from('kiwe_companies').select('com_id, com_name, com_reg_no, ceo_name, manager_name, address, tel, fax, biz_type');
             const companyMap = new Map();
             companyList?.forEach(c => {
                 const norm = normalizeName(c.com_name);
@@ -359,6 +359,7 @@ export default function ExcelImporter({ onClose, onComplete }) {
                         com_id: matchedOrg?.com_id || null,
                         biz_reg_no: matchedOrg?.com_reg_no || null,
                         ceo_name: matchedOrg?.ceo_name || null,
+                        manager_name: matchedOrg?.manager_name || null,
                         address: matchedOrg?.address || null,
                         tel: matchedOrg?.tel || matchedOrg?.manager_contact || null,
                         fax: matchedOrg?.fax || null

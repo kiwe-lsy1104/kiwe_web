@@ -29,7 +29,7 @@ export function ClientsTab() {
 
     // 위 loadCompanies를 다시 정의 (이름 겹침 주의)
     async function fetchCompanies() {
-        const { data } = await sb.from('kiwe_companies').select('com_id, com_name, com_reg_no, address, manage_status, ceo_name, tel, fax, biz_type, main_product');
+        const { data } = await sb.from('kiwe_companies').select('com_id, com_name, com_reg_no, address, manage_status, ceo_name, manager_name, tel, fax, biz_type, main_product');
         setCompanies(data || []);
     }
 
@@ -112,7 +112,7 @@ export function ClientsTab() {
             com_id: c.com_id,
             client_name: c.com_name,
             ceo_name: c.ceo_name,
-            manager_name: c.ceo_name, // 초기값으로 대표자명을 넣어주되, 필요시 수정 가능하도록 함
+            manager_name: c.manager_name || '',
             biz_reg_no: c.com_reg_no,
             address: c.address,
             tel: c.tel,

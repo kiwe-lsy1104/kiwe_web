@@ -940,11 +940,29 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
     }
 
     async function loadClients() {
-        const [{ data: cList }, { data: pList }] = await Promise.all([
+        const [{ data: cList }, { data: pList }, { data: companies }] = await Promise.all([
             sb.from('kiwe_quotation_clients').select('*').order('client_name'),
-            sb.from('kiwe_price_settings').select('price_type').ilike('price_type', '계약_%')
+            sb.from('kiwe_price_settings').select('price_type').ilike('price_type', '계약_%'),
+            sb.from('kiwe_companies').select('com_id, manager_name, ceo_name')
         ]);
-        setClients(cList || []);
+        const compMap = new Map();
+        (companies || []).forEach(co => {
+            if (co.com_id) compMap.set(co.com_id, co);
+        });
+        const mergedList = (cList || []).map(c => {
+            const comp = c.com_id ? compMap.get(c.com_id) : null;
+            let finalManager = c.manager_name || '';
+            // manager_name이 비어있거나 ceo_name과 동일하게 잘못 들어간 경우 사업장의 실제 담당자명 우선 적용
+            if ((!finalManager || finalManager === c.ceo_name) && comp?.manager_name) {
+                finalManager = comp.manager_name;
+            }
+            return {
+                ...c,
+                manager_name: finalManager,
+                comp_manager_name: comp?.manager_name || ''
+            };
+        });
+        setClients(mergedList);
         if (pList && pList.length > 0) {
             const ids = new Set();
             pList.forEach(p => {
@@ -974,7 +992,7 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
                             client_fax: q.client_fax || c.fax || '',
                             client_address: q.client_address || c.address || '',
                             client_ceo: q.client_ceo || c.ceo_name || '',
-                            client_manager: q.client_manager || c.manager_name || c.ceo_name || ''
+                            client_manager: q.client_manager || c.manager_name || ''
                         };
                     }
                 }
@@ -1154,6 +1172,7 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
     }
 
     function selectClient(c) {
+        let mName = (c.manager_name && c.manager_name !== c.ceo_name) ? c.manager_name : (c.comp_manager_name || c.manager_name || '');
         setHdr(p => ({
             ...p,
             client_id: c.id,
@@ -1162,7 +1181,8 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
             client_fax: c.fax || '',
             client_address: c.address || '',
             client_ceo: c.ceo_name || '',
-            client_manager: c.manager_name || c.ceo_name || ''
+            client_manager: mName,
+            ...(contractClientIds.has(c.id) ? { contract_client_id: c.id } : {})
         }));
         setClientSearch(c.client_name);
         setShowClientDrop(false);
@@ -1726,6 +1746,12 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
                                         onChange: ev => {
                                             const cid = ev.target.value ? Number(ev.target.value) : null;
                                             setH('contract_client_id', cid);
+                                            if (cid) {
+                                                const found = clients.find(c => c.id === cid);
+                                                if (found) {
+                                                    selectClient(found);
+                                                }
+                                            }
                                         },
                                         className: 'w-full px-3 py-2 border-2 border-rose-200 rounded-lg text-sm font-bold outline-none focus:border-rose-500 bg-white'
                                     },
