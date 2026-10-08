@@ -14,6 +14,15 @@ const STATUS_COLOR = {
     '계약': 'bg-emerald-100 text-emerald-700 border-emerald-200',
 };
 
+// 비용지원 견적 판별 헬퍼 (신규지원/기존지원만 해당. 계약단가 및 일반은 비용지원이 아님)
+export function isCostSupportQuote(q) {
+    if (!q) return false;
+    const st = q.support_type || '';
+    if (st.startsWith('신규지원') || st.startsWith('기존지원')) return true;
+    if (st.startsWith('계약') || st === '일반' || st === '일반_할인') return false;
+    return Boolean(q.is_cost_support);
+}
+
 export function QuotationList({ onNew, onEdit }) {
     const [quotes, setQuotes] = useState([]);
     const [yearF, setYearF] = useState(String(new Date().getFullYear()));
@@ -73,8 +82,9 @@ export function QuotationList({ onNew, onEdit }) {
             if (typeF === '측정' && !isMeasurement) return false;
             if (typeF !== '측정' && q.quote_type !== typeF) return false;
         }
-        if (supportF === '비용지원' && !q.is_cost_support) return false;
-        if (supportF === '일반' && q.is_cost_support) return false;
+        const isSup = isCostSupportQuote(q);
+        if (supportF === '비용지원' && !isSup) return false;
+        if (supportF === '일반' && isSup) return false;
         if (statusF !== '전체' && q.status !== statusF) return false;
         if (search && !q.client_name?.includes(search) && !q.quote_no?.includes(search)) return false;
         return true;
@@ -143,7 +153,7 @@ export function QuotationList({ onNew, onEdit }) {
                             e('tbody', { className: 'divide-y divide-slate-100' },
                                 filtered.length === 0 ? e('tr', null, e('td', { colSpan: 11, className: 'py-20 text-center text-slate-400 font-bold' }, '견적서가 없습니다.')) :
                                     filtered.map(q => {
-                                        const isSupport = q.is_cost_support || q.support_type !== '일반';
+                                        const isSupport = isCostSupportQuote(q);
                                         const qt = q.quote_type === '일반' ? '측정' : q.quote_type;
                                         const typeStr = qt + (isSupport ? '(지원)' : '');
 
@@ -194,7 +204,7 @@ function calcQuoteTotals(q, items = []) {
     if (Number(q.total_amount || 0) > 0) {
         return { total: q.total_amount, final: q.total_amount };
     }
-    const isSupport = q.support_type !== '일반' || q.is_cost_support;
+    const isSupport = isCostSupportQuote(q);
     const mgmtFee = Number(q.management_fee || 0) * (Number(q.sampling_days) || 1);
     const itemsTotal = items.reduce((acc, it) => acc + (Number(it.unit_price) * Number(it.quantity)), 0);
     const sub = mgmtFee + itemsTotal;

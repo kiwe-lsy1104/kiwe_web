@@ -46,7 +46,7 @@ export function openPrintPreview(hdr, items, mgmtFee, itemsTotal, sub, disc, vat
     const isYongYeok = hdr.quote_type === '용역';
     const isRental = hdr.quote_type === '장비대여';
     const isMeasurement = hdr.quote_type === '측정' || hdr.quote_type === '일반';
-    const isSupport = isMeasurement && hdr.support_type !== '일반';
+    const isSupport = isMeasurement && (hdr.support_type === '신규지원' || hdr.support_type === '기존지원');
     const isTaxable = isYongYeok; // 용역에는 VAT가 포함됩니다. 장비대여도 포함할지는 선택적으로 구성
     const popup = window.open('', '_blank', 'width=1000,height=900,scrollbars=yes');
     if (!popup) {
@@ -1543,6 +1543,7 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
                 client_tel: hdr.client_tel, client_fax: hdr.client_fax, client_address: hdr.client_address,
                 client_ceo: hdr.client_ceo, client_manager: hdr.client_manager,
                 quote_type: hdr.quote_type,
+                is_cost_support: (hdr.support_type === '신규지원' || hdr.support_type === '기존지원'),
                 support_type: hdr.is_discount ? `${hdr.support_type}_할인` : hdr.support_type,
                 workplace_size: hdr.workplace_size,
                 management_fee: hdr.management_fee,
