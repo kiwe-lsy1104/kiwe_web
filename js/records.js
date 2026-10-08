@@ -1872,22 +1872,30 @@ function RecordsManagement() {
         if (officeFilter !== '전체') {
             const targetYear = yearFilter === '전체' ? new Date().getFullYear() : yearFilter;
 
+            // 연도+지청 기준으로 전체 레코드 필터 (연간 번호 y_all/y_o5용)
             const relevantRecords = records.filter(r => {
                 if (officeFilter === '기타') return r.work_type !== '측정' && r.target_year == targetYear;
                 const filterCode = getOfficeCode(officeFilter);
                 return r.work_type === '측정' && getOfficeCode(r.office_name) === filterCode && r.target_year == targetYear;
             });
 
+            // 반기 번호(h_all/h_o5)는 선택한 반기 데이터만 사용
+            // halfYearFilter가 '전체'이면 전체 레코드, 아니면 해당 반기만 필터
+            const halfFilteredRecords = (halfYearFilter && halfYearFilter !== '전체')
+                ? relevantRecords.filter(r => r.half_year === halfYearFilter)
+                : relevantRecords;
+
             if (relevantRecords.length > 0) {
-                serialInfo.h_all = Math.max(...relevantRecords.map(r => Number(r.half_all) || 0));
-                serialInfo.h_o5 = Math.max(...relevantRecords.map(r => Number(r.half_o5) || 0));
-                serialInfo.y_all = Math.max(...relevantRecords.map(r => Number(r.year_all) || 0));
-                serialInfo.y_o5 = Math.max(...relevantRecords.map(r => Number(r.year_o5) || 0));
+                serialInfo.h_all = Math.max(0, ...halfFilteredRecords.map(r => Number(r.half_all) || 0));
+                serialInfo.h_o5 = Math.max(0, ...halfFilteredRecords.map(r => Number(r.half_o5) || 0));
+                serialInfo.y_all = Math.max(0, ...relevantRecords.map(r => Number(r.year_all) || 0));
+                serialInfo.y_o5 = Math.max(0, ...relevantRecords.map(r => Number(r.year_o5) || 0));
 
                 let groupLabel = officeFilter;
                 if (officeFilter === '안산') groupLabel = '안산/기타지청 통합';
                 if (officeFilter === '기타') groupLabel = '기타용역';
-                serialInfo.label = groupLabel + " (" + targetYear + "년) 마지막 번호";
+                const halfLabel = (halfYearFilter && halfYearFilter !== '전체') ? ` ${halfYearFilter}` : '';
+                serialInfo.label = groupLabel + " (" + targetYear + "년" + halfLabel + ") 마지막 번호";
             } else {
                 serialInfo.label = officeFilter + " (" + targetYear + "년) - 기록 없음";
             }
@@ -1896,7 +1904,7 @@ function RecordsManagement() {
         }
 
         return { totalCount: filteredRecords.length, unreported, serialInfo };
-    }, [filteredRecords, records, officeFilter, yearFilter]);
+    }, [filteredRecords, records, officeFilter, yearFilter, halfYearFilter]);
 
 
     if (!user) return null;
