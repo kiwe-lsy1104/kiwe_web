@@ -1054,9 +1054,13 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
                 }
 
                 // mgmt_fee_rows: DB에서 JSON 문자열로 저장된 것을 파싱
+                // q.mgmt_fee_rows가 null이면서 계약단가이고 management_fee가 있으면 기존 단일 행을 복원
                 let parsedMgmtFeeRows = [];
                 if (q.mgmt_fee_rows) {
                     try { parsedMgmtFeeRows = JSON.parse(q.mgmt_fee_rows); } catch (_) { parsedMgmtFeeRows = []; }
+                } else if (q.support_type === '계약' && Number(q.management_fee) > 0) {
+                    // 이전 방식으로 저장된 계약 견적: management_fee + sampling_days로 단일 행 복원
+                    parsedMgmtFeeRows = [{ size: q.workplace_size || '', count: '', fee: Number(q.management_fee) || 0, days: Number(q.sampling_days) || 1 }];
                 }
 
                 setHdr({
@@ -1104,8 +1108,10 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
     const mgmtFeeRowsTotal = isContract && hdr.mgmt_fee_rows && hdr.mgmt_fee_rows.length > 0
         ? hdr.mgmt_fee_rows.reduce((s, r) => s + ((Number(r.fee) || 0) * (Number(r.days) || 1)), 0)
         : 0;
+    // 계약단가 모드에서는 mgmt_fee_rows 기준으로 계산
+    // mgmt_fee_rows가 빈 배열이면 기본관리비 없음(0)으로 처리 (분석수수료만 청구하는 특이케이스)
     const mgmtFee = isMeasurement
-        ? (isContract && hdr.mgmt_fee_rows && hdr.mgmt_fee_rows.length > 0
+        ? (isContract
             ? mgmtFeeRowsTotal
             : (hdr.management_fee || 0) * (hdr.sampling_days || 1))
         : 0;
@@ -1608,9 +1614,9 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
                 workplace_size: hdr.workplace_size,
                 management_fee: hdr.management_fee,
                 sampling_days: hdr.sampling_days || 1,
-                // 계약단가 다중 기본관리비 행: JSON 문자열로 저장
-                mgmt_fee_rows: (isContract && hdr.mgmt_fee_rows && hdr.mgmt_fee_rows.length > 0)
-                    ? JSON.stringify(hdr.mgmt_fee_rows)
+                // 계약단가 모드: 빈 배열도 "[]"로 저장 (null=이전데이터, "[]"=의도적 기본관리비 없음)
+                mgmt_fee_rows: isContract
+                    ? JSON.stringify(hdr.mgmt_fee_rows || [])
                     : null,
                 preliminary_fee: hdr.preliminary_fee || 0,
                 preliminary_days: hdr.preliminary_days !== undefined && hdr.preliminary_days !== null ? Number(hdr.preliminary_days) : 0,
@@ -1941,10 +1947,13 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
                                         )
                                     ),
                                     e('tbody', null,
-                                        (hdr.mgmt_fee_rows && hdr.mgmt_fee_rows.length > 0
-                                            ? hdr.mgmt_fee_rows
-                                            : [{ size: '', count: '', fee: hdr.management_fee || 0, days: hdr.sampling_days || 1 }]
-                                        ).map((row, ri) => {
+                                        hdr.mgmt_fee_rows && hdr.mgmt_fee_rows.length === 0
+                                            ? e('tr', null,
+                                                e('td', { colSpan: 6, className: 'border border-slate-200 py-4 text-center text-[11px] text-slate-400 italic' },
+                                                    '기본관리비 행이 없습니다. 아래 \'규모별 행 추가\' 버튼으로 추가하거나, 분석수수료만 청구할 수 있습니다.'
+                                                )
+                                            )
+                                            : (hdr.mgmt_fee_rows || []).map((row, ri) => {
                                             const rowSub = (Number(row.fee) || 0) * (Number(row.days) || 1);
                                             const updateRow = (field, val) => {
                                                 setHdr(p => {
@@ -2024,9 +2033,7 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
                                 e('div', { className: 'flex items-center justify-between' },
                                     e('button', {
                                         onClick: () => setHdr(p => {
-                                            const rows = p.mgmt_fee_rows && p.mgmt_fee_rows.length > 0
-                                                ? [...p.mgmt_fee_rows]
-                                                : [{ size: p.workplace_size || '', count: '', fee: p.management_fee || 0, days: p.sampling_days || 1 }];
+                                            const rows = p.mgmt_fee_rows ? [...p.mgmt_fee_rows] : [];
                                             rows.push({ size: '', count: '', fee: 0, days: 1 });
                                             return { ...p, mgmt_fee_rows: rows };
                                         }),
