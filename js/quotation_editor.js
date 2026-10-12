@@ -602,13 +602,13 @@ export function openPrintPreview(hdr, items, mgmtFee, itemsTotal, sub, disc, vat
                 </colgroup>
                 <tr>
                     <td class="label">규 격</td>
-                    <td style="text-align:center;">${hdr.workplace_size || '-'}</td>
+                    <td style="text-align:center;">${(hdr.support_type === '계약' && (!mgmtFeeRows || mgmtFeeRows.length === 0)) ? '-' : (hdr.workplace_size || '-')}</td>
                     <td class="label">측정일수</td>
-                    <td style="text-align:center;">${hdr.sampling_days || 1}일</td>
+                    <td style="text-align:center;">${(hdr.support_type === '계약' && (!mgmtFeeRows || mgmtFeeRows.length === 0)) ? '1' : (hdr.sampling_days || 1)}일</td>
                 </tr>
                 <tr>
                     <td class="label">기본단가</td>
-                    <td style="text-align:right; padding-right:10px;">₩ ${fmt(hdr.management_fee)}</td>
+                    <td style="text-align:right; padding-right:10px;">₩ ${fmt((hdr.support_type === '계약' && (!mgmtFeeRows || mgmtFeeRows.length === 0)) ? 0 : hdr.management_fee)}</td>
                     <td class="label">소 계</td>
                     <td style="text-align:right; padding-right:10px; font-weight:bold; background:#f2f2f2;">₩ ${fmt(mgmtFee)}</td>
                 </tr>
@@ -1063,6 +1063,8 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
                     parsedMgmtFeeRows = [{ size: q.workplace_size || '', count: '', fee: Number(q.management_fee) || 0, days: Number(q.sampling_days) || 1 }];
                 }
 
+                const isContractNoMgmt = real_support === '계약' && parsedMgmtFeeRows.length === 0;
+
                 setHdr({
                     ...BLANK_HDR,
                     ...q,
@@ -1071,7 +1073,8 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
                     is_discount: is_disc,
                     is_manual_support: isManualSup,
                     support_amount: isManualSup ? savedSupAmt : 0,
-                    management_fee: Number(q.management_fee) || 0,
+                    management_fee: isContractNoMgmt ? 0 : (Number(q.management_fee) || 0),
+                    sampling_days: isContractNoMgmt ? 1 : (Number(q.sampling_days) || 1),
                     mgmt_fee_rows: parsedMgmtFeeRows,
                     manager_name: q.manager_name || q.created_by || '이승용',
                     title: q.title || '작업환경측정 견적서',
@@ -1612,8 +1615,8 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
                 is_cost_support: (hdr.support_type === '신규지원' || hdr.support_type === '기존지원'),
                 support_type: hdr.is_discount ? `${hdr.support_type}_할인` : hdr.support_type,
                 workplace_size: hdr.workplace_size,
-                management_fee: hdr.management_fee,
-                sampling_days: hdr.sampling_days || 1,
+                management_fee: (isContract && (!hdr.mgmt_fee_rows || hdr.mgmt_fee_rows.length === 0)) ? 0 : (hdr.management_fee || 0),
+                sampling_days: (isContract && (!hdr.mgmt_fee_rows || hdr.mgmt_fee_rows.length === 0)) ? 1 : (hdr.sampling_days || 1),
                 // 계약단가 모드: 빈 배열도 "[]"로 저장 (null=이전데이터, "[]"=의도적 기본관리비 없음)
                 mgmt_fee_rows: isContract
                     ? JSON.stringify(hdr.mgmt_fee_rows || [])
@@ -1725,7 +1728,12 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
                         })
                     ),
                     e('button', {
-                        onClick: () => openPrintPreview(hdr, items, mgmtFee, itemsTotal, sub, discAmt, vat, total, supportInfo, page1Offset, hdr.mgmt_fee_rows || []),
+                        onClick: () => {
+                            const previewHdr = (isContract && (!hdr.mgmt_fee_rows || hdr.mgmt_fee_rows.length === 0))
+                                ? { ...hdr, sampling_days: 1, management_fee: 0 }
+                                : hdr;
+                            openPrintPreview(previewHdr, items, mgmtFee, itemsTotal, sub, discAmt, vat, total, supportInfo, page1Offset, hdr.mgmt_fee_rows || []);
+                        },
                         className: 'flex items-center gap-2 px-5 py-2 bg-slate-100 text-slate-700 rounded-lg text-sm font-bold hover:bg-slate-200'
                     }, e(Eye, { size: 15 }), '미리보기'),
                     // 1) 아직 견적번호가 없거나 기간이 변경된 경우:
@@ -2019,7 +2027,11 @@ export function QuotationEditor({ editId, onSave, onCancel }) {
                                                             const rows = p.mgmt_fee_rows && p.mgmt_fee_rows.length > 0
                                                                 ? p.mgmt_fee_rows.filter((_, i) => i !== ri)
                                                                 : [];
-                                                            return { ...p, mgmt_fee_rows: rows };
+                                                            return {
+                                                                ...p,
+                                                                mgmt_fee_rows: rows,
+                                                                ...(rows.length === 0 ? { sampling_days: 1, management_fee: 0 } : {})
+                                                            };
                                                         }),
                                                         className: 'text-slate-300 hover:text-red-500 transition-colors',
                                                         title: '행 삭제'
