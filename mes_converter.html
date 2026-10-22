@@ -359,6 +359,7 @@
         .mes-td-loc    { text-align:center; font-weight:700; font-size:7.5pt; color:#0d9488; }
         .mes-td-hazard { font-size: 7.5pt; font-weight: 500; }
         .mes-td-sid    { font-size: 7.5pt; font-weight: 700; color: #1d4ed8; }
+        .mes-td-noise  { font-weight: 700; color: #15803d; }
         .mes-td-empty  {
             background: #fafafa !important;
             min-height: 24px;
@@ -371,10 +372,45 @@
             }
             .mes-proc-group { page-break-inside: avoid; break-inside: avoid; }
             .mes-proc-group + .mes-proc-group { page-break-before: auto; }
+            .mes-th-drag-grip { display: none !important; }
         }
 
         /* 공정 그룹 페이지 분할 */
         .mes-proc-group { page-break-inside: avoid; break-inside: avoid; }
+
+        /* ── 컬럼 드래그 앤 드롭 순서 변경 스타일 ── */
+        .mes-th-draggable {
+            cursor: grab;
+            user-select: none;
+            transition: background 0.15s;
+        }
+        .mes-th-draggable:hover {
+            background: #e2e8f0;
+        }
+        .mes-th-draggable:active {
+            cursor: grabbing;
+        }
+        .mes-th-drag-grip {
+            font-size: 8px;
+            color: #94a3b8;
+            margin-right: 3px;
+            display: inline-block;
+            vertical-align: middle;
+            letter-spacing: -1px;
+            opacity: 0.6;
+        }
+        .mes-th-draggable.mes-dragging {
+            opacity: 0.45;
+            background: #cbd5e1 !important;
+        }
+        .mes-th-draggable.mes-drag-over-left {
+            border-left: 3px solid #0f766e !important;
+            background: #ccfbf1 !important;
+        }
+        .mes-th-draggable.mes-drag-over-right {
+            border-right: 3px solid #0f766e !important;
+            background: #ccfbf1 !important;
+        }
 
         /* ── 컬럼 리사이즈 핸들 ── */
         .mes-resize-handle {
@@ -469,7 +505,8 @@
         <!-- 액션 버튼 -->
         <div class="mc-actions">
             <button id="mes-print-btn" class="mc-btn mc-btn-primary">🖨️ 인쇄 / PDF 저장</button>
-            <button id="mes-reset-col-btn" class="mc-btn mc-btn-secondary">📐 컬럼 너비 초기화</button>
+            <button class="mc-btn mc-btn-secondary mes-btn-reset-order">🔀 컬럼 순서 초기화</button>
+            <button class="mc-btn mc-btn-secondary mes-btn-reset-col">📐 컬럼 너비 초기화</button>
             <button id="mes-reset-btn" class="mc-btn mc-btn-ghost">🔄 초기화</button>
         </div>
     </div>
@@ -482,7 +519,7 @@
                 <div class="mc-guide-step">1</div>
                 <div>
                     <div class="mc-guide-text">파일명 규칙 확인</div>
-                    <div class="mc-guide-sub">사업장명_연도_반기.xlsx</div>
+                    <div class="mc-guide-sub">사업장명_연도_반기.xlsx / .xls</div>
                 </div>
             </div>
             <div class="mc-guide-card">
@@ -495,15 +532,15 @@
             <div class="mc-guide-card">
                 <div class="mc-guide-step">3</div>
                 <div>
-                    <div class="mc-guide-text">컬럼 너비 조절</div>
-                    <div class="mc-guide-sub">헤더 경계를 드래그로 조절</div>
+                    <div class="mc-guide-text">컬럼 순서 및 너비 조절</div>
+                    <div class="mc-guide-sub">헤더를 끌어서 순서 변경 및 리사이즈</div>
                 </div>
             </div>
             <div class="mc-guide-card">
                 <div class="mc-guide-step">4</div>
                 <div>
                     <div class="mc-guide-text">A4 세로 인쇄</div>
-                    <div class="mc-guide-sub">측정위치 그룹 단위 분할</div>
+                    <div class="mc-guide-sub">수기 작성용 빈칸 자동 양식화</div>
                 </div>
             </div>
         </div>
@@ -516,12 +553,12 @@
         <div class="mc-result-toolbar mc-no-print">
             <div class="mc-result-info">
                 <div class="mc-result-info-title">📄 시료채취기록표(MES변환용) — 변환 완료</div>
-                <div class="mc-result-info-sub">헤더 경계를 드래그하면 컬럼 너비를 조절할 수 있습니다. 설정값은 자동 저장됩니다.</div>
+                <div class="mc-result-info-sub">헤더를 좌우로 드래그하여 컬럼 순서를 바꾸거나 경계를 끌어 너비를 조절할 수 있습니다.</div>
             </div>
             <div style="display:flex;gap:8px;flex-wrap:wrap;">
                 <button onclick="window.print()" class="mc-btn mc-btn-primary">🖨️ 인쇄 / PDF</button>
-                <button class="mc-btn mc-btn-secondary"
-                    onclick="document.getElementById('mes-reset-col-btn').click()">📐 컬럼 너비 초기화</button>
+                <button class="mc-btn mc-btn-secondary mes-btn-reset-order">🔀 컬럼 순서 초기화</button>
+                <button class="mc-btn mc-btn-secondary mes-btn-reset-col">📐 컬럼 너비 초기화</button>
                 <button class="mc-btn mc-btn-ghost"
                     onclick="document.getElementById('mes-reset-btn').click()">🔄 새 파일</button>
             </div>
