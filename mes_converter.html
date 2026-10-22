@@ -59,20 +59,24 @@
             .mes-paper {
                 box-shadow: none !important;
                 border-radius: 0 !important;
-                margin: 0 !important;
+                margin: 0 auto !important;
                 padding: 0 !important;
                 width: 100% !important;
                 max-width: none !important;
+                min-height: auto !important;
+                box-sizing: border-box !important;
             }
             /* ──  A4 세로형 인쇄 설정  ── */
-            @page { size: A4 portrait; margin: 10mm; }
+            @page { size: A4 portrait; margin: 8mm 10mm; }
 
-            /* 공정 그룹 및 행 단위로 페이지 분할 방지 */
-            .mes-proc-group { page-break-inside: avoid; break-inside: avoid; }
-            .mes-proc-group + .mes-proc-group { page-break-before: auto; }
-            tr { page-break-inside: avoid; break-inside: avoid; }
+            .print-break {
+                page-break-before: always !important;
+                break-before: page !important;
+            }
 
-            .mes-resize-handle { display: none !important; }
+            tr { page-break-inside: avoid; }
+
+            .mes-resize-handle, .mes-th-drag-grip { display: none !important; }
             .mes-doc-footer { margin-top: 6px; }
         }
 
@@ -283,13 +287,20 @@
         .mes-paper {
             background: white;
             width: 210mm;
-            min-height: 297mm;
-            margin: 0 auto;
+            min-height: 285mm;
+            margin: 0 auto 24px auto;
             padding: 10mm 12mm;
-            box-shadow: 0 8px 40px rgba(0,0,0,0.12);
+            box-shadow: 0 4px 24px rgba(0,0,0,0.12);
             border-radius: 4px;
             font-family: var(--mc-font);
             position: relative;
+            box-sizing: border-box;
+        }
+        .mes-page-badge {
+            font-size: 10.5pt;
+            color: #64748b;
+            font-weight: 700;
+            margin-left: 8px;
         }
 
         /* 문서 헤더 */
@@ -555,7 +566,17 @@
                 <div class="mc-result-info-title">📄 시료채취기록표(MES변환용) — 변환 완료</div>
                 <div class="mc-result-info-sub">헤더를 좌우로 드래그하여 컬럼 순서를 바꾸거나 경계를 끌어 너비를 조절할 수 있습니다.</div>
             </div>
-            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+                <div style="display:flex;align-items:center;gap:6px;background:#f8fafc;padding:3px 8px;border-radius:8px;border:1px solid #cbd5e1;">
+                    <span style="font-size:11.5px;font-weight:700;color:#475569;">📄 페이지당:</span>
+                    <select class="mes-select-rows" style="padding:4px 8px;border-radius:6px;border:1px solid #94a3b8;font-size:11.5px;font-weight:700;background:white;cursor:pointer;">
+                        <option value="15">15행</option>
+                        <option value="18">18행</option>
+                        <option value="20" selected>20행 (추천)</option>
+                        <option value="22">22행</option>
+                        <option value="25">25행</option>
+                    </select>
+                </div>
                 <button onclick="window.print()" class="mc-btn mc-btn-primary">🖨️ 인쇄 / PDF</button>
                 <button class="mc-btn mc-btn-secondary mes-btn-reset-order">🔀 컬럼 순서 초기화</button>
                 <button class="mc-btn mc-btn-secondary mes-btn-reset-col">📐 컬럼 너비 초기화</button>
