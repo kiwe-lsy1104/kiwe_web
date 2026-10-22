@@ -1,25 +1,23 @@
 /**
  * ============================================================
- *  mes_converter.js  v2.1
+ *  mes_converter.js  v2.2
  *  시료채취기록표 (MES변환용) - 독립 모듈
  *
- *  ▶ 기존 sample_record_print.html / sampling.js 와 완전 분리
- *  ▶ SheetJS(XLSX) 기반 클라이언트 파싱 (서버 저장 없음)
- *  ▶ 파일명: 사업장명_연도_반기.xlsx → 자동 추출
- *  ▶ 실제 엑셀 컬럼 구조 기반 정밀 매핑 (v2.1 교정)
- *      - F열  : 단위작업장소 (단위작업공정)
- *      - G열  : 유해인자 (데이터 절단 기준)
- *      - R열  : 측정위치 (*1, *2 등 - 측정위치 그룹 키)
- *      - T열  : 근로자명 (문범수, 송상묵 등)
- *      - V열  : 기기번호 (1-1 등)
- *      - W열  : Cal no. (기기번호 바로 옆 신규 컬럼)
- *      - Y열  : 공시료번호 (RB-151,RB-152 등)
- *      - AH열 : 시료번호 (R-261, S-629 등)
- *  ▶ 유해인자(G열) 빈 값 만날 시 즉시 데이터 절단 (Break)
- *  ▶ 측정위치(R열) 그룹 단위 페이지 분할 (@media print)
- *  ▶ 전유량, 후유량, 시작, 종료, 채취시간 빈칸 필기 영역 보장
- *  ▶ 마우스 드래그 컬럼 너비 리사이즈 (localStorage 영구 저장)
- *  ▶ A4 세로(Portrait) 최적화 레이아웃
+ *  [핵심 개발 목적]
+ *  측정 전 유해인자 및 시료번호를 미리 뽑아 인쇄한 후,
+ *  현장에서 기기번호, Cal no., 유량, 시간을 수기로 작성하는 양식
+ *
+ *  [v2.2 주요 변경사항]
+ *  1. 측정위치 컬럼화:
+ *     기존 행(Row) 제목 분할 방식을 제거하고,
+ *     `근로자명` 바로 옆 독립된 컬럼으로 나란히 배치.
+ *  2. 상단 박스 연도/반기 한 줄 배치 & 측정일자(YYYY-MM-DD) 추가 표기.
+ *  3. 공시료번호, 채취(분) 컬럼 완전 삭제 (13컬럼 구성).
+ *  4. 현장 수기 작성용 데이터 빈칸(공란) 초기화:
+ *     기기번호, Cal no., 전유량, 후유량, 시작시간, 종료시간 -> 모두 빈칸.
+ *     시료번호(AH열), 유해인자(G열) -> 정상 인쇄.
+ *  5. 유해인자(G열) 빈 값 만날 시 데이터 절단(Break).
+ *  6. 컬럼 드래그 리사이즈 및 A4 세로(Portrait) 최적화.
  * ============================================================
  */
 
@@ -31,15 +29,15 @@
 let MES = {
     raw: null,
     parsedRows: [],
-    meta: { companyName: '', year: '', halfYear: '' },
+    meta: { companyName: '', year: '', halfYear: '', measureDate: '' },
     colWidths: null,   // 컬럼 너비 (드래그 리사이즈)
 };
 
-// 기본 컬럼 너비 (px) - 14컬럼 기준
-// 1.No | 2.단위작업공정 | 3.근로자명 | 4.유해인자 | 5.기기번호 | 6.Cal no. | 7.시료번호 | 8.공시료번호
-// 9.전유량 | 10.후유량 | 11.시작시간 | 12.종료시간 | 13.채취(분) | 14.비고
-const DEFAULT_COL_WIDTHS = [28, 75, 55, 85, 50, 48, 62, 72, 46, 46, 46, 46, 44, 60];
-const COL_WIDTHS_KEY = 'MES_COL_WIDTHS_V2_1';
+// 기본 컬럼 너비 (px) - 13컬럼 기준
+// 1.No | 2.단위작업공정 | 3.근로자명 | 4.측정위치 | 5.유해인자 | 6.기기번호 | 7.Cal no. | 8.시료번호
+// 9.전유량 | 10.후유량 | 11.시작시간 | 12.종료시간 | 13.비고
+const DEFAULT_COL_WIDTHS = [28, 85, 60, 50, 95, 55, 50, 70, 50, 50, 50, 50, 70];
+const COL_WIDTHS_KEY = 'MES_COL_WIDTHS_V2_2';
 
 // ──────────────────────────────────────────
 // 1. 초기화 – DOMContentLoaded
@@ -117,7 +115,7 @@ function parseFileName(fileName) {
     } else {
         companyName = base;
     }
-    return { companyName, year, halfYear };
+    return { companyName, year, halfYear, measureDate: '' };
 }
 
 // ──────────────────────────────────────────
@@ -145,7 +143,9 @@ function processFile(file) {
             const ws = wb.Sheets[sheetName];
             if (!ws) { showError('엑셀 파일에 시트가 없습니다.'); return; }
 
-            MES.parsedRows = parseWorksheet(ws);
+            const { rows, measureDate } = parseWorksheet(ws);
+            MES.parsedRows = rows;
+            MES.meta.measureDate = measureDate || '';
 
             if (MES.parsedRows.length === 0) {
                 showError('유효한 측정 데이터를 찾을 수 없습니다. 파일 양식을 확인해주세요.');
@@ -156,7 +156,7 @@ function processFile(file) {
             setStatus('success', `✅ ${MES.meta.companyName || '파일'} 파싱 완료 — 총 ${MES.parsedRows.length}개 유효 인자 추출`);
 
         } catch (err) {
-            console.error('[MES Converter v2.1] 파싱 오류:', err);
+            console.error('[MES Converter v2.2] 파싱 오류:', err);
             showError(`파싱 오류: ${err.message}`);
         }
     };
@@ -169,7 +169,7 @@ function processFile(file) {
 // ──────────────────────────────────────────
 function parseWorksheet(ws) {
     const ref = ws['!ref'];
-    if (!ref) return [];
+    if (!ref) return { rows: [], measureDate: '' };
 
     const range = XLSX.utils.decode_range(ref);
     const maxRow = range.e.r;
@@ -187,7 +187,7 @@ function parseWorksheet(ws) {
         grid.push(row);
     }
 
-    // ── 5-2. 컬럼 인덱스 정의 (정밀 검증 완료)
+    // ── 5-2. 컬럼 인덱스 정의
     const COL = {
         no:            colIdx('A'), // 0  순번
         measureDate:   colIdx('B'), // 1  측정일자
@@ -196,27 +196,12 @@ function parseWorksheet(ws) {
         procMain:      colIdx('E'), // 4  공정명
         proc:          colIdx('F'), // 5  단위작업장소 (단위작업공정)
         hazard:        colIdx('G'), // 6  유해인자 ← 데이터 절단 기준
-        workerCount:   colIdx('L'), // 11 근로자수
-        workerCount2:  colIdx('M'), // 12 근로자수2
-        workType:      colIdx('N'), // 13 근로형태
-        exposureTime:  colIdx('O'), // 14 근로시간
-        generateTime:  colIdx('P'), // 15 발생시간
-        burstTime:     colIdx('Q'), // 16 폭로시간
-        position:      colIdx('R'), // 17 측정위치 (*1, *2 등 - 측정위치 그룹 키)
-        measureType:   colIdx('S'), // 18 측정구분 (개인/지역)
-        workerName:    colIdx('T'), // 19 근로자명 ← 정확 매핑 (문범수, 송상묵)
-        measureCount:  colIdx('U'), // 20 측정횟수
-        deviceNo:      colIdx('V'), // 21 기기번호 (1-1 등)
-        calNo:         colIdx('W'), // 22 Cal no. ← 신규 추가
-        blankCheck:    colIdx('X'), // 23 공시료유무
-        blankSampleId: colIdx('Y'), // 24 공시료번호 (RB-151,RB-152 등)
-        heatStandard:  colIdx('Z'), // 25 고열기준치
-        startTime:     colIdx('AA'),// 26 시작시간
-        endTime:       colIdx('AB'),// 27 종료시간
-        duration:      colIdx('AC'),// 28 포집시간
-        flowBefore:    colIdx('AD'),// 29 전유량
-        flowAfter:     colIdx('AE'),// 30 후유량
-        sampleId:      colIdx('AH'),// 33 시료번호 ← 정확 매핑 (R-261, S-629)
+        position:      colIdx('R'), // 17 측정위치 (*1, *2 등)
+        workerName:    colIdx('T'), // 19 근로자명 (문범수, 송상묵 등)
+        deviceNo:      colIdx('V'), // 21 기기번호 (수기 작성용)
+        calNo:         colIdx('W'), // 22 Cal no. (수기 작성용)
+        blankSampleId: colIdx('Y'), // 24 공시료번호 (표에서는 미표시)
+        sampleId:      colIdx('AH'),// 33 시료번호 ← 정상 인쇄
     };
 
     // ── 5-3. 헤더 행 탐지 (Row 0~4)
@@ -229,16 +214,16 @@ function parseWorksheet(ws) {
         }
     }
 
-    // ── 5-4. 데이터 행 순차 파싱
-    // 유해인자(G열)가 비어있는 행을 만나면 즉시 절단 (스펙 요구사항)
+    // ── 5-4. 측정일자 추출 (B열, A열 또는 헤더 기반 검색)
+    const measureDate = extractMeasureDate(grid, headerRowIdx, COL);
+
+    // ── 5-5. 데이터 행 순차 파싱
+    // 유해인자(G열)가 비어있는 행을 만나면 즉시 절단 (Break)
     const rows = [];
     let lastProc          = '';
     let lastWorker        = '';
     let lastLocation      = '';
-    let lastDeviceNo      = '';
-    let lastCalNo         = '';
     let lastSampleId      = '';
-    let lastBlankSampleId = '';
 
     for (let r = headerRowIdx + 1; r < grid.length; r++) {
         const row = grid[r];
@@ -253,38 +238,87 @@ function parseWorksheet(ws) {
         const rowHead = row.slice(0, 10).join('').trim();
         if (/^(합계|총계|소계|계|total)/i.test(rowHead)) continue;
 
-        // 3. 컬럼 값 추출 및 세부 인자 상속 (동일 시료 다인자 분석)
+        // 3. 값 추출 및 세부 인자 상속 (동일 시료 다인자 분석)
         const location      = getCellStr(row, COL.position)      || lastLocation;
         const proc          = getCellStr(row, COL.proc)          || lastProc;
         const workerName    = getCellStr(row, COL.workerName)    || lastWorker;
-        const deviceNo      = getCellStr(row, COL.deviceNo)      || lastDeviceNo;
-        const calNo         = getCellStr(row, COL.calNo)         || lastCalNo;
         const sampleId      = getCellStr(row, COL.sampleId)      || lastSampleId;
-        const blankSampleId = getCellStr(row, COL.blankSampleId) || lastBlankSampleId;
 
-        // 다음 행을 위한 캐시 갱신
-        lastLocation      = location      || lastLocation;
-        lastProc          = proc          || lastProc;
-        lastWorker        = workerName    || lastWorker;
-        lastDeviceNo      = deviceNo      || lastDeviceNo;
-        lastCalNo         = calNo         || lastCalNo;
-        lastSampleId      = sampleId      || lastSampleId;
-        lastBlankSampleId = blankSampleId || lastBlankSampleId;
+        // 캐시 갱신
+        lastLocation = location   || lastLocation;
+        lastProc     = proc       || lastProc;
+        lastWorker   = workerName || lastWorker;
+        lastSampleId = sampleId   || lastSampleId;
 
         rows.push({
             _rowIdx: r,
             proc: proc || '(공정미지정)',
             hazard: hazardRaw.trim(),
             workerName: workerName || '—',
-            deviceNo: deviceNo || '—',
-            calNo: calNo || '—',
+            location: location || '—',
             sampleId: sampleId || '—',
-            blankSampleId: blankSampleId || '',
-            location: location || '기타',
+            // 기기번호, Cal no, 전유량, 후유량, 시작시간, 종료시간은
+            // 현장 수기 작성을 위해 렌더링 시 기본 빈칸(공란) 처리
         });
     }
 
-    return rows;
+    return { rows, measureDate };
+}
+
+// ──────────────────────────────────────────
+// 5-6. 측정일자 추출 유틸
+// ──────────────────────────────────────────
+function extractMeasureDate(grid, headerRowIdx, COL) {
+    // 1. B열(COL.measureDate) 확인
+    for (let r = headerRowIdx + 1; r < grid.length; r++) {
+        const d = formatDateStr(getCellStr(grid[r], COL.measureDate));
+        if (d) return d;
+    }
+
+    // 2. A열(0) 확인
+    for (let r = headerRowIdx + 1; r < grid.length; r++) {
+        const d = formatDateStr(getCellStr(grid[r], 0));
+        if (d) return d;
+    }
+
+    // 3. 헤더에서 '측정일' 검색
+    if (grid[headerRowIdx]) {
+        for (let c = 0; c < grid[headerRowIdx].length; c++) {
+            const hText = String(grid[headerRowIdx][c] || '');
+            if (hText.includes('측정일') || hText.includes('일자')) {
+                for (let r = headerRowIdx + 1; r < grid.length; r++) {
+                    const d = formatDateStr(getCellStr(grid[r], c));
+                    if (d) return d;
+                }
+            }
+        }
+    }
+
+    return '';
+}
+
+function formatDateStr(val) {
+    if (!val) return '';
+    val = String(val).trim();
+    // YYYY-MM-DD 또는 YYYY.MM.DD 또는 YYYY/MM/DD
+    const m = val.match(/(\d{4})[-./](\d{1,2})[-./](\d{1,2})/);
+    if (m) {
+        return `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`;
+    }
+    // 8자리 숫자 (예: 20261023)
+    const mNum = val.match(/^(\d{4})(\d{2})(\d{2})$/);
+    if (mNum) {
+        return `${mNum[1]}-${mNum[2]}-${mNum[3]}`;
+    }
+    // 엑셀 날짜 시리얼
+    const num = Number(val);
+    if (!isNaN(num) && num > 35000 && num < 65000) {
+        try {
+            const date = new Date((num - 25569) * 86400 * 1000);
+            return date.toISOString().split('T')[0];
+        } catch {}
+    }
+    return '';
 }
 
 // ──────────────────────────────────────────
@@ -305,9 +339,13 @@ function colIdx(col) {
 function getCellValue(cell) {
     if (!cell) return '';
     if (cell.t === 'd') {
-        return cell.v instanceof Date
-            ? cell.v.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })
-            : String(cell.w || cell.v || '');
+        if (cell.v instanceof Date) {
+            const y = cell.v.getFullYear();
+            const m = String(cell.v.getMonth() + 1).padStart(2, '0');
+            const d = String(cell.v.getDate()).padStart(2, '0');
+            return `${y}-${m}-${d}`;
+        }
+        return String(cell.w || cell.v || '');
     }
     return String(cell.w !== undefined ? cell.w : (cell.v !== undefined ? cell.v : '')).trim();
 }
@@ -319,41 +357,39 @@ function getCellStr(row, colIndex) {
 
 // ──────────────────────────────────────────
 // 8. 계층형 그룹화:
-//    측정위치(location: R열) → 단위작업공정(proc) → 근로자명(workerName) → 유해인자 행들
+//    단위작업공정(proc) → [근로자명(workerName) + 측정위치(location)] → 유해인자 행들
 // ──────────────────────────────────────────
-function buildLocationGroups(rows) {
-    const locationGroups = [];
-    let curLoc = null;
+function buildProcessGroups(rows) {
+    const procGroups = [];
+    let curProc = null;
 
     rows.forEach(row => {
-        // 측정위치 그룹 (*1, *2 등)
-        const locKey = row.location || '기타';
-        if (!curLoc || curLoc.location !== locKey) {
-            curLoc = { location: locKey, procGroups: [], _span: 0 };
-            locationGroups.push(curLoc);
-        }
-
         // 단위작업공정 그룹
-        let curProc = curLoc.procGroups[curLoc.procGroups.length - 1];
         if (!curProc || curProc.proc !== row.proc) {
             curProc = { proc: row.proc, workerGroups: [], _span: 0 };
-            curLoc.procGroups.push(curProc);
+            procGroups.push(curProc);
         }
 
-        // 근로자명 그룹
+        // [근로자명 + 측정위치] 복합 그룹 (나란히 배치 및 동시 병합)
+        const workerKey = `${row.workerName}__${row.location}`;
         let curWorker = curProc.workerGroups[curProc.workerGroups.length - 1];
-        if (!curWorker || curWorker.workerName !== row.workerName) {
-            curWorker = { workerName: row.workerName, rows: [], _span: 0 };
+        if (!curWorker || curWorker.key !== workerKey) {
+            curWorker = {
+                key: workerKey,
+                workerName: row.workerName,
+                location: row.location,
+                rows: [],
+                _span: 0,
+            };
             curProc.workerGroups.push(curWorker);
         }
 
         curWorker.rows.push(row);
         curWorker._span++;
         curProc._span++;
-        curLoc._span++;
     });
 
-    return locationGroups;
+    return procGroups;
 }
 
 // ──────────────────────────────────────────
@@ -383,9 +419,9 @@ function renderTable(rows, meta) {
     const container = document.getElementById('mes-result-container');
     if (!container) return;
 
-    const locationGroups = buildLocationGroups(rows);
+    const procGroups = buildProcessGroups(rows);
 
-    // colgroup HTML
+    // colgroup HTML (13컬럼)
     function buildColgroup() {
         const cols = MES.colWidths.map((w, i) =>
             i === MES.colWidths.length - 1
@@ -395,82 +431,72 @@ function renderTable(rows, meta) {
         return `<colgroup>${cols}</colgroup>`;
     }
 
-    // 테이블 헤더 (14컬럼)
+    // 테이블 헤더 (13컬럼)
+    // 공시료번호, 채취(분) 완전 삭제 / 측정위치는 근로자명 바로 옆 배치
     const theadHtml = `
     <thead>
         <tr>
             <th>No</th>
             <th>단위작업공정</th>
             <th>근로자명</th>
+            <th>측정위치</th>
             <th>유해인자</th>
             <th>기기번호</th>
             <th>Cal no.</th>
             <th>시료번호</th>
-            <th>공시료번호</th>
             <th>전유량</th>
             <th>후유량</th>
             <th>시작시간</th>
             <th>종료시간</th>
-            <th>채취(분)</th>
             <th>비고</th>
         </tr>
     </thead>`;
 
-    // 측정위치 그룹별 tbody 생성 (인쇄 시 그룹 단위 page-break-inside: avoid)
     let no = 1;
     let allTbodyHtml = '';
 
-    locationGroups.forEach(lg => {
-        let locTbodyRows = '';
+    procGroups.forEach(pg => {
+        let pgFirst = true;
+        let procRows = '';
 
-        lg.procGroups.forEach(pg => {
-            let pgFirst = true;
+        pg.workerGroups.forEach(wg => {
+            let wgFirst = true;
 
-            pg.workerGroups.forEach(wg => {
-                let wgFirst = true;
-
-                wg.rows.forEach(row => {
-                    locTbodyRows += `<tr>
-                        <td class="mes-td-center mes-td-no">${no++}</td>
-                        ${pgFirst ? `<td class="mes-td-center mes-td-proc" rowspan="${pg._span}">${esc(pg.proc)}</td>` : ''}
-                        ${wgFirst ? `<td class="mes-td-center mes-td-worker" rowspan="${wg._span}">${esc(wg.workerName)}</td>` : ''}
-                        <td class="mes-td-hazard">${esc(row.hazard)}</td>
-                        <td class="mes-td-center">${esc(row.deviceNo)}</td>
-                        <td class="mes-td-center mes-td-cal">${esc(row.calNo)}</td>
-                        <td class="mes-td-center mes-td-sid">${esc(row.sampleId)}</td>
-                        <td class="mes-td-center mes-td-blank">${esc(row.blankSampleId)}</td>
-                        <td class="mes-td-center mes-td-empty"></td>
-                        <td class="mes-td-center mes-td-empty"></td>
-                        <td class="mes-td-center mes-td-empty"></td>
-                        <td class="mes-td-center mes-td-empty"></td>
-                        <td class="mes-td-center mes-td-empty"></td>
-                        <td></td>
-                    </tr>`;
-                    pgFirst = false;
-                    wgFirst = false;
-                });
+            wg.rows.forEach(row => {
+                procRows += `<tr>
+                    <td class="mes-td-center mes-td-no">${no++}</td>
+                    ${pgFirst ? `<td class="mes-td-center mes-td-proc" rowspan="${pg._span}">${esc(pg.proc)}</td>` : ''}
+                    ${wgFirst ? `<td class="mes-td-center mes-td-worker" rowspan="${wg._span}">${esc(wg.workerName)}</td>` : ''}
+                    ${wgFirst ? `<td class="mes-td-center mes-td-loc" rowspan="${wg._span}">${esc(wg.location)}</td>` : ''}
+                    <td class="mes-td-hazard">${esc(row.hazard)}</td>
+                    <!-- 수기 작성용 빈칸 초기화: 기기번호, Cal no. -->
+                    <td class="mes-td-center mes-td-empty"></td>
+                    <td class="mes-td-center mes-td-empty"></td>
+                    <!-- 시료번호는 사전 채번된 번호로 정상 출력 -->
+                    <td class="mes-td-center mes-td-sid">${esc(row.sampleId)}</td>
+                    <!-- 수기 작성용 빈칸 초기화: 전유량, 후유량, 시작시간, 종료시간 -->
+                    <td class="mes-td-center mes-td-empty"></td>
+                    <td class="mes-td-center mes-td-empty"></td>
+                    <td class="mes-td-center mes-td-empty"></td>
+                    <td class="mes-td-center mes-td-empty"></td>
+                    <td></td>
+                </tr>`;
+                pgFirst = false;
+                wgFirst = false;
             });
         });
 
-        if (locTbodyRows) {
-            allTbodyHtml += `
-            <tbody class="mes-loc-group">
-                <tr class="mes-loc-header">
-                    <td colspan="14" class="mes-loc-title">
-                        <span class="mes-loc-tag">측정위치</span> ${esc(lg.location)}
-                    </td>
-                </tr>
-                ${locTbodyRows}
-            </tbody>`;
+        if (procRows) {
+            allTbodyHtml += `<tbody class="mes-proc-group">${procRows}</tbody>`;
         }
     });
 
     if (!allTbodyHtml) {
-        allTbodyHtml = `<tbody><tr><td colspan="14" style="text-align:center;padding:24px;color:#6b7280;">데이터 없음</td></tr></tbody>`;
+        allTbodyHtml = `<tbody><tr><td colspan="13" style="text-align:center;padding:24px;color:#6b7280;">데이터 없음</td></tr></tbody>`;
     }
 
     const printDate = new Date().toLocaleDateString('ko-KR');
-    const metaStr   = [meta.companyName, meta.year, meta.halfYear].filter(Boolean).join(' · ');
+    const metaStr = [meta.companyName, meta.year, meta.halfYear].filter(Boolean).join(' · ');
 
     container.innerHTML = `
     <div class="mes-paper" id="mes-print-area">
@@ -481,20 +507,29 @@ function renderTable(rows, meta) {
                 <div class="mes-title-sub">${esc(metaStr)}</div>
             </div>
             <div class="mes-doc-header-right">
+                <!-- 상단 정보 박스: 연도/반기 한 줄 배치 + 측정일자 표시 -->
                 <div class="mes-info-box">
                     <div class="mes-info-row">
                         <span class="mes-info-label">사업장</span>
                         <span class="mes-info-value">${esc(meta.companyName) || '—'}</span>
                     </div>
-                    <div class="mes-info-row">
-                        <span class="mes-info-label">연도</span>
-                        <span class="mes-info-value">${esc(meta.year) || '—'}</span>
+                    <div class="mes-info-row mes-info-split">
+                        <div class="mes-info-sub-item">
+                            <span class="mes-info-label">연도</span>
+                            <span class="mes-info-value">${esc(meta.year) || '—'}</span>
+                        </div>
+                        <div class="mes-info-sub-item">
+                            <span class="mes-info-label">반기</span>
+                            <span class="mes-info-value">${esc(meta.halfYear) || '—'}</span>
+                        </div>
                     </div>
                     <div class="mes-info-row">
-                        <span class="mes-info-label">반기</span>
-                        <span class="mes-info-value">${esc(meta.halfYear) || '—'}</span>
+                        <span class="mes-info-label">측정일자</span>
+                        <span class="mes-info-value">${esc(meta.measureDate) || '—'}</span>
                     </div>
                 </div>
+
+                <!-- 온/습도 필기 박스 -->
                 <div class="mes-info-box">
                     <div class="mes-info-row">
                         <span class="mes-info-label">온도</span>
@@ -510,7 +545,7 @@ function renderTable(rows, meta) {
             </div>
         </div>
 
-        <!-- 데이터 테이블 (컬럼 리사이즈 핸들 포함) -->
+        <!-- 데이터 테이블 (13컬럼) -->
         <div class="mes-table-wrapper">
             <table class="mes-table" id="mes-data-table">
                 ${buildColgroup()}
@@ -521,7 +556,7 @@ function renderTable(rows, meta) {
 
         <!-- 문서 푸터 -->
         <div class="mes-doc-footer">
-            <span>총 ${rows.length}건 · MES 변환용</span>
+            <span>총 ${rows.length}건 · MES 변환용 (현장 수기작성 양식)</span>
             <span>출력일: ${printDate} · 한국작업환경평가원(주)</span>
         </div>
     </div>`;
@@ -553,13 +588,13 @@ function attachResizeHandlers() {
             ev.preventDefault();
             ev.stopPropagation();
 
-            const startX  = ev.clientX;
-            const startW  = MES.colWidths[idx];
-            document.body.style.cursor     = 'col-resize';
+            const startX = ev.clientX;
+            const startW = MES.colWidths[idx];
+            document.body.style.cursor = 'col-resize';
             document.body.style.userSelect = 'none';
 
             const onMove = (mv) => {
-                const newW = Math.max(22, startW + (mv.clientX - startX));
+                const newW = Math.max(20, startW + (mv.clientX - startX));
                 MES.colWidths[idx] = Math.round(newW);
                 document.querySelectorAll(`#mes-data-table colgroup col:nth-child(${idx + 1})`).forEach(col => {
                     col.style.width = MES.colWidths[idx] + 'px';
@@ -567,7 +602,7 @@ function attachResizeHandlers() {
             };
 
             const onUp = () => {
-                document.body.style.cursor     = '';
+                document.body.style.cursor = '';
                 document.body.style.userSelect = '';
                 saveColWidths();
                 document.removeEventListener('mousemove', onMove);
@@ -593,9 +628,9 @@ function setStatus(type, message) {
     el.style.display = 'block';
 }
 
-function showError(msg)  { setStatus('error',   `❌ ${msg}`); }
-function showResult()    { const r = document.getElementById('mes-result-wrapper'); if (r) r.style.display = 'block'; }
-function hideResult()    { const r = document.getElementById('mes-result-wrapper'); if (r) r.style.display = 'none'; }
+function showError(msg) { setStatus('error', `❌ ${msg}`); }
+function showResult() { const r = document.getElementById('mes-result-wrapper'); if (r) r.style.display = 'block'; }
+function hideResult() { const r = document.getElementById('mes-result-wrapper'); if (r) r.style.display = 'none'; }
 
 function initPrintButton() {
     document.getElementById('mes-print-btn')?.addEventListener('click', () => window.print());
@@ -605,7 +640,7 @@ function initResetButton() {
     document.getElementById('mes-reset-btn')?.addEventListener('click', () => {
         MES.raw = null;
         MES.parsedRows = [];
-        MES.meta = { companyName: '', year: '', halfYear: '' };
+        MES.meta = { companyName: '', year: '', halfYear: '', measureDate: '' };
         hideResult();
         const statusEl = document.getElementById('mes-status');
         if (statusEl) statusEl.style.display = 'none';

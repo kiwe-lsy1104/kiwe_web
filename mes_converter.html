@@ -67,10 +67,10 @@
             /* ──  A4 세로형 인쇄 설정  ── */
             @page { size: A4 portrait; margin: 10mm; }
 
-            /* 측정위치 그룹 단위로 페이지 분할 방지 */
-            .mes-loc-group { page-break-inside: avoid; break-inside: avoid; }
-            /* 측정위치 그룹 경계에서 분할 허용 */
-            .mes-loc-group + .mes-loc-group { page-break-before: auto; }
+            /* 공정 그룹 및 행 단위로 페이지 분할 방지 */
+            .mes-proc-group { page-break-inside: avoid; break-inside: avoid; }
+            .mes-proc-group + .mes-proc-group { page-break-before: auto; }
+            tr { page-break-inside: avoid; break-inside: avoid; }
 
             .mes-resize-handle { display: none !important; }
             .mes-doc-footer { margin-top: 6px; }
@@ -316,12 +316,14 @@
 
         .mes-doc-header-right { display:flex; gap:8px; align-items:flex-start; }
         .mes-info-box {
-            border: 1px solid #cbd5e1; border-radius: 5px;
-            padding: 4px 9px; font-size:8pt; background:#fff;
-            display:flex; flex-direction:column; gap:2px; min-width:86px;
+            border: 1px solid #cbd5e1; border-radius: 6px;
+            padding: 5px 10px; font-size:8pt; background:#fff;
+            display:flex; flex-direction:column; gap:3px; min-width:130px;
         }
-        .mes-info-row  { display:flex; align-items:center; gap:5px; }
-        .mes-info-label{ color:#64748b; font-weight:600; min-width:26px; font-size:7.5pt; }
+        .mes-info-row  { display:flex; align-items:center; gap:6px; }
+        .mes-info-split{ display:flex; justify-content:space-between; gap:12px; }
+        .mes-info-sub-item { display:flex; align-items:center; gap:4px; }
+        .mes-info-label{ color:#64748b; font-weight:600; min-width:32px; font-size:7.5pt; }
         .mes-info-value{ color:#000; font-weight:700; font-size:8pt; }
         .mes-info-blank{ display:inline-block; border-bottom:1px solid #000; min-width:46px; height:11px; }
         .mes-info-unit { color:#000; font-size:7.5pt; }
@@ -337,7 +339,7 @@
         }
         .mes-table th, .mes-table td {
             border: 1px solid #6b7280;
-            padding: 3px 3px;
+            padding: 4px 3px;
             vertical-align: middle;
             word-break: keep-all;
             line-height: 1.4; color: #000;
@@ -347,50 +349,32 @@
             text-align: center; font-size: 7.5pt;
             color: #1e293b; position: relative;
             user-select: none;
+            padding: 6px 3px;
         }
         .mes-table tbody td { background: white; }
         .mes-td-center { text-align: center; }
         .mes-td-no     { font-size: 7pt; }
         .mes-td-proc   { text-align:center; font-weight:600; font-size:7.5pt; color:#0f766e; background:#f0fdfa !important; }
         .mes-td-worker { text-align:center; font-weight:700; font-size:8pt; color:#1e293b; }
+        .mes-td-loc    { text-align:center; font-weight:700; font-size:7.5pt; color:#0d9488; }
         .mes-td-hazard { font-size: 7.5pt; font-weight: 500; }
-        .mes-td-cal    { font-size: 7.5pt; font-weight: 700; color: #0d9488; }
         .mes-td-sid    { font-size: 7.5pt; font-weight: 700; color: #1d4ed8; }
-        .mes-td-blank  { font-size: 7pt; color: #64748b; }
         .mes-td-empty  {
             background: #fafafa !important;
-            min-height: 22px;
-            position: relative;
+            min-height: 24px;
+            height: 24px;
         }
         /* 인쇄 시 필기용 밑줄 가이드 */
         @media print {
             .mes-td-empty {
                 background: transparent !important;
             }
+            .mes-proc-group { page-break-inside: avoid; break-inside: avoid; }
+            .mes-proc-group + .mes-proc-group { page-break-before: auto; }
         }
 
-        /* 측정위치 그룹 제목 행 */
-        .mes-loc-header td.mes-loc-title {
-            background: #f8fafc !important;
-            font-size: 8pt; font-weight: 700;
-            color: #0f766e;
-            padding: 4px 8px;
-            border-top: 1.5px solid #0f766e;
-        }
-        .mes-loc-tag {
-            display: inline-block;
-            background: #ccfbf1;
-            color: #0f766e;
-            font-size: 7pt;
-            font-weight: 800;
-            padding: 1px 6px;
-            border-radius: 4px;
-            margin-right: 4px;
-        }
-
-        /* tbody 그룹 페이지 분할 */
-        .mes-loc-group { page-break-inside: avoid; break-inside: avoid; }
-        .mes-loc-group + .mes-loc-group { page-break-before: auto; }
+        /* 공정 그룹 페이지 분할 */
+        .mes-proc-group { page-break-inside: avoid; break-inside: avoid; }
 
         /* ── 컬럼 리사이즈 핸들 ── */
         .mes-resize-handle {
