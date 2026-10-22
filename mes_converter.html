@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <script src="js/error_translator.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="시료채취기록표(MES변환용) - 엑셀 업로드 후 즉시 웹 양식으로 변환 및 인쇄">
+    <title>시료채취기록표(MES변환용) — KiWE</title>
+    <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self' https: 'unsafe-inline' 'unsafe-eval'; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://unpkg.com https://cdn.sheetjs.com http://127.0.0.1:* http://localhost:*; img-src 'self' data: https:; font-src 'self' https: data:;">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap" rel="stylesheet">
+
+    <!-- SheetJS (클라이언트 파싱, 서버 저장 없음) -->
+    <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+
+    <style>
+        /* ====================================================
+           mes_converter.css (인라인 – 완전 독립)
+           기존 sample_record_print.html 과 스타일 충돌 없음
+           ==================================================== */
+        :root {
+            --mes-primary:    #1e40af;
+            --mes-primary-lt: #dbeafe;
+            --mes-accent:     #7c3aed;
+            --mes-accent-lt:  #ede9fe;
+            --mes-success:    #059669;
+            --mes-error:      #dc2626;
+            --mes-gray:       #64748b;
+            --mes-border:     #cbd5e1;
+            --mes-bg:         #f1f5f9;
+            --mes-white:      #ffffff;
+            --mes-radius:     14px;
+            --mes-font:       'Noto Sans KR', 'Malgun Gothic', sans-serif;
+        }
+
+        *, *::before, *::after { box-sizing: border-box; }
+
+        body {
+            font-family: var(--mes-font);
+            background: var(--mes-bg);
+            margin: 0;
+            min-height: 100vh;
+            color: #1e293b;
+        }
+
+        /* ── 인쇄 시 UI 숨김 ── */
+        @media print {
+            .mes-no-print { display: none !important; }
+            body { background: white !important; padding: 0 !important; margin: 0 !important; }
+            .mes-paper {
+                box-shadow: none !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                width: 100% !important;
+                max-width: none !important;
+                border-radius: 0 !important;
+            }
+            @page { size: A4 portrait; margin: 10mm 12mm; }
+        }
+
+        /* ════════════════════════════════
+           상단 헤더 바
+        ════════════════════════════════ */
+        .mes-topbar {
+            background: linear-gradient(135deg, var(--mes-primary) 0%, #1d4ed8 50%, var(--mes-accent) 100%);
+            padding: 0;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            box-shadow: 0 4px 20px rgba(30, 64, 175, 0.3);
+        }
+        .mes-topbar-inner {
+            max-width: 960px;
+            margin: 0 auto;
+            padding: 14px 24px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+        }
+        .mes-topbar-brand {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            text-decoration: none;
+        }
+        .mes-topbar-logo {
+            width: 38px;
+            height: 38px;
+            background: rgba(255,255,255,0.18);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            backdrop-filter: blur(4px);
+            border: 1px solid rgba(255,255,255,0.25);
+            flex-shrink: 0;
+        }
+        .mes-topbar-title {
+            font-size: 16px;
+            font-weight: 900;
+            color: white;
+            letter-spacing: -0.5px;
+            line-height: 1.2;
+        }
+        .mes-topbar-sub {
+            font-size: 11px;
+            color: rgba(255,255,255,0.7);
+            font-weight: 500;
+            margin-top: 2px;
+        }
+        .mes-topbar-badge {
+            background: rgba(255,255,255,0.15);
+            border: 1px solid rgba(255,255,255,0.3);
+            color: white;
+            font-size: 10.5px;
+            font-weight: 700;
+            padding: 3px 10px;
+            border-radius: 20px;
+            backdrop-filter: blur(4px);
+        }
+        .mes-back-btn {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            color: rgba(255,255,255,0.85);
+            font-size: 13px;
+            font-weight: 700;
+            text-decoration: none;
+            padding: 7px 14px;
+            border-radius: 8px;
+            border: 1px solid rgba(255,255,255,0.25);
+            background: rgba(255,255,255,0.1);
+            transition: all 0.2s;
+            cursor: pointer;
+        }
+        .mes-back-btn:hover {
+            background: rgba(255,255,255,0.2);
+            color: white;
+        }
+
+        /* ════════════════════════════════
+           메인 컨텐츠 래퍼
+        ════════════════════════════════ */
+        .mes-main {
+            max-width: 960px;
+            margin: 0 auto;
+            padding: 28px 24px 60px;
+        }
+
+        /* ════════════════════════════════
+           업로드 패널
+        ════════════════════════════════ */
+        .mes-upload-panel {
+            background: var(--mes-white);
+            border-radius: var(--mes-radius);
+            box-shadow: 0 4px 24px rgba(0,0,0,0.07);
+            padding: 28px;
+            margin-bottom: 20px;
+            border: 1px solid var(--mes-border);
+        }
+        .mes-panel-title {
+            font-size: 15px;
+            font-weight: 900;
+            color: #1e293b;
+            margin: 0 0 6px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .mes-panel-title .mes-badge {
+            background: var(--mes-primary-lt);
+            color: var(--mes-primary);
+            font-size: 10px;
+            font-weight: 700;
+            padding: 2px 8px;
+            border-radius: 20px;
+        }
+        .mes-panel-desc {
+            font-size: 12.5px;
+            color: var(--mes-gray);
+            margin: 0 0 20px;
+            font-weight: 500;
+        }
+
+        /* 드롭존 */
+        #mes-dropzone {
+            border: 2px dashed #94a3b8;
+            border-radius: 12px;
+            background: #f8fafc;
+            min-height: 140px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            cursor: pointer;
+            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+            padding: 24px;
+            text-align: center;
+        }
+        #mes-dropzone:hover {
+            border-color: var(--mes-primary);
+            background: var(--mes-primary-lt);
+            box-shadow: 0 0 0 4px rgba(30, 64, 175, 0.08);
+        }
+        #mes-dropzone.drag-over {
+            border-color: var(--mes-accent);
+            background: var(--mes-accent-lt);
+            box-shadow: 0 0 0 6px rgba(124, 58, 237, 0.1);
+            transform: scale(1.01);
+        }
+        .mes-dropzone-icon {
+            font-size: 36px;
+            line-height: 1;
+            filter: drop-shadow(0 2px 4px rgba(0,0,0,0.1));
+        }
+        .mes-dropzone-text {
+            font-size: 14px;
+            font-weight: 700;
+            color: #475569;
+        }
+        .mes-dropzone-hint {
+            font-size: 11.5px;
+            color: #94a3b8;
+            font-weight: 500;
+        }
+        .mes-dropzone-format {
+            background: #e2e8f0;
+            color: #475569;
+            font-size: 11px;
+            font-weight: 700;
+            padding: 3px 10px;
+            border-radius: 20px;
+            font-family: 'Courier New', monospace;
+            letter-spacing: 0.3px;
+        }
+        #mes-file-input { display: none; }
+
+        /* ── 상태 메시지 ── */
+        .mes-status {
+            margin-top: 14px;
+            padding: 10px 14px;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 700;
+            display: none;
+        }
+        .mes-status-loading {
+            background: #eff6ff;
+            color: #1d4ed8;
+            border: 1px solid #bfdbfe;
+            animation: mes-pulse 1.5s ease-in-out infinite;
+        }
+        .mes-status-success {
+            background: #f0fdf4;
+            color: var(--mes-success);
+            border: 1px solid #bbf7d0;
+        }
+        .mes-status-error {
+            background: #fef2f2;
+            color: var(--mes-error);
+            border: 1px solid #fecaca;
+        }
+        @keyframes mes-pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.65; }
+        }
+
+        /* ════════════════════════════════
+           액션 버튼 그룹
+        ════════════════════════════════ */
+        .mes-actions {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-top: 16px;
+        }
+        .mes-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+            padding: 9px 18px;
+            border-radius: 9px;
+            font-size: 13px;
+            font-weight: 700;
+            cursor: pointer;
+            border: none;
+            transition: all 0.2s;
+            font-family: var(--mes-font);
+            letter-spacing: -0.2px;
+        }
+        .mes-btn:active { transform: translateY(1px); }
+        .mes-btn-primary {
+            background: var(--mes-primary);
+            color: white;
+            box-shadow: 0 3px 10px rgba(30,64,175,0.3);
+        }
+        .mes-btn-primary:hover { background: #1d4ed8; box-shadow: 0 4px 14px rgba(30,64,175,0.4); }
+        .mes-btn-secondary {
+            background: #f1f5f9;
+            color: #475569;
+            border: 1px solid #e2e8f0;
+        }
+        .mes-btn-secondary:hover { background: #e2e8f0; color: #1e293b; }
+        .mes-btn-ghost {
+            background: transparent;
+            color: var(--mes-gray);
+            border: 1px solid var(--mes-border);
+        }
+        .mes-btn-ghost:hover { background: #f8fafc; color: #1e293b; }
+
+        /* ════════════════════════════════
+           가이드 박스
+        ════════════════════════════════ */
+        .mes-guide-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 12px;
+            margin-top: 0;
+        }
+        .mes-guide-card {
+            background: white;
+            border: 1px solid var(--mes-border);
+            border-radius: 10px;
+            padding: 14px 16px;
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            transition: box-shadow 0.2s;
+        }
+        .mes-guide-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.06); }
+        .mes-guide-step {
+            width: 26px;
+            height: 26px;
+            border-radius: 8px;
+            background: var(--mes-primary-lt);
+            color: var(--mes-primary);
+            font-size: 13px;
+            font-weight: 900;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+        .mes-guide-text {
+            font-size: 12px;
+            font-weight: 600;
+            color: #334155;
+            line-height: 1.5;
+        }
+        .mes-guide-sub {
+            font-size: 11px;
+            color: #94a3b8;
+            font-weight: 400;
+            margin-top: 2px;
+        }
+
+        /* ════════════════════════════════
+           결과 래퍼
+        ════════════════════════════════ */
+        #mes-result-wrapper {
+            display: none;
+        }
+        .mes-result-toolbar {
+            background: white;
+            border: 1px solid var(--mes-border);
+            border-radius: var(--mes-radius);
+            padding: 14px 20px;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            flex-wrap: wrap;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+        }
+        .mes-result-info {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+        .mes-result-info-title {
+            font-size: 14px;
+            font-weight: 900;
+            color: #1e293b;
+        }
+        .mes-result-info-sub {
+            font-size: 11.5px;
+            color: var(--mes-gray);
+            font-weight: 500;
+        }
+
+        /* ════════════════════════════════
+           인쇄 양식 (A4 Paper)
+        ════════════════════════════════ */
+        .mes-paper {
+            background: white;
+            width: 210mm;
+            min-height: 280mm;
+            margin: 0 auto;
+            padding: 10mm 12mm;
+            box-shadow: 0 8px 40px rgba(0,0,0,0.12);
+            border-radius: 4px;
+            font-family: var(--mes-font);
+        }
+
+        /* 문서 헤더 */
+        .mes-doc-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            border-bottom: 2.5px solid var(--mes-primary);
+            padding-bottom: 7px;
+            margin-bottom: 8px;
+        }
+        .mes-doc-header-left {}
+        .mes-title-main {
+            font-size: 16pt;
+            font-weight: 900;
+            color: #000;
+            letter-spacing: -0.8px;
+            line-height: 1.2;
+        }
+        .mes-title-sub {
+            font-size: 9.5pt;
+            color: #475569;
+            font-weight: 600;
+            margin-top: 4px;
+        }
+        .mes-doc-header-right {
+            display: flex;
+            gap: 10px;
+            align-items: flex-start;
+        }
+        .mes-info-box {
+            border: 1px solid #cbd5e1;
+            border-radius: 5px;
+            padding: 5px 10px;
+            font-size: 8.5pt;
+            background: #fff;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            min-width: 90px;
+        }
+        .mes-info-row {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .mes-info-label {
+            color: #64748b;
+            font-weight: 600;
+            min-width: 28px;
+            font-size: 8pt;
+        }
+        .mes-info-value {
+            color: #000;
+            font-weight: 700;
+            font-size: 8.5pt;
+        }
+        .mes-info-blank {
+            display: inline-block;
+            border-bottom: 1px solid #000;
+            min-width: 50px;
+            height: 12px;
+        }
+        .mes-info-unit {
+            color: #000;
+            font-size: 8pt;
+        }
+
+        /* 데이터 테이블 */
+        .mes-table {
+            width: 100%;
+            border-collapse: collapse;
+            table-layout: fixed;
+            font-size: 8.5pt;
+        }
+        .mes-table th, .mes-table td {
+            border: 1px solid #6b7280;
+            padding: 3px 4px;
+            vertical-align: middle;
+            word-break: keep-all;
+            line-height: 1.4;
+            color: #000;
+        }
+        .mes-table thead th {
+            background: #f1f5f9;
+            font-weight: 700;
+            text-align: center;
+            font-size: 8pt;
+            color: #1e293b;
+        }
+        .mes-table tbody td {
+            background: white;
+            padding: 4px 4px;
+        }
+        .mes-td-center { text-align: center; }
+        .mes-td-proc {
+            font-weight: 600;
+            text-align: center;
+            font-size: 8pt;
+            color: #1e40af;
+            background: #f8faff !important;
+        }
+
+        /* 문서 푸터 */
+        .mes-doc-footer {
+            margin-top: 8px;
+            display: flex;
+            justify-content: space-between;
+            font-size: 7pt;
+            color: #94a3b8;
+            font-weight: 500;
+        }
+
+        /* ════════════════════════════════
+           반응형
+        ════════════════════════════════ */
+        @media (max-width: 768px) {
+            .mes-topbar-inner { padding: 12px 16px; }
+            .mes-main { padding: 16px 12px 40px; }
+            .mes-upload-panel { padding: 18px; }
+            .mes-paper { width: 100%; min-height: auto; padding: 5mm 4mm; }
+            .mes-guide-grid { grid-template-columns: 1fr 1fr; }
+        }
+        @media (max-width: 480px) {
+            .mes-guide-grid { grid-template-columns: 1fr; }
+            .mes-topbar-badge { display: none; }
+        }
+    </style>
+</head>
+
+<body>
+
+<!-- ════════════════════════════════════
+     상단 헤더 바 (no-print)
+════════════════════════════════════ -->
+<header class="mes-topbar mes-no-print">
+    <div class="mes-topbar-inner">
+        <a href="main.html" class="mes-topbar-brand">
+            <div class="mes-topbar-logo">📋</div>
+            <div>
+                <div class="mes-topbar-title">시료채취기록표(MES변환용)</div>
+                <div class="mes-topbar-sub">엑셀 → 웹 양식 즉시 변환 · 서버 저장 없음</div>
+            </div>
+        </a>
+        <div style="display:flex;align-items:center;gap:10px;">
+            <span class="mes-topbar-badge">🔒 클라이언트 전용</span>
+            <a href="main.html" class="mes-back-btn">← 메인으로</a>
+        </div>
+    </div>
+</header>
+
+<!-- ════════════════════════════════════
+     메인
+════════════════════════════════════ -->
+<main class="mes-main">
+
+    <!-- ── 업로드 패널 ── -->
+    <div class="mes-upload-panel mes-no-print">
+        <h1 class="mes-panel-title">
+            📂 엑셀 파일 업로드
+            <span class="mes-badge">SheetJS · 클라이언트 파싱</span>
+        </h1>
+        <p class="mes-panel-desc">
+            파일명 형식 <code style="background:#f1f5f9;padding:1px 6px;border-radius:4px;font-size:11px;">사업장명_연도_반기.xlsx</code> 으로
+            저장된 엑셀을 아래에 드래그하거나 클릭하여 업로드하면, 서버에 저장하지 않고 즉시 변환합니다.
+        </p>
+
+        <!-- 드롭존 -->
+        <div id="mes-dropzone">
+            <div class="mes-dropzone-icon">📥</div>
+            <div class="mes-dropzone-text">여기에 엑셀 파일을 드래그하거나 클릭하여 선택</div>
+            <div class="mes-dropzone-hint">또는 클릭하여 파일 탐색기에서 선택</div>
+            <span class="mes-dropzone-format">사업장명_연도_반기.xlsx</span>
+        </div>
+        <input type="file" id="mes-file-input" accept=".xlsx,.xls">
+
+        <!-- 상태 메시지 -->
+        <div id="mes-status" class="mes-status"></div>
+
+        <!-- 액션 버튼 -->
+        <div class="mes-actions">
+            <button id="mes-print-btn" class="mes-btn mes-btn-primary">
+                🖨️ 인쇄 / PDF 저장
+            </button>
+            <button id="mes-reset-btn" class="mes-btn mes-btn-ghost">
+                🔄 초기화
+            </button>
+        </div>
+    </div>
+
+    <!-- ── 사용 안내 ── -->
+    <div class="mes-no-print" style="margin-bottom:20px;">
+        <p style="font-size:12px;font-weight:700;color:#64748b;margin:0 0 10px;">사용 방법</p>
+        <div class="mes-guide-grid">
+            <div class="mes-guide-card">
+                <div class="mes-guide-step">1</div>
+                <div>
+                    <div class="mes-guide-text">파일명 규칙 확인</div>
+                    <div class="mes-guide-sub">사업장명_연도_반기.xlsx 형식</div>
+                </div>
+            </div>
+            <div class="mes-guide-card">
+                <div class="mes-guide-step">2</div>
+                <div>
+                    <div class="mes-guide-text">드래그 앤 드롭 업로드</div>
+                    <div class="mes-guide-sub">서버 저장 없이 즉시 파싱</div>
+                </div>
+            </div>
+            <div class="mes-guide-card">
+                <div class="mes-guide-step">3</div>
+                <div>
+                    <div class="mes-guide-text">자동 데이터 매핑</div>
+                    <div class="mes-guide-sub">빈 셀 상속, Rowspan 복원</div>
+                </div>
+            </div>
+            <div class="mes-guide-card">
+                <div class="mes-guide-step">4</div>
+                <div>
+                    <div class="mes-guide-text">A4 인쇄 / PDF 저장</div>
+                    <div class="mes-guide-sub">UI 요소 자동 숨김, 양식만 출력</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── 결과 영역 (인쇄 포함) ── -->
+    <div id="mes-result-wrapper">
+
+        <!-- 결과 툴바 (no-print) -->
+        <div class="mes-result-toolbar mes-no-print">
+            <div class="mes-result-info">
+                <div class="mes-result-info-title" id="mes-toolbar-title">시료채취기록표(MES변환용)</div>
+                <div class="mes-result-info-sub" id="mes-toolbar-sub">변환 완료</div>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <button onclick="window.print()" class="mes-btn mes-btn-primary">🖨️ 인쇄 / PDF</button>
+                <button id="mes-reset-btn-2" class="mes-btn mes-btn-ghost" onclick="document.getElementById('mes-reset-btn').click()">🔄 새 파일 업로드</button>
+            </div>
+        </div>
+
+        <!-- 인쇄 영역 -->
+        <div id="mes-result-container"></div>
+
+    </div>
+
+</main>
+
+<!-- ════════════════════════════════════
+     독립 JS 모듈 로드
+════════════════════════════════════ -->
+<script src="js/mes_converter.js"></script>
+
+</body>
+</html>
