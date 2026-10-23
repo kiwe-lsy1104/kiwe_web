@@ -46,25 +46,38 @@
         }
 
         /* ────────────────────────────────
-           인쇄 미디어 — UI 요소 숨김
+           인쇄 미디어 — 용지 100% 맞춤 및 스크롤바 원천 차단
         ──────────────────────────────── */
         @media print {
             .mc-no-print { display: none !important; }
-            body {
+            html, body {
                 background: white !important;
                 padding: 0 !important;
                 margin: 0 !important;
+                width: 100% !important;
+                height: auto !important;
+                overflow: visible !important;
                 font-family: 'Malgun Gothic', 'Noto Sans KR', sans-serif;
+            }
+            .mc-main, #mes-result-wrapper, #mes-result-container {
+                max-width: none !important;
+                width: 100% !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                box-shadow: none !important;
+                overflow: visible !important;
             }
             .mes-paper {
                 box-shadow: none !important;
                 border-radius: 0 !important;
+                border: none !important;
                 margin: 0 auto !important;
                 padding: 0 !important;
                 width: 100% !important;
-                max-width: none !important;
+                max-width: 100% !important;
                 min-height: auto !important;
                 box-sizing: border-box !important;
+                overflow: visible !important;
             }
             /* 기본(세로) — JS가 동적으로 교체하는 #mes-page-style 태그가 우선 적용됨 */
             @page { size: A4 portrait; margin: 8mm 10mm; }
@@ -74,14 +87,20 @@
                 break-before: page !important;
             }
 
-            tr { page-break-inside: avoid; }
+            tr { page-break-inside: avoid !important; }
 
             .mes-resize-handle, .mes-th-drag-grip { display: none !important; }
             .mes-doc-footer { margin-top: 6px; }
 
-            /* 가로 방향일 때 paper 너비를 A4 가로에 맞게 */
-            body.print-landscape .mes-paper {
+            .mes-table-wrapper {
+                overflow: visible !important;
                 width: 100% !important;
+                margin: 0 !important;
+                padding: 0 !important;
+            }
+            .mes-table {
+                width: 100% !important;
+                table-layout: fixed !important;
             }
         }
 
@@ -149,7 +168,7 @@
            메인 컨텐츠
         ════════════════════════════════ */
         .mc-main {
-            max-width: 980px;
+            max-width: 1220px;
             margin: 0 auto;
             padding: 24px 20px 60px;
         }
@@ -164,6 +183,9 @@
             padding: 24px;
             margin-bottom: 18px;
             border: 1px solid var(--mc-border);
+            max-width: 960px;
+            margin-left: auto;
+            margin-right: auto;
         }
         .mc-panel-title {
             font-size: 14.5px; font-weight: 900; color: #1e293b;
@@ -540,7 +562,7 @@
     </div>
 
     <!-- ── 사용 안내 ── -->
-    <div class="mc-no-print" style="margin-bottom:18px;">
+    <div class="mc-no-print" style="max-width:960px;margin:0 auto 18px;">
         <p style="font-size:11.5px;font-weight:700;color:#64748b;margin:0 0 9px;">사용 방법</p>
         <div class="mc-guide-grid">
             <div class="mc-guide-card">

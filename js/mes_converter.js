@@ -1,20 +1,20 @@
 /**
  * ============================================================
- *  mes_converter.js  v2.7
+ *  mes_converter.js  v2.8
  *  시료채취기록표 (MES변환용) - 독립 모듈
  *
  *  [핵심 개발 목적]
  *  측정 전 유해인자 및 시료번호를 미리 뽑아 인쇄한 후,
  *  현장에서 기기번호, Cal no., 유량, 시간을 수기로 작성하는 양식
  *
- *  [v2.7 주요 개선]
- *  1. 동일 시료번호(sampleId) 셀 자동 병합 (rowspan)
- *     - 복합 유해인자(혼합 유기용제 등)로 동일한 시료번호가 연속되는 경우 셀 병합
- *     - 소음(isNoise) 및 빈 시료번호는 개별 행(span 1) 보장
- *  2. 측정 관련 수기 컬럼 6종 자동 동반 병합
- *     - 시료번호와 연동하여 기기번호(deviceNo), Cal no.(calNo), 전유량(flowBefore),
- *       후유량(flowAfter), 시작시간(startTime), 종료시간(endTime)도 동일하게 1개 셀로 병합
- *     - 수기 기록 편의성 대폭 향상
+ *  [v2.8 주요 개선]
+ *  1. 용지 너비 100% 비례 자동 맞춤 (Fluid Proportional Layout)
+ *     - 가로(landscape 297mm)든 세로(portrait 210mm)든 용지 폭에 100% 칼맞춤
+ *     - 픽셀 초과로 인한 불필요한 가로 스크롤바(화면 및 인쇄물) 원천 차단
+ *  2. 인쇄 엔진 최적화
+ *     - @media print 시 상위 래퍼 여백/패딩/오버플로우 완전 해제
+ *  3. 방향 전환 즉시 동기화
+ *     - 가로/세로 전환 시 colgroup 비율 및 페이지 즉각 재계산
  *
  *  [v2.6 주요 개선]
  *  1. Pagination Engine v2: proc(공정) 그룹 단위 페이지 분배
@@ -41,19 +41,19 @@
 // 0. 컬럼 정의 메타데이터
 // ──────────────────────────────────────────
 const COLUMNS_DEF = {
-    no:         { id: 'no',         label: 'No',         defaultWidth: 28,  align: 'center' },
-    proc:       { id: 'proc',       label: '단위작업공정', defaultWidth: 85,  align: 'center', isGroupSpan: 'proc' },
+    no:         { id: 'no',         label: 'No',         defaultWidth: 30,  align: 'center' },
+    proc:       { id: 'proc',       label: '단위작업공정', defaultWidth: 80,  align: 'center', isGroupSpan: 'proc' },
     workerName: { id: 'workerName', label: '근로자명',   defaultWidth: 60,  align: 'center', isGroupSpan: 'worker' },
     location:   { id: 'location',   label: '측정위치',   defaultWidth: 50,  align: 'center', isGroupSpan: 'worker' },
     hazard:     { id: 'hazard',     label: '유해인자',   defaultWidth: 95,  align: 'left' },
-    deviceNo:   { id: 'deviceNo',   label: '기기번호',   defaultWidth: 55,  align: 'center', isBlankHandwriting: true, isGroupSpan: 'sample' },
-    calNo:      { id: 'calNo',      label: 'Cal no.',    defaultWidth: 50,  align: 'center', isBlankHandwriting: true, isGroupSpan: 'sample' },
-    sampleId:   { id: 'sampleId',   label: '시료번호',   defaultWidth: 70,  align: 'center', isGroupSpan: 'sample' },
-    flowBefore: { id: 'flowBefore', label: '전유량',     defaultWidth: 50,  align: 'center', isBlankHandwriting: true, isGroupSpan: 'sample' },
-    flowAfter:  { id: 'flowAfter',  label: '후유량',     defaultWidth: 50,  align: 'center', isBlankHandwriting: true, isGroupSpan: 'sample' },
-    startTime:  { id: 'startTime',  label: '시작시간',   defaultWidth: 50,  align: 'center', isBlankHandwriting: true, isGroupSpan: 'sample' },
-    endTime:    { id: 'endTime',    label: '종료시간',   defaultWidth: 50,  align: 'center', isBlankHandwriting: true, isGroupSpan: 'sample' },
-    remark:     { id: 'remark',     label: '비고',       defaultWidth: 70,  align: 'left' },
+    deviceNo:   { id: 'deviceNo',   label: '기기번호',   defaultWidth: 52,  align: 'center', isBlankHandwriting: true, isGroupSpan: 'sample' },
+    calNo:      { id: 'calNo',      label: 'Cal no.',    defaultWidth: 48,  align: 'center', isBlankHandwriting: true, isGroupSpan: 'sample' },
+    sampleId:   { id: 'sampleId',   label: '시료번호',   defaultWidth: 68,  align: 'center', isGroupSpan: 'sample' },
+    flowBefore: { id: 'flowBefore', label: '전유량',     defaultWidth: 48,  align: 'center', isBlankHandwriting: true, isGroupSpan: 'sample' },
+    flowAfter:  { id: 'flowAfter',  label: '후유량',     defaultWidth: 48,  align: 'center', isBlankHandwriting: true, isGroupSpan: 'sample' },
+    startTime:  { id: 'startTime',  label: '시작시간',   defaultWidth: 48,  align: 'center', isBlankHandwriting: true, isGroupSpan: 'sample' },
+    endTime:    { id: 'endTime',    label: '종료시간',   defaultWidth: 48,  align: 'center', isBlankHandwriting: true, isGroupSpan: 'sample' },
+    remark:     { id: 'remark',     label: '비고',       defaultWidth: 65,  align: 'left' },
 };
 
 const DEFAULT_COL_ORDER = [
@@ -64,7 +64,7 @@ const DEFAULT_COL_ORDER = [
 
 const STORAGE_KEYS = {
     ORDER:       'MES_COL_ORDER_V2_4',
-    WIDTHS:      'MES_COL_WIDTHS_V2_4',
+    WIDTHS:      'MES_COL_WIDTHS_V2_8',
     ROWS_PAGE:   'MES_ROWS_PER_PAGE_V2_4',
 };
 
@@ -673,13 +673,18 @@ function renderAllPages(rows, meta) {
     const printDate = new Date().toLocaleDateString('ko-KR');
     const metaStr = [meta.companyName, meta.year, meta.halfYear].filter(Boolean).join(' · ');
 
-    // 공통 colgroup
+    // 공통 colgroup (용지 너비 100% 비례 자동 맞춤)
     function buildColgroup() {
+        const totalW = order.reduce((sum, colId) => {
+            return sum + (MES.colWidths[colId] || COLUMNS_DEF[colId].defaultWidth);
+        }, 0);
+
         const cols = order.map((colId, i) => {
             const w = MES.colWidths[colId] || COLUMNS_DEF[colId].defaultWidth;
+            const pct = ((w / totalW) * 100).toFixed(2);
             return i === order.length - 1
                 ? '<col>'
-                : `<col data-col-id="${colId}" style="width:${w}px">`;
+                : `<col data-col-id="${colId}" style="width:${pct}%;">`;
         }).join('');
         return `<colgroup>${cols}</colgroup>`;
     }
@@ -937,9 +942,20 @@ function attachResizeHandlers() {
                     const newW = Math.max(20, startW + (mv.clientX - startX));
                     MES.colWidths[colId] = Math.round(newW);
 
-                    // 모든 페이지 테이블의 해당 컬럼 너비 동시 반영
-                    document.querySelectorAll(`.mes-table colgroup col:nth-child(${idx + 1})`).forEach(c => {
-                        c.style.width = MES.colWidths[colId] + 'px';
+                    // 모든 페이지 테이블의 colgroup을 최신 비율로 재계산하여 용지 100% 폭 유지
+                    const totalW = MES.colOrder.reduce((sum, cId) => {
+                        return sum + (MES.colWidths[cId] || COLUMNS_DEF[cId].defaultWidth);
+                    }, 0);
+
+                    document.querySelectorAll('.mes-table colgroup').forEach(cg => {
+                        const colEls = cg.querySelectorAll('col');
+                        MES.colOrder.forEach((cId, cIdx) => {
+                            if (cIdx < colEls.length - 1) {
+                                const curW = MES.colWidths[cId] || COLUMNS_DEF[cId].defaultWidth;
+                                const curPct = ((curW / totalW) * 100).toFixed(2);
+                                colEls[cIdx].style.width = curPct + '%';
+                            }
+                        });
                     });
                 };
 
@@ -1059,9 +1075,27 @@ function initOrientButtons() {
             document.head.appendChild(styleEl);
         }
         if (orient === 'landscape') {
-            styleEl.textContent = '@media print { @page { size: A4 landscape; margin: 8mm 10mm; } }';
+            styleEl.textContent = `
+                @media print {
+                    @page { size: A4 landscape; margin: 8mm 10mm; }
+                    html, body, .mc-main, #mes-result-wrapper, #mes-result-container, .mes-paper, .mes-table-wrapper, .mes-table {
+                        width: 100% !important;
+                        max-width: none !important;
+                        overflow: visible !important;
+                    }
+                }
+            `;
         } else {
-            styleEl.textContent = '@media print { @page { size: A4 portrait; margin: 8mm 10mm; } }';
+            styleEl.textContent = `
+                @media print {
+                    @page { size: A4 portrait; margin: 8mm 10mm; }
+                    html, body, .mc-main, #mes-result-wrapper, #mes-result-container, .mes-paper, .mes-table-wrapper, .mes-table {
+                        width: 100% !important;
+                        max-width: none !important;
+                        overflow: visible !important;
+                    }
+                }
+            `;
         }
         document.body.classList.toggle('print-landscape', orient === 'landscape');
     }
@@ -1086,11 +1120,9 @@ function initOrientButtons() {
             btnL.style.padding = '4px 10px'; btnL.style.fontSize = '11px';
         }
 
-        // 이미 렌더링된 결과가 있으면 mes-paper 클래스 갱신
+        // 이미 렌더링된 결과가 있으면 가로/세로 레이아웃 즉시 재렌더링
         if (MES.parsedRows.length > 0) {
-            document.querySelectorAll('.mes-paper').forEach(el => {
-                el.classList.toggle('mes-landscape', orient === 'landscape');
-            });
+            renderAllPages(MES.parsedRows, MES.meta);
         }
     }
 
