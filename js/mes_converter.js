@@ -1,11 +1,20 @@
 /**
  * ============================================================
- *  mes_converter.js  v2.6
+ *  mes_converter.js  v2.7
  *  시료채취기록표 (MES변환용) - 독립 모듈
  *
  *  [핵심 개발 목적]
  *  측정 전 유해인자 및 시료번호를 미리 뽑아 인쇄한 후,
  *  현장에서 기기번호, Cal no., 유량, 시간을 수기로 작성하는 양식
+ *
+ *  [v2.7 주요 개선]
+ *  1. 동일 시료번호(sampleId) 셀 자동 병합 (rowspan)
+ *     - 복합 유해인자(혼합 유기용제 등)로 동일한 시료번호가 연속되는 경우 셀 병합
+ *     - 소음(isNoise) 및 빈 시료번호는 개별 행(span 1) 보장
+ *  2. 측정 관련 수기 컬럼 6종 자동 동반 병합
+ *     - 시료번호와 연동하여 기기번호(deviceNo), Cal no.(calNo), 전유량(flowBefore),
+ *       후유량(flowAfter), 시작시간(startTime), 종료시간(endTime)도 동일하게 1개 셀로 병합
+ *     - 수기 기록 편의성 대폭 향상
  *
  *  [v2.6 주요 개선]
  *  1. Pagination Engine v2: proc(공정) 그룹 단위 페이지 분배
@@ -37,13 +46,13 @@ const COLUMNS_DEF = {
     workerName: { id: 'workerName', label: '근로자명',   defaultWidth: 60,  align: 'center', isGroupSpan: 'worker' },
     location:   { id: 'location',   label: '측정위치',   defaultWidth: 50,  align: 'center', isGroupSpan: 'worker' },
     hazard:     { id: 'hazard',     label: '유해인자',   defaultWidth: 95,  align: 'left' },
-    deviceNo:   { id: 'deviceNo',   label: '기기번호',   defaultWidth: 55,  align: 'center', isBlankHandwriting: true },
-    calNo:      { id: 'calNo',      label: 'Cal no.',    defaultWidth: 50,  align: 'center', isBlankHandwriting: true },
-    sampleId:   { id: 'sampleId',   label: '시료번호',   defaultWidth: 70,  align: 'center' },
-    flowBefore: { id: 'flowBefore', label: '전유량',     defaultWidth: 50,  align: 'center', isBlankHandwriting: true },
-    flowAfter:  { id: 'flowAfter',  label: '후유량',     defaultWidth: 50,  align: 'center', isBlankHandwriting: true },
-    startTime:  { id: 'startTime',  label: '시작시간',   defaultWidth: 50,  align: 'center', isBlankHandwriting: true },
-    endTime:    { id: 'endTime',    label: '종료시간',   defaultWidth: 50,  align: 'center', isBlankHandwriting: true },
+    deviceNo:   { id: 'deviceNo',   label: '기기번호',   defaultWidth: 55,  align: 'center', isBlankHandwriting: true, isGroupSpan: 'sample' },
+    calNo:      { id: 'calNo',      label: 'Cal no.',    defaultWidth: 50,  align: 'center', isBlankHandwriting: true, isGroupSpan: 'sample' },
+    sampleId:   { id: 'sampleId',   label: '시료번호',   defaultWidth: 70,  align: 'center', isGroupSpan: 'sample' },
+    flowBefore: { id: 'flowBefore', label: '전유량',     defaultWidth: 50,  align: 'center', isBlankHandwriting: true, isGroupSpan: 'sample' },
+    flowAfter:  { id: 'flowAfter',  label: '후유량',     defaultWidth: 50,  align: 'center', isBlankHandwriting: true, isGroupSpan: 'sample' },
+    startTime:  { id: 'startTime',  label: '시작시간',   defaultWidth: 50,  align: 'center', isBlankHandwriting: true, isGroupSpan: 'sample' },
+    endTime:    { id: 'endTime',    label: '종료시간',   defaultWidth: 50,  align: 'center', isBlankHandwriting: true, isGroupSpan: 'sample' },
     remark:     { id: 'remark',     label: '비고',       defaultWidth: 70,  align: 'left' },
 };
 
@@ -407,9 +416,11 @@ function parseWorksheet(ws) {
         const hazardClean = hazardRaw.trim();
         const isNoise = /소음/i.test(hazardClean);
 
+        const rawProc    = getCellStr(row, COL.proc);
+        const rawWorker  = getCellStr(row, COL.workerName);
         const location   = getCellStr(row, COL.location)   || lastLocation;
-        const proc       = getCellStr(row, COL.proc)       || lastProc;
-        const workerName = getCellStr(row, COL.workerName) || lastWorker;
+        const proc       = rawProc                         || lastProc;
+        const workerName = rawWorker                       || lastWorker;
 
         let sampleId = '';
         if (isNoise) {
@@ -420,6 +431,10 @@ function parseWorksheet(ws) {
                 sampleId = rawSid;
                 lastSampleId = rawSid;
             } else {
+                // 새로운 공정이나 근로자가 시작되었는데 rawSid가 비어있다면, 이전 대상의 sampleId를 물려받지 않도록 리셋
+                if ((rawProc && lastProc && rawProc !== lastProc) || (rawWorker && lastWorker && rawWorker !== lastWorker)) {
+                    lastSampleId = '';
+                }
                 sampleId = lastSampleId;
             }
         }
@@ -612,6 +627,35 @@ function paginateRows(rows, maxRows) {
             wStart = wEnd;
         }
 
+        // sample span (시료번호 및 기기번호, Cal no, 전/후유량, 시작/종료시간 병합)
+        let sStart = 0;
+        while (sStart < pageRows.length) {
+            const rStart = pageRows[sStart];
+            const sid = (rStart.sampleId || '').trim();
+
+            // 소음이거나 시료번호가 없는 경우 병합하지 않음 (단독 1행)
+            if (rStart.isNoise || !sid) {
+                pageRows[sStart].sampleSpan = 1;
+                sStart++;
+                continue;
+            }
+
+            // 동일 공정, 동일 근로자, 동일 위치, 동일 시료번호인 연속 행들을 묶음
+            let sEnd = sStart + 1;
+            while (
+                sEnd < pageRows.length &&
+                !pageRows[sEnd].isNoise &&
+                pageRows[sEnd].proc === rStart.proc &&
+                pageRows[sEnd].workerName === rStart.workerName &&
+                pageRows[sEnd].location === rStart.location &&
+                (pageRows[sEnd].sampleId || '').trim() === sid
+            ) {
+                sEnd++;
+            }
+            pageRows[sStart].sampleSpan = sEnd - sStart;
+            sStart = sEnd;
+        }
+
         return pageRows;
     });
 }
@@ -681,18 +725,26 @@ function renderAllPages(rows, meta) {
                     }
                 }
 
+                // 시료단위 span (시료번호, 기기번호, Cal no, 전유량, 후유량, 시작시간, 종료시간)
+                if (def.isGroupSpan === 'sample') {
+                    if (row.sampleSpan === 0) return ''; // 이전 행에 병합됨
+                    const spanAttr = (row.sampleSpan > 1) ? ` rowspan="${row.sampleSpan}"` : '';
+                    if (colId === 'sampleId') {
+                        if (row.isNoise || !row.sampleId) {
+                            return `<td class="mes-td-center mes-td-empty"${spanAttr}></td>`;
+                        }
+                        return `<td class="mes-td-center mes-td-sid"${spanAttr}>${esc(row.sampleId)}</td>`;
+                    }
+                    // 수기 기입란 (기기번호, Cal no., 전유량, 후유량, 시작시간, 종료시간)
+                    return `<td class="mes-td-center mes-td-empty"${spanAttr}></td>`;
+                }
+
                 // 일반 컬럼
                 if (colId === 'no') {
                     return `<td class="mes-td-center mes-td-no">${row.globalNo}</td>`;
                 }
                 if (colId === 'hazard') {
                     return `<td class="mes-td-hazard ${row.isNoise ? 'mes-td-noise' : ''}">${esc(row.hazard)}</td>`;
-                }
-                if (colId === 'sampleId') {
-                    if (row.isNoise || !row.sampleId) {
-                        return `<td class="mes-td-center mes-td-empty"></td>`;
-                    }
-                    return `<td class="mes-td-center mes-td-sid">${esc(row.sampleId)}</td>`;
                 }
                 if (def.isBlankHandwriting) {
                     return `<td class="mes-td-center mes-td-empty"></td>`;
