@@ -1,21 +1,28 @@
 /**
  * ============================================================
- *  mes_converter.js  v2.4
+ *  mes_converter.js  v2.6
  *  시료채취기록표 (MES변환용) - 독립 모듈
  *
  *  [핵심 개발 목적]
  *  측정 전 유해인자 및 시료번호를 미리 뽑아 인쇄한 후,
  *  현장에서 기기번호, Cal no., 유량, 시간을 수기로 작성하는 양식
  *
- *  [v2.4 주요 해결 과제]
- *  1. 인쇄 페이지 분할 완전 해결 (Pagination Engine):
- *     - 첫 페이지 빈 공간 및 3페이지 1줄 밀림 현상 원천 차단.
- *     - 페이지당 행 수(기본 20행, 선택 가능) 기준으로 A4 용지 블록(.mes-paper) 완전 분할.
- *     - 각 페이지마다 상단 문서 헤더, 테이블 헤더(thead), 푸터, 페이지 번호(1/2 page) 완벽 세트 렌더링.
- *  2. 소음 시료번호 공란 보장 (물리적 인자 분리).
- *  3. 컬럼 순서 Drag & Drop 재배열 및 너비 리사이즈 (localStorage 자동 보관).
- *  4. 복수 엑셀 양식 스마트 헤더 감지 (시화한일도금, 삼화정밀 등).
- *  5. 구형 XLS 손상 바이너리(Bad ExternSheet) 클라이언트 자동 패치.
+ *  [v2.6 주요 개선]
+ *  1. Pagination Engine v2: proc(공정) 그룹 단위 페이지 분배
+ *     - 공정 그룹이 페이지 경계에서 쪼개지지 않아
+ *       '머리말/바닥글만 있는 빈 페이지' 현상 원천 차단
+ *     - 단일 공정이 maxRows를 초과할 때만 강제 분할
+ *  2. 인쇄 방향 전환: 세로(portrait) ↔ 가로(landscape)
+ *     - 결과 툴바 버튼으로 즉시 전환
+ *     - <style id="mes-page-style"> 동적 교체 방식 (@page 재정의)
+ *  3. 페이지당 행 수 선택 확장: 28행, 30행 추가
+ *
+ *  [v2.5 주요 개선]
+ *  1. 인쇄 페이지 분할 완전 해결 (Pagination Engine)
+ *  2. 소음 시료번호 공란 보장
+ *  3. 컬럼 순서 Drag & Drop 재배열 및 너비 리사이즈
+ *  4. 복수 엑셀 양식 스마트 헤더 감지
+ *  5. 구형 XLS 손상 바이너리(Bad ExternSheet) 클라이언트 자동 패치
  * ============================================================
  */
 
@@ -76,6 +83,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initResetColBtn();
     initResetOrderBtn();
     initRowsPerPageSelect();
+    initOrientButtons();
 
     // 검증용 자동 로드 지원 (?autoTest=true)
     const urlParams = new URLSearchParams(window.location.search);
@@ -139,22 +147,43 @@ function saveSettings() {
 
 // ──────────────────────────────────────────
 // 4. 구형 XLS 바이너리 자동 복구 (Bad ExternSheet)
+//    - BIFF8 EXTERNSHEET(0x0017): type(2)+len(2)+cxt(2)+firstEntry(6) = len=8
+//    - 손상된 파일은 cxt 필드만 잘못된 큰 값(ex: 174)이고 실제 데이터는 8바이트뿐
+//    - cxt를 1로 패치하면 len=8이 유효한 레코드(cxt=1, entry=1개)가 됨
 // ──────────────────────────────────────────
 function autoFixBiffExternSheet(uint8) {
-    if (uint8.length < 512 || uint8[0] !== 0xD0 || uint8[1] !== 0xCF) {
+    // OLE2 Compound Document 시그니처 확인 (D0 CF 11 E0)
+    if (uint8.length < 512 ||
+        uint8[0] !== 0xD0 || uint8[1] !== 0xCF ||
+        uint8[2] !== 0x11 || uint8[3] !== 0xE0) {
         return uint8;
     }
-    for (let i = 0; i < uint8.length - 8; i++) {
-        if (uint8[i] === 0x17 && uint8[i+1] === 0x00 && uint8[i+2] === 0x08 && uint8[i+3] === 0x00) {
-            const cxt = uint8[i+4] | (uint8[i+5] << 8);
+
+    // 패치를 위해 복사본 생성
+    const buf = new Uint8Array(uint8);
+    let fixCount = 0;
+
+    for (let i = 0; i < buf.length - 8; i++) {
+        // BIFF8 EXTERNSHEET record: type=0x0017, len=0x0008 (고정 = cxt(2)+entry(6))
+        if (buf[i]   === 0x17 && buf[i+1] === 0x00 &&
+            buf[i+2] === 0x08 && buf[i+3] === 0x00) {
+            const cxt = buf[i+4] | (buf[i+5] << 8);
             if (cxt > 1) {
-                console.log(`[MES Converter] XLS EXTERNSHEET 손상 자동 복구 (cxt=${cxt} -> 1)`);
-                uint8[i+4] = 0x01;
-                uint8[i+5] = 0x00;
+                console.log(`[MES Converter] XLS EXTERNSHEET 복구 @ offset=${i} (cxt=${cxt} -> 1)`);
+                // cxt를 1로 설정 — len=8은 이미 올바름(cxt=1일 때 8바이트가 정확)
+                buf[i+4] = 0x01;
+                buf[i+5] = 0x00;
+                fixCount++;
             }
+            // 실제 레코드 크기(type 2바이트 + len 2바이트 + data 8바이트 = 12바이트)를
+            // 정확히 건너뜀 (len=8 고정이므로 항상 +11로 건너뜀)
+            i += 11;
         }
     }
-    return uint8;
+    if (fixCount > 0) {
+        console.log(`[MES Converter] 총 ${fixCount}개 EXTERNSHEET 레코드 패치 완료`);
+    }
+    return buf;
 }
 
 // ──────────────────────────────────────────
@@ -213,25 +242,85 @@ function parseFileName(fileName) {
 }
 
 // ──────────────────────────────────────────
-// 7. 파일 처리 (SheetJS 파싱)
+// 7. 파일 처리 (SheetJS 파싱 — 다중 Fallback 전략)
+//    1차: cellStyles+cellDates (풀옵션)
+//    2차: 옵션 최소화 (type:'array'만)
+//    3차: FileReader binary → type:'binary' 재시도
 // ──────────────────────────────────────────
 function processFile(file) {
     setStatus('loading', `📂 "${file.name}" 읽는 중...`);
     hideResult();
 
+    const isXls = /\.xls$/i.test(file.name);
+
     const reader = new FileReader();
     reader.onload = (e) => {
-        try {
-            let data = new Uint8Array(e.target.result);
-            data = autoFixBiffExternSheet(data);
+        const arrayBuf = e.target.result;
 
-            const wb = XLSX.read(data, {
+        // ── 1차 시도: Uint8Array + BIFF 자동 패치 + 풀옵션 ──
+        let wb = null;
+        let lastErr = null;
+        try {
+            let data = new Uint8Array(arrayBuf);
+            data = autoFixBiffExternSheet(data);
+            wb = XLSX.read(data, {
                 type: 'array',
                 cellStyles: true,
                 cellDates: true,
                 sheetRows: 0,
             });
+            console.log('[MES Converter] 1차 파싱 성공 (array+cellDates)');
+        } catch (err1) {
+            console.warn('[MES Converter] 1차 파싱 실패, 2차 시도:', err1.message);
+            lastErr = err1;
+        }
 
+        // ── 2차 시도: 옵션 최소화 ──
+        if (!wb) {
+            try {
+                let data = new Uint8Array(arrayBuf);
+                data = autoFixBiffExternSheet(data);
+                wb = XLSX.read(data, {
+                    type: 'array',
+                    sheetRows: 0,
+                    WTF: false,
+                    bookVBA: false,
+                });
+                console.log('[MES Converter] 2차 파싱 성공 (array, 옵션 최소화)');
+                lastErr = null;
+            } catch (err2) {
+                console.warn('[MES Converter] 2차 파싱 실패, 3차 시도:', err2.message);
+                lastErr = err2;
+            }
+        }
+
+        // ── 3차 시도: binary string 모드 (XLS 전용) ──
+        if (!wb && isXls) {
+            try {
+                const binaryStr = new Uint8Array(arrayBuf)
+                    .reduce((acc, byte) => acc + String.fromCharCode(byte), '');
+                wb = XLSX.read(binaryStr, {
+                    type: 'binary',
+                    sheetRows: 0,
+                    WTF: false,
+                    bookVBA: false,
+                });
+                console.log('[MES Converter] 3차 파싱 성공 (binary 모드)');
+                lastErr = null;
+            } catch (err3) {
+                console.warn('[MES Converter] 3차 파싱도 실패:', err3.message);
+                lastErr = err3;
+            }
+        }
+
+        if (!wb) {
+            const errMsg = lastErr ? lastErr.message : '알 수 없는 오류';
+            console.error('[MES Converter v2.5] 모든 파싱 시도 실패:', lastErr);
+            showError(`파싱 오류: ${errMsg}\n\n(.xls 파일의 경우 Excel에서 열고 .xlsx로 저장 후 재시도해 보세요.)`);
+            return;
+        }
+
+        try {
             MES.raw  = wb;
             MES.meta = parseFileName(file.name);
 
@@ -252,11 +341,14 @@ function processFile(file) {
             setStatus('success', `✅ ${MES.meta.companyName || '파일'} 파싱 완료 — 총 ${MES.parsedRows.length}개 유효 인자 추출`);
 
         } catch (err) {
-            console.error('[MES Converter v2.4] 파싱 오류:', err);
-            showError(`파싱 오류: ${err.message}`);
+            console.error('[MES Converter v2.5] 데이터 처리 오류:', err);
+            showError(`데이터 처리 오류: ${err.message}`);
         }
     };
-    reader.onerror = () => showError('파일 읽기 오류가 발생했습니다.');
+    reader.onerror = (e) => {
+        console.error('[MES Converter] FileReader 오류:', e);
+        showError('파일 읽기 오류가 발생했습니다. 파일이 손상되었거나 접근이 제한된 파일일 수 있습니다.');
+    };
     reader.readAsArrayBuffer(file);
 }
 
@@ -441,56 +533,87 @@ function getCellStr(row, colIndex) {
 }
 
 // ──────────────────────────────────────────
-// 9. 핵심: 정밀 페이지 분할 (Pagination Engine)
-//    - 첫 페이지 공백 및 3페이지 1줄 밀림 원천 차단
-//    - 각 페이지마다 정확한 행 수 분할 및 페이지 내 rowspan 재계산
+// 9. 핵심: 정밀 페이지 분할 (Pagination Engine v2)
+//    ◎ proc(공정) 그룹이 페이지 경계에서 쪼개지지 않도록
+//      그룹 전체를 다음 페이지로 넘김 (머리말/바닥글만 남는 빈 페이지 방지)
+//    ◎ 단일 proc 그룹이 maxRows를 초과할 때만 강제 분할
 // ──────────────────────────────────────────
 function paginateRows(rows, maxRows) {
     if (!rows || rows.length === 0) return [];
 
-    const pages = [];
-    const total = rows.length;
+    // ◆ 단계 1: proc 그룹으로 분류
+    const groups = [];
+    let i = 0;
+    while (i < rows.length) {
+        const procName = rows[i].proc;
+        let j = i + 1;
+        while (j < rows.length && rows[j].proc === procName) j++;
+        groups.push(rows.slice(i, j));
+        i = j;
+    }
 
-    for (let startIdx = 0; startIdx < total; startIdx += maxRows) {
-        const pageSlice = rows.slice(startIdx, startIdx + maxRows);
+    // ◆ 단계 2: 그룹을 페이지에 배정
+    //   • 현재 페이지의 남은 자리(remain) < 그룹 행 수 이면 다음 페이지로 분류
+    //   • 단, 그룹 자체가 maxRows를 넘으면 강제로 잘라 maxRows단위로 여러 페이지
+    const rawPages = [];   // 페이지당 원시 rows 배열
+    let current = [];      // 현재 페이지에 놓인 rows
 
-        // 페이지 내부에서 rowspan 재계산
-        // procSpans: 각 행별 proc rowspan (첫 번째 행에만 숫자, 나머지는 0)
-        // workerSpans: 각 행별 workerName+location rowspan
-        const pageRows = pageSlice.map((r, i) => ({
+    for (const group of groups) {
+        if (group.length >= maxRows) {
+            // 그룹 자체가 한 페이지를 가득 시: 현재 페이지 우선 확정가
+            if (current.length > 0) { rawPages.push(current); current = []; }
+            // maxRows 단위로 직접 잘라냄
+            for (let k = 0; k < group.length; k += maxRows) {
+                const slice = group.slice(k, k + maxRows);
+                if (k + maxRows >= group.length) {
+                    // 마지막 조각은 current에 넣어서 다음 그룹과 합칠 수 있게
+                    current = slice;
+                } else {
+                    rawPages.push(slice);
+                }
+            }
+        } else {
+            // 현재 페이지에 자리가 있으면 추가, 없으면 다음 페이지
+            if (current.length + group.length > maxRows && current.length > 0) {
+                rawPages.push(current);
+                current = [];
+            }
+            current = current.concat(group);
+        }
+    }
+    if (current.length > 0) rawPages.push(current);
+
+    // ◆ 단계 3: 각 페이지마다 globalNo + procSpan + workerSpan 재계산
+    let globalCounter = 1;
+    return rawPages.map(pageSlice => {
+        const pageRows = pageSlice.map(r => ({
             ...r,
-            globalNo: startIdx + i + 1,
+            globalNo: globalCounter++,
             procSpan: 0,
             workerSpan: 0,
         }));
 
-        // 1. 공정(proc) span 계산
+        // proc span
         let pStart = 0;
         while (pStart < pageRows.length) {
             let pEnd = pStart + 1;
-            while (pEnd < pageRows.length && pageRows[pEnd].proc === pageRows[pStart].proc) {
-                pEnd++;
-            }
+            while (pEnd < pageRows.length && pageRows[pEnd].proc === pageRows[pStart].proc) pEnd++;
             pageRows[pStart].procSpan = pEnd - pStart;
             pStart = pEnd;
         }
 
-        // 2. 근로자명+위치 span 계산
+        // worker span
         let wStart = 0;
         while (wStart < pageRows.length) {
             const wKey = `${pageRows[wStart].workerName}__${pageRows[wStart].location}`;
             let wEnd = wStart + 1;
-            while (wEnd < pageRows.length && `${pageRows[wEnd].workerName}__${pageRows[wEnd].location}` === wKey) {
-                wEnd++;
-            }
+            while (wEnd < pageRows.length && `${pageRows[wEnd].workerName}__${pageRows[wEnd].location}` === wKey) wEnd++;
             pageRows[wStart].workerSpan = wEnd - wStart;
             wStart = wEnd;
         }
 
-        pages.push(pageRows);
-    }
-
-    return pages;
+        return pageRows;
+    });
 }
 
 // ──────────────────────────────────────────
@@ -586,7 +709,7 @@ function renderAllPages(rows, meta) {
 
         return `
         <!-- 페이지 ${pageNum} / ${totalPages} -->
-        <div class="mes-paper ${breakCls}">
+        <div class="mes-paper ${breakCls}${MES.orientation === 'landscape' ? ' mes-landscape' : ''}">
             <!-- 문서 헤더 -->
             <div class="mes-doc-header">
                 <div class="mes-doc-header-left">
@@ -867,4 +990,61 @@ function esc(s) {
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;');
+}
+// ──────────────────────────────────────────
+// 15. 가로/세로 방향 전환
+// ──────────────────────────────────────────
+function initOrientButtons() {
+    // 현재 방향을 MES 상태에 추가 (기본 세로)
+    if (!MES.orientation) MES.orientation = 'portrait';
+
+    // <style id="mes-page-style"> 삽입 (없으면 생성)
+    function applyPageStyle(orient) {
+        let styleEl = document.getElementById('mes-page-style');
+        if (!styleEl) {
+            styleEl = document.createElement('style');
+            styleEl.id = 'mes-page-style';
+            document.head.appendChild(styleEl);
+        }
+        if (orient === 'landscape') {
+            styleEl.textContent = '@media print { @page { size: A4 landscape; margin: 8mm 10mm; } }';
+        } else {
+            styleEl.textContent = '@media print { @page { size: A4 portrait; margin: 8mm 10mm; } }';
+        }
+        document.body.classList.toggle('print-landscape', orient === 'landscape');
+    }
+
+    function setOrient(orient) {
+        MES.orientation = orient;
+        applyPageStyle(orient);
+
+        // 버튼 활성 상태 업데이트
+        const btnP = document.getElementById('mes-orient-portrait');
+        const btnL = document.getElementById('mes-orient-landscape');
+        if (btnP) {
+            btnP.className = orient === 'portrait'
+                ? 'mc-btn mc-btn-orient-active'
+                : 'mc-btn mc-btn-secondary';
+            btnP.style.padding = '4px 10px'; btnP.style.fontSize = '11px';
+        }
+        if (btnL) {
+            btnL.className = orient === 'landscape'
+                ? 'mc-btn mc-btn-orient-active'
+                : 'mc-btn mc-btn-secondary';
+            btnL.style.padding = '4px 10px'; btnL.style.fontSize = '11px';
+        }
+
+        // 이미 렌더링된 결과가 있으면 mes-paper 클래스 갱신
+        if (MES.parsedRows.length > 0) {
+            document.querySelectorAll('.mes-paper').forEach(el => {
+                el.classList.toggle('mes-landscape', orient === 'landscape');
+            });
+        }
+    }
+
+    document.getElementById('mes-orient-portrait')?.addEventListener('click', () => setOrient('portrait'));
+    document.getElementById('mes-orient-landscape')?.addEventListener('click', () => setOrient('landscape'));
+
+    // 초기 적용
+    applyPageStyle(MES.orientation);
 }

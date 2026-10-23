@@ -66,7 +66,7 @@
                 min-height: auto !important;
                 box-sizing: border-box !important;
             }
-            /* ──  A4 세로형 인쇄 설정  ── */
+            /* 기본(세로) — JS가 동적으로 교체하는 #mes-page-style 태그가 우선 적용됨 */
             @page { size: A4 portrait; margin: 8mm 10mm; }
 
             .print-break {
@@ -78,6 +78,11 @@
 
             .mes-resize-handle, .mes-th-drag-grip { display: none !important; }
             .mes-doc-footer { margin-top: 6px; }
+
+            /* 가로 방향일 때 paper 너비를 A4 가로에 맞게 */
+            body.print-landscape .mes-paper {
+                width: 100% !important;
+            }
         }
 
         /* ════════════════════════════════
@@ -453,6 +458,18 @@
         /* ════════════════════════════════
            반응형
         ════════════════════════════════ */
+        /* 가로 방향 paper 너비 (화면 미리보기용) */
+        .mes-paper.mes-landscape {
+            width: 297mm;
+            min-height: 200mm;
+        }
+        /* 방향 전환 버튼 활성 상태 */
+        .mc-btn-orient-active {
+            background: var(--mc-primary) !important;
+            color: white !important;
+            box-shadow: 0 3px 10px rgba(15,118,110,.28) !important;
+        }
+
         @media (max-width: 800px) {
             .mc-topbar-inner { padding: 11px 14px; }
             .mc-main { padding: 14px 12px 40px; }
@@ -567,6 +584,13 @@
                 <div class="mc-result-info-sub">헤더를 좌우로 드래그하여 컬럼 순서를 바꾸거나 경계를 끌어 너비를 조절할 수 있습니다.</div>
             </div>
             <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+                <!-- 방향 전환 -->
+                <div style="display:flex;align-items:center;gap:4px;background:#f8fafc;padding:3px 6px;border-radius:8px;border:1px solid #cbd5e1;">
+                    <span style="font-size:11px;font-weight:700;color:#475569;margin-right:2px;">📐</span>
+                    <button id="mes-orient-portrait" class="mc-btn mc-btn-orient-active" style="padding:4px 10px;font-size:11px;" title="A4 세로">세로</button>
+                    <button id="mes-orient-landscape" class="mc-btn mc-btn-secondary" style="padding:4px 10px;font-size:11px;" title="A4 가로">가로</button>
+                </div>
+                <!-- 페이지당 행 수 -->
                 <div style="display:flex;align-items:center;gap:6px;background:#f8fafc;padding:3px 8px;border-radius:8px;border:1px solid #cbd5e1;">
                     <span style="font-size:11.5px;font-weight:700;color:#475569;">📄 페이지당:</span>
                     <select class="mes-select-rows" style="padding:4px 8px;border-radius:6px;border:1px solid #94a3b8;font-size:11.5px;font-weight:700;background:white;cursor:pointer;">
@@ -575,6 +599,8 @@
                         <option value="20" selected>20행 (추천)</option>
                         <option value="22">22행</option>
                         <option value="25">25행</option>
+                        <option value="28">28행</option>
+                        <option value="30">30행</option>
                     </select>
                 </div>
                 <button onclick="window.print()" class="mc-btn mc-btn-primary">🖨️ 인쇄 / PDF</button>

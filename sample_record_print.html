@@ -13,16 +13,25 @@
 
         @media print {
             .no-print { display: none !important; }
-            .print-break { page-break-before: always; }
-            body { background: white !important; padding: 0 !important; margin: 0 !important; }
-            /* 인쇄 시 여백을 시스템 기본값과 맞추기 위해 센터 정렬 */
-            .paper { 
-                box-shadow: none !important; 
-                margin: 0 auto !important; 
-                padding: 0 !important; /* 인쇄 시에는 이미 여백이 @page 마진으로 대체됨 */
-                width: 100% !important;
-                max-width: 280mm !important;
+            .print-break {
+                page-break-before: always !important;
+                break-before: page !important;
             }
+            body {
+                background: white !important;
+                padding: 0 !important;
+                margin: 0 !important;
+            }
+            .paper {
+                box-shadow: none !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                width: 100% !important;
+                max-width: none !important;
+                border-radius: 0 !important;
+                page-break-inside: avoid;
+            }
+            tr { page-break-inside: avoid !important; }
             @page { size: A4 landscape; margin: 8mm 10mm; }
         }
 
