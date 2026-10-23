@@ -1,0 +1,143 @@
+{
+  "colOrder": [
+    "no",
+    "proc",
+    "workerName",
+    "location",
+    "hazard",
+    "deviceNo",
+    "calNo",
+    "sampleId",
+    "flowBefore",
+    "flowAfter",
+    "startTime",
+    "endTime",
+    "remark"
+  ],
+  "pages": [
+    [
+      {
+        "_rowIdx": 1,
+        "proc": "신경과 검사실/뇌전증판독실",
+        "hazard": "혼합유기화합물(Em)",
+        "workerName": "뇌전증판독실",
+        "location": "*1",
+        "sampleId": "A-1",
+        "isNoise": false,
+        "globalNo": 1,
+        "procSpan": 9,
+        "workerSpan": 3,
+        "sampleSpan": 3
+      },
+      {
+        "_rowIdx": 2,
+        "proc": "신경과 검사실/뇌전증판독실",
+        "hazard": "디에틸에테르",
+        "workerName": "뇌전증판독실",
+        "location": "*1",
+        "sampleId": "A-1",
+        "isNoise": false,
+        "globalNo": 2,
+        "procSpan": 0,
+        "workerSpan": 0
+      },
+      {
+        "_rowIdx": 3,
+        "proc": "신경과 검사실/뇌전증판독실",
+        "hazard": "아세톤",
+        "workerName": "뇌전증판독실",
+        "location": "*1",
+        "sampleId": "A-1",
+        "isNoise": false,
+        "globalNo": 3,
+        "procSpan": 0,
+        "workerSpan": 0
+      },
+      {
+        "_rowIdx": 4,
+        "proc": "신경과 검사실/뇌전증판독실",
+        "hazard": "혼합유기화합물(Em)",
+        "workerName": "검사실",
+        "location": "*2",
+        "sampleId": "A-2",
+        "isNoise": false,
+        "globalNo": 4,
+        "procSpan": 0,
+        "workerSpan": 3,
+        "sampleSpan": 3
+      },
+      {
+        "_rowIdx": 5,
+        "proc": "신경과 검사실/뇌전증판독실",
+        "hazard": "디에틸에테르",
+        "workerName": "검사실",
+        "location": "*2",
+        "sampleId": "A-2",
+        "isNoise": false,
+        "globalNo": 5,
+        "procSpan": 0,
+        "workerSpan": 0
+      },
+      {
+        "_rowIdx": 6,
+        "proc": "신경과 검사실/뇌전증판독실",
+        "hazard": "아세톤",
+        "workerName": "검사실",
+        "location": "*2",
+        "sampleId": "A-2",
+        "isNoise": false,
+        "globalNo": 6,
+        "procSpan": 0,
+        "workerSpan": 0
+      },
+      {
+        "_rowIdx": 7,
+        "proc": "신경과 검사실/뇌전증판독실",
+        "hazard": "혼합유기화합물(Em)",
+        "workerName": "검사실",
+        "location": "*3",
+        "sampleId": "A-3",
+        "isNoise": false,
+        "globalNo": 7,
+        "procSpan": 0,
+        "workerSpan": 3,
+        "sampleSpan": 3
+      },
+      {
+        "_rowIdx": 8,
+        "proc": "신경과 검사실/뇌전증판독실",
+        "hazard": "디에틸에테르",
+        "workerName": "검사실",
+        "location": "*3",
+        "sampleId": "A-3",
+        "isNoise": false,
+        "globalNo": 8,
+        "procSpan": 0,
+        "workerSpan": 0
+      },
+      {
+        "_rowIdx": 9,
+        "proc": "신경과 검사실/뇌전증판독실",
+        "hazard": "아세톤",
+        "workerName": "검사실",
+        "location": "*3",
+        "sampleId": "A-3",
+        "isNoise": false,
+        "globalNo": 9,
+        "procSpan": 0,
+        "workerSpan": 0
+      }
+    ]
+  ],
+  "rowsHtml": [
+    "<tr><td class=\"mes-td-center mes-td-no\">1</td><td class=\"mes-td-center mes-td-proc\" rowspan=\"9\">신경과 검사실/뇌전증판독실</td><td class=\"mes-td-center mes-td-worker\" rowspan=\"3\">뇌전증판독실</td><td class=\"mes-td-center mes-td-loc\" rowspan=\"3\">*1</td><td class=\"mes-td-hazard \">혼합유기화합물(Em)</td><td class=\"mes-td-center mes-td-empty\" rowspan=\"3\"></td><td class=\"mes-td-center mes-td-empty\" rowspan=\"3\"></td><td class=\"mes-td-center mes-td-sid\" rowspan=\"3\">A-1</td><td class=\"mes-td-center mes-td-empty\" rowspan=\"3\"></td><td class=\"mes-td-center mes-td-empty\" rowspan=\"3\"></td><td class=\"mes-td-center mes-td-empty\" rowspan=\"3\"></td><td class=\"mes-td-center mes-td-empty\" rowspan=\"3\"></td><td></td></tr>",
+    "<tr><td class=\"mes-td-center mes-td-no\">2</td><td class=\"mes-td-hazard \">디에틸에테르</td><td class=\"mes-td-center mes-td-empty\"></td><td class=\"mes-td-center mes-td-empty\"></td><td class=\"mes-td-center mes-td-sid\">A-1</td><td class=\"mes-td-center mes-td-empty\"></td><td class=\"mes-td-center mes-td-empty\"></td><td class=\"mes-td-center mes-td-empty\"></td><td class=\"mes-td-center mes-td-empty\"></td><td></td></tr>",
+    "<tr><td class=\"mes-td-center mes-td-no\">3</td><td class=\"mes-td-hazard \">아세톤</td><td class=\"mes-td-center mes-td-empty\"></td><td class=\"mes-td-center mes-td-empty\"></td><td class=\"mes-td-center mes-td-sid\">A-1</td><td class=\"mes-td-center mes-td-empty\"></td><td class=\"mes-td-center mes-td-empty\"></td><td class=\"mes-td-center mes-td-empty\"></td><td class=\"mes-td-center mes-td-empty\"></td><td></td></tr>",
+    "<tr><td class=\"mes-td-center mes-td-no\">4</td><td class=\"mes-td-center mes-td-worker\" rowspan=\"3\">검사실</td><td class=\"mes-td-center mes-td-loc\" rowspan=\"3\">*2</td><td class=\"mes-td-hazard \">혼합유기화합물(Em)</td><td class=\"mes-td-center mes-td-empty\" rowspan=\"3\"></td><td class=\"mes-td-center mes-td-empty\" rowspan=\"3\"></td><td class=\"mes-td-center mes-td-sid\" rowspan=\"3\">A-2</td><td class=\"mes-td-center mes-td-empty\" rowspan=\"3\"></td><td class=\"mes-td-center mes-td-empty\" rowspan=\"3\"></td><td class=\"mes-td-center mes-td-empty\" rowspan=\"3\"></td><td class=\"mes-td-center mes-td-empty\" rowspan=\"3\"></td><td></td></tr>",
+    "<tr><td class=\"mes-td-center mes-td-no\">5</td><td class=\"mes-td-hazard \">디에틸에테르</td><td class=\"mes-td-center mes-td-empty\"></td><td class=\"mes-td-center mes-td-empty\"></td><td class=\"mes-td-center mes-td-sid\">A-2</td><td class=\"mes-td-center mes-td-empty\"></td><td class=\"mes-td-center mes-td-empty\"></td><td class=\"mes-td-center mes-td-empty\"></td><td class=\"mes-td-center mes-td-empty\"></td><td></td></tr>",
+    "<tr><td class=\"mes-td-center mes-td-no\">6</td><td class=\"mes-td-hazard \">아세톤</td><td class=\"mes-td-center mes-td-empty\"></td><td class=\"mes-td-center mes-td-empty\"></td><td class=\"mes-td-center mes-td-sid\">A-2</td><td class=\"mes-td-center mes-td-empty\"></td><td class=\"mes-td-center mes-td-empty\"></td><td class=\"mes-td-center mes-td-empty\"></td><td class=\"mes-td-center mes-td-empty\"></td><td></td></tr>",
+    "<tr><td class=\"mes-td-center mes-td-no\">7</td><td class=\"mes-td-center mes-td-worker\" rowspan=\"3\">검사실</td><td class=\"mes-td-center mes-td-loc\" rowspan=\"3\">*3</td><td class=\"mes-td-hazard \">혼합유기화합물(Em)</td><td class=\"mes-td-center mes-td-empty\" rowspan=\"3\"></td><td class=\"mes-td-center mes-td-empty\" rowspan=\"3\"></td><td class=\"mes-td-center mes-td-sid\" rowspan=\"3\">A-3</td><td class=\"mes-td-center mes-td-empty\" rowspan=\"3\"></td><td class=\"mes-td-center mes-td-empty\" rowspan=\"3\"></td><td class=\"mes-td-center mes-td-empty\" rowspan=\"3\"></td><td class=\"mes-td-center mes-td-empty\" rowspan=\"3\"></td><td></td></tr>",
+    "<tr><td class=\"mes-td-center mes-td-no\">8</td><td class=\"mes-td-hazard \">디에틸에테르</td><td class=\"mes-td-center mes-td-empty\"></td><td class=\"mes-td-center mes-td-empty\"></td><td class=\"mes-td-center mes-td-sid\">A-3</td><td class=\"mes-td-center mes-td-empty\"></td><td class=\"mes-td-center mes-td-empty\"></td><td class=\"mes-td-center mes-td-empty\"></td><td class=\"mes-td-center mes-td-empty\"></td><td></td></tr>",
+    "<tr><td class=\"mes-td-center mes-td-no\">9</td><td class=\"mes-td-hazard \">아세톤</td><td class=\"mes-td-center mes-td-empty\"></td><td class=\"mes-td-center mes-td-empty\"></td><td class=\"mes-td-center mes-td-sid\">A-3</td><td class=\"mes-td-center mes-td-empty\"></td><td class=\"mes-td-center mes-td-empty\"></td><td class=\"mes-td-center mes-td-empty\"></td><td class=\"mes-td-center mes-td-empty\"></td><td></td></tr>"
+  ]
+}
