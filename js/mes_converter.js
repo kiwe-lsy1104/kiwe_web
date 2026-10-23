@@ -1,11 +1,18 @@
 /**
  * ============================================================
- *  mes_converter.js  v2.8
+ *  mes_converter.js  v2.9
  *  시료채취기록표 (MES변환용) - 독립 모듈
  *
  *  [핵심 개발 목적]
  *  측정 전 유해인자 및 시료번호를 미리 뽑아 인쇄한 후,
  *  현장에서 기기번호, Cal no., 유량, 시간을 수기로 작성하는 양식
+ *
+ *  [v2.9 주요 개선]
+ *  1. 시료번호 병합 후속 행 셀 오버플로우 완전 해결
+ *     - sampleSpan 초기화 누락(undefined)으로 인해 후속 행에서 7개 셀이 중복 생성되어
+ *       '비고란 옆에 이상한 표가 나오는 현상' 원천 해결
+ *  2. 비고(remark) 컬럼 정상 너비 확보
+ *     - buildColgroup에서 비고 컬럼에도 정밀 비례(%) 너비를 부여하여 찌그러짐 방지
  *
  *  [v2.8 주요 개선]
  *  1. 용지 너비 100% 비례 자동 맞춤 (Fluid Proportional Layout)
@@ -606,6 +613,7 @@ function paginateRows(rows, maxRows) {
             globalNo: globalCounter++,
             procSpan: 0,
             workerSpan: 0,
+            sampleSpan: 0,
         }));
 
         // proc span
@@ -673,18 +681,16 @@ function renderAllPages(rows, meta) {
     const printDate = new Date().toLocaleDateString('ko-KR');
     const metaStr = [meta.companyName, meta.year, meta.halfYear].filter(Boolean).join(' · ');
 
-    // 공통 colgroup (용지 너비 100% 비례 자동 맞춤)
+    // 공통 colgroup (용지 너비 100% 비례 자동 맞춤 - 비고란 포함)
     function buildColgroup() {
         const totalW = order.reduce((sum, colId) => {
             return sum + (MES.colWidths[colId] || COLUMNS_DEF[colId].defaultWidth);
         }, 0);
 
-        const cols = order.map((colId, i) => {
+        const cols = order.map((colId) => {
             const w = MES.colWidths[colId] || COLUMNS_DEF[colId].defaultWidth;
             const pct = ((w / totalW) * 100).toFixed(2);
-            return i === order.length - 1
-                ? '<col>'
-                : `<col data-col-id="${colId}" style="width:${pct}%;">`;
+            return `<col data-col-id="${colId}" style="width:${pct}%;">`;
         }).join('');
         return `<colgroup>${cols}</colgroup>`;
     }
@@ -732,7 +738,7 @@ function renderAllPages(rows, meta) {
 
                 // 시료단위 span (시료번호, 기기번호, Cal no, 전유량, 후유량, 시작시간, 종료시간)
                 if (def.isGroupSpan === 'sample') {
-                    if (row.sampleSpan === 0) return ''; // 이전 행에 병합됨
+                    if (!row.sampleSpan || row.sampleSpan === 0) return ''; // 이전 행에 병합됨
                     const spanAttr = (row.sampleSpan > 1) ? ` rowspan="${row.sampleSpan}"` : '';
                     if (colId === 'sampleId') {
                         if (row.isNoise || !row.sampleId) {
