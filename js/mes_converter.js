@@ -48,19 +48,19 @@
 // 0. 컬럼 정의 메타데이터
 // ──────────────────────────────────────────
 const COLUMNS_DEF = {
-    no:         { id: 'no',         label: 'No',         defaultWidth: 30,  align: 'center' },
-    proc:       { id: 'proc',       label: '단위작업공정', defaultWidth: 80,  align: 'center', isGroupSpan: 'proc' },
-    workerName: { id: 'workerName', label: '근로자명',   defaultWidth: 60,  align: 'center', isGroupSpan: 'worker' },
-    location:   { id: 'location',   label: '측정위치',   defaultWidth: 50,  align: 'center', isGroupSpan: 'worker' },
-    hazard:     { id: 'hazard',     label: '유해인자',   defaultWidth: 95,  align: 'left' },
-    deviceNo:   { id: 'deviceNo',   label: '기기번호',   defaultWidth: 52,  align: 'center', isBlankHandwriting: true, isGroupSpan: 'sample' },
-    calNo:      { id: 'calNo',      label: 'Cal no.',    defaultWidth: 48,  align: 'center', isBlankHandwriting: true, isGroupSpan: 'sample' },
-    sampleId:   { id: 'sampleId',   label: '시료번호',   defaultWidth: 68,  align: 'center', isGroupSpan: 'sample' },
-    flowBefore: { id: 'flowBefore', label: '전유량',     defaultWidth: 48,  align: 'center', isBlankHandwriting: true, isGroupSpan: 'sample' },
-    flowAfter:  { id: 'flowAfter',  label: '후유량',     defaultWidth: 48,  align: 'center', isBlankHandwriting: true, isGroupSpan: 'sample' },
-    startTime:  { id: 'startTime',  label: '시작시간',   defaultWidth: 48,  align: 'center', isBlankHandwriting: true, isGroupSpan: 'sample' },
-    endTime:    { id: 'endTime',    label: '종료시간',   defaultWidth: 48,  align: 'center', isBlankHandwriting: true, isGroupSpan: 'sample' },
-    remark:     { id: 'remark',     label: '비고',       defaultWidth: 65,  align: 'left' },
+    no: { id: 'no', label: 'No', defaultWidth: 30, align: 'center' },
+    proc: { id: 'proc', label: '단위작업공정', defaultWidth: 80, align: 'center', isGroupSpan: 'proc' },
+    workerName: { id: 'workerName', label: '근로자명', defaultWidth: 60, align: 'center', isGroupSpan: 'worker' },
+    location: { id: 'location', label: '측정위치', defaultWidth: 50, align: 'center', isGroupSpan: 'worker' },
+    hazard: { id: 'hazard', label: '유해인자', defaultWidth: 95, align: 'left' },
+    deviceNo: { id: 'deviceNo', label: '기기번호', defaultWidth: 52, align: 'center', isBlankHandwriting: true, isGroupSpan: 'sample' },
+    calNo: { id: 'calNo', label: 'Cal no.', defaultWidth: 48, align: 'center', isBlankHandwriting: true, isGroupSpan: 'sample' },
+    sampleId: { id: 'sampleId', label: '시료번호', defaultWidth: 68, align: 'center', isGroupSpan: 'sample' },
+    flowBefore: { id: 'flowBefore', label: '전유량', defaultWidth: 48, align: 'center', isBlankHandwriting: true, isGroupSpan: 'sample' },
+    flowAfter: { id: 'flowAfter', label: '후유량', defaultWidth: 48, align: 'center', isBlankHandwriting: true, isGroupSpan: 'sample' },
+    startTime: { id: 'startTime', label: '시작시간', defaultWidth: 48, align: 'center', isBlankHandwriting: true, isGroupSpan: 'sample' },
+    endTime: { id: 'endTime', label: '종료시간', defaultWidth: 48, align: 'center', isBlankHandwriting: true, isGroupSpan: 'sample' },
+    remark: { id: 'remark', label: '비고', defaultWidth: 65, align: 'left' },
 };
 
 const DEFAULT_COL_ORDER = [
@@ -70,9 +70,9 @@ const DEFAULT_COL_ORDER = [
 ];
 
 const STORAGE_KEYS = {
-    ORDER:       'MES_COL_ORDER_V2_4',
-    WIDTHS:      'MES_COL_WIDTHS_V2_8',
-    ROWS_PAGE:   'MES_ROWS_PER_PAGE_V2_4',
+    ORDER: 'MES_COL_ORDER_V2_4',
+    WIDTHS: 'MES_COL_WIDTHS_V2_8',
+    ROWS_PAGE: 'MES_ROWS_PER_PAGE_V2_4',
 };
 
 // ──────────────────────────────────────────
@@ -127,7 +127,7 @@ function loadSettings() {
             const allExist = DEFAULT_COL_ORDER.every(id => savedOrder.includes(id));
             if (allExist) MES.colOrder = savedOrder;
         }
-    } catch {}
+    } catch { }
 
     // 2. 너비
     MES.colWidths = {};
@@ -143,7 +143,7 @@ function loadSettings() {
                 }
             });
         }
-    } catch {}
+    } catch { }
 
     // 3. 페이지당 행 수
     try {
@@ -151,7 +151,7 @@ function loadSettings() {
         if (savedRows >= 10 && savedRows <= 35) {
             MES.rowsPerPage = savedRows;
         }
-    } catch {}
+    } catch { }
 }
 
 function saveSettings() {
@@ -159,7 +159,7 @@ function saveSettings() {
         localStorage.setItem(STORAGE_KEYS.ORDER, JSON.stringify(MES.colOrder));
         localStorage.setItem(STORAGE_KEYS.WIDTHS, JSON.stringify(MES.colWidths));
         localStorage.setItem(STORAGE_KEYS.ROWS_PAGE, String(MES.rowsPerPage));
-    } catch {}
+    } catch { }
 }
 
 // ──────────────────────────────────────────
@@ -182,14 +182,14 @@ function autoFixBiffExternSheet(uint8) {
 
     for (let i = 0; i < buf.length - 8; i++) {
         // BIFF8 EXTERNSHEET record: type=0x0017, len=0x0008 (고정 = cxt(2)+entry(6))
-        if (buf[i]   === 0x17 && buf[i+1] === 0x00 &&
-            buf[i+2] === 0x08 && buf[i+3] === 0x00) {
-            const cxt = buf[i+4] | (buf[i+5] << 8);
+        if (buf[i] === 0x17 && buf[i + 1] === 0x00 &&
+            buf[i + 2] === 0x08 && buf[i + 3] === 0x00) {
+            const cxt = buf[i + 4] | (buf[i + 5] << 8);
             if (cxt > 1) {
                 console.log(`[MES Converter] XLS EXTERNSHEET 복구 @ offset=${i} (cxt=${cxt} -> 1)`);
                 // cxt를 1로 설정 — len=8은 이미 올바름(cxt=1일 때 8바이트가 정확)
-                buf[i+4] = 0x01;
-                buf[i+5] = 0x00;
+                buf[i + 4] = 0x01;
+                buf[i + 5] = 0x00;
                 fixCount++;
             }
             // 실제 레코드 크기(type 2바이트 + len 2바이트 + data 8바이트 = 12바이트)를
@@ -246,12 +246,12 @@ function parseFileName(fileName) {
     let companyName = '', year = '', halfYear = '';
 
     if (parts.length >= 3) {
-        halfYear    = parts[parts.length - 1];
-        year        = parts[parts.length - 2];
+        halfYear = parts[parts.length - 1];
+        year = parts[parts.length - 2];
         companyName = parts.slice(0, parts.length - 2).join('_');
     } else if (parts.length === 2) {
         companyName = parts[0];
-        year        = parts[1];
+        year = parts[1];
     } else {
         companyName = base;
     }
@@ -338,7 +338,7 @@ function processFile(file) {
         }
 
         try {
-            MES.raw  = wb;
+            MES.raw = wb;
             MES.meta = parseFileName(file.name);
 
             const sheetName = wb.SheetNames[0];
@@ -404,8 +404,8 @@ function parseWorksheet(ws) {
     const measureDate = extractMeasureDate(grid, headerRowIdx, COL);
 
     const rows = [];
-    let lastProc     = '';
-    let lastWorker   = '';
+    let lastProc = '';
+    let lastWorker = '';
     let lastLocation = '';
     let lastSampleId = '';
 
@@ -424,11 +424,11 @@ function parseWorksheet(ws) {
         const hazardClean = hazardRaw.trim();
         const isNoise = /소음/i.test(hazardClean);
 
-        const rawProc    = getCellStr(row, COL.proc);
-        const rawWorker  = getCellStr(row, COL.workerName);
-        const location   = getCellStr(row, COL.location)   || lastLocation;
-        const proc       = rawProc                         || lastProc;
-        const workerName = rawWorker                       || lastWorker;
+        const rawProc = getCellStr(row, COL.proc);
+        const rawWorker = getCellStr(row, COL.workerName);
+        const location = getCellStr(row, COL.location) || lastLocation;
+        const proc = rawProc || lastProc;
+        const workerName = rawWorker || lastWorker;
 
         let sampleId = '';
         if (isNoise) {
@@ -447,9 +447,9 @@ function parseWorksheet(ws) {
             }
         }
 
-        lastLocation = location   || lastLocation;
-        lastProc     = proc       || lastProc;
-        lastWorker   = workerName || lastWorker;
+        lastLocation = location || lastLocation;
+        lastProc = proc || lastProc;
+        lastWorker = workerName || lastWorker;
 
         rows.push({
             _rowIdx: r,
@@ -531,7 +531,7 @@ function formatDateStr(val) {
         try {
             const date = new Date((num - 25569) * 86400 * 1000);
             return date.toISOString().split('T')[0];
-        } catch {}
+        } catch { }
     }
     return '';
 }
@@ -1027,6 +1027,69 @@ function exportToExcel() {
         const meta = MES.meta;
         const printDate = new Date().toLocaleDateString('ko-KR');
 
+        // ── 1. 전체 행에 대한 병합 Span 계산 (화면 렌더링 로직과 동일) ──
+        const totalRows = MES.parsedRows.map((r, idx) => ({
+            ...r,
+            globalNo: idx + 1,
+            procSpan: 0,
+            workerSpan: 0,
+            sampleSpan: 0,
+        }));
+
+        // proc span (단위작업공정 병합)
+        let pStart = 0;
+        while (pStart < totalRows.length) {
+            let pEnd = pStart + 1;
+            while (pEnd < totalRows.length && totalRows[pEnd].proc === totalRows[pStart].proc) pEnd++;
+            totalRows[pStart].procSpan = pEnd - pStart;
+            pStart = pEnd;
+        }
+
+        // worker span (근로자명 및 측정위치 병합 - 동일 공정 내)
+        let wStart = 0;
+        while (wStart < totalRows.length) {
+            const cur = totalRows[wStart];
+            let wEnd = wStart + 1;
+            while (
+                wEnd < totalRows.length &&
+                totalRows[wEnd].proc === cur.proc &&
+                totalRows[wEnd].workerName === cur.workerName &&
+                totalRows[wEnd].location === cur.location
+            ) {
+                wEnd++;
+            }
+            totalRows[wStart].workerSpan = wEnd - wStart;
+            wStart = wEnd;
+        }
+
+        // sample span (시료번호 및 기기번호, Cal no, 전/후유량, 시작/종료시간 병합)
+        let sStart = 0;
+        while (sStart < totalRows.length) {
+            const rStart = totalRows[sStart];
+            const sid = (rStart.sampleId || '').trim();
+
+            if (rStart.isNoise || !sid) {
+                totalRows[sStart].sampleSpan = 1;
+                sStart++;
+                continue;
+            }
+
+            let sEnd = sStart + 1;
+            while (
+                sEnd < totalRows.length &&
+                !totalRows[sEnd].isNoise &&
+                totalRows[sEnd].proc === rStart.proc &&
+                totalRows[sEnd].workerName === rStart.workerName &&
+                totalRows[sEnd].location === rStart.location &&
+                (totalRows[sEnd].sampleId || '').trim() === sid
+            ) {
+                sEnd++;
+            }
+            totalRows[sStart].sampleSpan = sEnd - sStart;
+            sStart = sEnd;
+        }
+
+        // ── 2. 엑셀 워크시트 데이터 및 Merges 구성 ──
         const wsData = [
             ['시료채취기록표(MES변환용)'],
             [
@@ -1045,33 +1108,68 @@ function exportToExcel() {
         const headerRow = order.map(colId => COLUMNS_DEF[colId]?.label || colId);
         wsData.push(headerRow);
 
-        // 데이터 행
-        MES.parsedRows.forEach((row, idx) => {
-            const rowData = order.map(colId => {
-                switch (colId) {
-                    case 'no':
-                        return idx + 1;
-                    case 'proc':
-                        return row.proc || '';
-                    case 'workerName':
-                        return row.workerName || '';
-                    case 'location':
-                        return row.location || '';
-                    case 'hazard':
-                        return row.hazard || '';
-                    case 'sampleId':
-                        return row.isNoise ? '' : (row.sampleId || '');
-                    case 'deviceNo':
-                    case 'calNo':
-                    case 'flowBefore':
-                    case 'flowAfter':
-                    case 'startTime':
-                    case 'endTime':
-                    case 'remark':
-                    default:
-                        return '';
+        const dataStartRow = wsData.length; // 4번째 행 (0-indexed)
+        const merges = [
+            // 상단 제목 행 병합
+            { s: { r: 0, c: 0 }, e: { r: 0, c: Math.max(4, order.length - 1) } }
+        ];
+
+        // 데이터 행 및 셀 병합 영역 등록
+        totalRows.forEach((row, rIdx) => {
+            const excelR = dataStartRow + rIdx;
+
+            const rowData = order.map((colId, cIdx) => {
+                const def = COLUMNS_DEF[colId];
+
+                // 1) 단위작업공정 병합
+                if (def.isGroupSpan === 'proc') {
+                    if (row.procSpan > 1) {
+                        merges.push({
+                            s: { r: excelR, c: cIdx },
+                            e: { r: excelR + row.procSpan - 1, c: cIdx }
+                        });
+                    }
+                    return row.procSpan > 0 ? (row.proc || '') : '';
                 }
+
+                // 2) 근로자명 / 측정위치 병합
+                if (def.isGroupSpan === 'worker') {
+                    if (row.workerSpan > 1) {
+                        merges.push({
+                            s: { r: excelR, c: cIdx },
+                            e: { r: excelR + row.workerSpan - 1, c: cIdx }
+                        });
+                    }
+                    if (row.workerSpan > 0) {
+                        return colId === 'workerName' ? (row.workerName || '') : (row.location || '');
+                    }
+                    return '';
+                }
+
+                // 3) 시료단위 병합 (기기번호, Cal no, 시료번호, 전유량, 후유량, 시작시간, 종료시간)
+                if (def.isGroupSpan === 'sample') {
+                    if (row.sampleSpan > 1) {
+                        merges.push({
+                            s: { r: excelR, c: cIdx },
+                            e: { r: excelR + row.sampleSpan - 1, c: cIdx }
+                        });
+                    }
+                    if (colId === 'sampleId') {
+                        if (row.sampleSpan > 0) {
+                            return row.isNoise ? '' : (row.sampleId || '');
+                        }
+                        return '';
+                    }
+                    // 그 외 수기란은 항상 빈칸
+                    return '';
+                }
+
+                // 4) 일반 컬럼
+                if (colId === 'no') return row.globalNo;
+                if (colId === 'hazard') return row.hazard || '';
+                return '';
             });
+
             wsData.push(rowData);
         });
 
@@ -1096,10 +1194,8 @@ function exportToExcel() {
         };
         ws['!cols'] = order.map(colId => ({ wch: colWidthMap[colId] || 12 }));
 
-        // 제목 셀 병합
-        ws['!merges'] = [
-            { s: { r: 0, c: 0 }, e: { r: 0, c: 4 } }
-        ];
+        // 계산된 전체 셀 병합 적용
+        ws['!merges'] = merges;
 
         XLSX.utils.book_append_sheet(wb, ws, '시료채취기록표');
 
@@ -1109,7 +1205,7 @@ function exportToExcel() {
             : `시료채취기록표(MES변환용).xlsx`;
 
         XLSX.writeFile(wb, fileName);
-        setStatus('success', `✅ "${fileName}" 엑셀 다운로드 완료 (총 ${MES.parsedRows.length}건)`);
+        setStatus('success', `✅ "${fileName}" 엑셀 다운로드 완료 (총 ${MES.parsedRows.length}건, 셀 병합 적용)`);
     } catch (err) {
         console.error('[MES Converter] 엑셀 내보내기 오류:', err);
         showError(`엑셀 다운로드 오류: ${err.message}`);
