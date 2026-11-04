@@ -260,6 +260,8 @@
         .mc-btn:active { transform:translateY(1px); }
         .mc-btn-primary   { background:var(--mc-primary);  color:white; box-shadow:0 3px 10px rgba(15,118,110,.28); }
         .mc-btn-primary:hover  { background:#0d9488; box-shadow:0 4px 14px rgba(15,118,110,.36); }
+        .mc-btn-success   { background:#16a34a; color:white; box-shadow:0 3px 10px rgba(22,163,74,.28); }
+        .mc-btn-success:hover  { background:#15803d; box-shadow:0 4px 14px rgba(22,163,74,.36); }
         .mc-btn-accent    { background:var(--mc-accent);   color:white; box-shadow:0 3px 10px rgba(124,58,237,.28); }
         .mc-btn-accent:hover   { background:#6d28d9; }
         .mc-btn-secondary { background:#f1f5f9; color:#475569; border:1px solid #e2e8f0; }
@@ -555,6 +557,7 @@
         <!-- 액션 버튼 -->
         <div class="mc-actions">
             <button id="mes-print-btn" class="mc-btn mc-btn-primary">🖨️ 인쇄 / PDF 저장</button>
+            <button id="mes-excel-btn" class="mc-btn mc-btn-success">📥 엑셀다운</button>
             <button class="mc-btn mc-btn-secondary mes-btn-reset-order">🔀 컬럼 순서 초기화</button>
             <button class="mc-btn mc-btn-secondary mes-btn-reset-col">📐 컬럼 너비 초기화</button>
             <button id="mes-reset-btn" class="mc-btn mc-btn-ghost">🔄 초기화</button>
@@ -626,6 +629,7 @@
                     </select>
                 </div>
                 <button onclick="window.print()" class="mc-btn mc-btn-primary">🖨️ 인쇄 / PDF</button>
+                <button class="mc-btn mc-btn-success mes-btn-excel">📥 엑셀다운</button>
                 <button class="mc-btn mc-btn-secondary mes-btn-reset-order">🔀 컬럼 순서 초기화</button>
                 <button class="mc-btn mc-btn-secondary mes-btn-reset-col">📐 컬럼 너비 초기화</button>
                 <button class="mc-btn mc-btn-ghost"

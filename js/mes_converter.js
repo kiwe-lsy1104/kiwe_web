@@ -95,6 +95,7 @@ document.addEventListener('DOMContentLoaded', () => {
     loadSettings();
     initDropzone();
     initPrintButton();
+    initExcelButton();
     initResetButton();
     initResetColBtn();
     initResetOrderBtn();
@@ -999,6 +1000,121 @@ function hideResult() { const r = document.getElementById('mes-result-wrapper');
 
 function initPrintButton() {
     document.getElementById('mes-print-btn')?.addEventListener('click', () => window.print());
+}
+
+function initExcelButton() {
+    const handleExcel = () => exportToExcel();
+    document.getElementById('mes-excel-btn')?.addEventListener('click', handleExcel);
+    document.querySelectorAll('.mes-btn-excel').forEach(btn => {
+        btn.addEventListener('click', handleExcel);
+    });
+}
+
+function exportToExcel() {
+    if (typeof XLSX === 'undefined') {
+        alert('엑셀 라이브러리(SheetJS)가 로드되지 않았습니다. 인터넷 연결을 확인해주세요.');
+        return;
+    }
+
+    if (!MES.parsedRows || MES.parsedRows.length === 0) {
+        showError('다운로드할 데이터가 없습니다. 먼저 엑셀 파일을 업로드해 주세요.');
+        alert('다운로드할 데이터가 없습니다. 먼저 엑셀 파일을 업로드해 주세요.');
+        return;
+    }
+
+    try {
+        const order = MES.colOrder;
+        const meta = MES.meta;
+        const printDate = new Date().toLocaleDateString('ko-KR');
+
+        const wsData = [
+            ['시료채취기록표(MES변환용)'],
+            [
+                `사업장: ${meta.companyName || '—'}`,
+                '',
+                `연도: ${meta.year || '—'}`,
+                `반기: ${meta.halfYear || '—'}`,
+                `측정일자: ${meta.measureDate || '—'}`,
+                '',
+                `출력일: ${printDate}`
+            ],
+            []
+        ];
+
+        // 헤더 행 (현재 순서 반영)
+        const headerRow = order.map(colId => COLUMNS_DEF[colId]?.label || colId);
+        wsData.push(headerRow);
+
+        // 데이터 행
+        MES.parsedRows.forEach((row, idx) => {
+            const rowData = order.map(colId => {
+                switch (colId) {
+                    case 'no':
+                        return idx + 1;
+                    case 'proc':
+                        return row.proc || '';
+                    case 'workerName':
+                        return row.workerName || '';
+                    case 'location':
+                        return row.location || '';
+                    case 'hazard':
+                        return row.hazard || '';
+                    case 'sampleId':
+                        return row.isNoise ? '' : (row.sampleId || '');
+                    case 'deviceNo':
+                    case 'calNo':
+                    case 'flowBefore':
+                    case 'flowAfter':
+                    case 'startTime':
+                    case 'endTime':
+                    case 'remark':
+                    default:
+                        return '';
+                }
+            });
+            wsData.push(rowData);
+        });
+
+        const wb = XLSX.utils.book_new();
+        const ws = XLSX.utils.aoa_to_sheet(wsData);
+
+        // 컬럼 너비 지정
+        const colWidthMap = {
+            no: 6,
+            proc: 20,
+            workerName: 12,
+            location: 14,
+            hazard: 24,
+            deviceNo: 12,
+            calNo: 12,
+            sampleId: 16,
+            flowBefore: 10,
+            flowAfter: 10,
+            startTime: 10,
+            endTime: 10,
+            remark: 15
+        };
+        ws['!cols'] = order.map(colId => ({ wch: colWidthMap[colId] || 12 }));
+
+        // 제목 셀 병합
+        ws['!merges'] = [
+            { s: { r: 0, c: 0 }, e: { r: 0, c: 4 } }
+        ];
+
+        XLSX.utils.book_append_sheet(wb, ws, '시료채취기록표');
+
+        const parts = [meta.companyName, meta.year, meta.halfYear].filter(Boolean);
+        const fileName = parts.length > 0
+            ? `시료채취기록표(MES)_${parts.join('_')}.xlsx`
+            : `시료채취기록표(MES변환용).xlsx`;
+
+        XLSX.writeFile(wb, fileName);
+        setStatus('success', `✅ "${fileName}" 엑셀 다운로드 완료 (총 ${MES.parsedRows.length}건)`);
+    } catch (err) {
+        console.error('[MES Converter] 엑셀 내보내기 오류:', err);
+        showError(`엑셀 다운로드 오류: ${err.message}`);
+        alert('엑셀 다운로드 중 오류가 발생했습니다: ' + err.message);
+    }
 }
 
 function initResetButton() {
