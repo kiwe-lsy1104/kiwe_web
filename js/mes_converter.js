@@ -50,7 +50,7 @@
 const COLUMNS_DEF = {
     no: { id: 'no', label: 'No', defaultWidth: 30, align: 'center' },
     proc: { id: 'proc', label: '단위작업공정', defaultWidth: 80, align: 'center', isGroupSpan: 'proc' },
-    workerName: { id: 'workerName', label: '근로자명', defaultWidth: 60, align: 'center', isGroupSpan: 'worker' },
+    workerName: { id: 'workerName', label: '근로자명', defaultWidth: 60, align: 'center', isBlankHandwriting: true, isGroupSpan: 'worker' },
     location: { id: 'location', label: '측정위치', defaultWidth: 50, align: 'center', isGroupSpan: 'worker' },
     hazard: { id: 'hazard', label: '유해인자', defaultWidth: 95, align: 'left' },
     deviceNo: { id: 'deviceNo', label: '기기번호', defaultWidth: 52, align: 'center', isBlankHandwriting: true, isGroupSpan: 'sample' },
@@ -455,7 +455,8 @@ function parseWorksheet(ws) {
             _rowIdx: r,
             proc: proc || '(공정미지정)',
             hazard: hazardClean,
-            workerName: workerName || '—',
+            workerName: '', // 원본 파일에 데이터가 있더라도 수기 작성을 위해 빈칸 처리
+            _workerKey: workerName || '', // 동일 근로자 그룹핑(workerSpan) 식별용 키
             location: location || '—',
             sampleId: sampleId,
             isNoise: isNoise,
@@ -478,7 +479,7 @@ function detectColumns(grid, headerRowIdx) {
         else if (/단위작업장소|단위작업공정|^공정명/.test(text) && colMap.proc === -1) colMap.proc = c;
         else if (/^유해인자|^측정인자/.test(text) && colMap.hazard === -1) colMap.hazard = c;
         else if (/^측정위치/.test(text) && colMap.location === -1) colMap.location = c;
-        else if (/^근로자명|^성명|^근로자$/.test(text) && colMap.workerName === -1) colMap.workerName = c;
+        else if (/^근로자명|^작업자명|^성명|^근로자$|^작업자$/.test(text) && colMap.workerName === -1) colMap.workerName = c;
         else if (/^시료번호|^sampleid/i.test(text) && colMap.sampleId === -1) colMap.sampleId = c;
         else if (/^기기번호|^펌프번호/.test(text) && colMap.deviceNo === -1) colMap.deviceNo = c;
         else if (/^calno|^cal/i.test(text) && colMap.calNo === -1) colMap.calNo = c;
@@ -629,9 +630,9 @@ function paginateRows(rows, maxRows) {
         // worker span
         let wStart = 0;
         while (wStart < pageRows.length) {
-            const wKey = `${pageRows[wStart].workerName}__${pageRows[wStart].location}`;
+            const wKey = `${pageRows[wStart]._workerKey || pageRows[wStart].workerName || ''}__${pageRows[wStart].location}`;
             let wEnd = wStart + 1;
-            while (wEnd < pageRows.length && `${pageRows[wEnd].workerName}__${pageRows[wEnd].location}` === wKey) wEnd++;
+            while (wEnd < pageRows.length && `${pageRows[wEnd]._workerKey || pageRows[wEnd].workerName || ''}__${pageRows[wEnd].location}` === wKey) wEnd++;
             pageRows[wStart].workerSpan = wEnd - wStart;
             wStart = wEnd;
         }
@@ -641,6 +642,7 @@ function paginateRows(rows, maxRows) {
         while (sStart < pageRows.length) {
             const rStart = pageRows[sStart];
             const sid = (rStart.sampleId || '').trim();
+            const rKey = rStart._workerKey || rStart.workerName || '';
 
             // 소음이거나 시료번호가 없는 경우 병합하지 않음 (단독 1행)
             if (rStart.isNoise || !sid) {
@@ -655,7 +657,7 @@ function paginateRows(rows, maxRows) {
                 sEnd < pageRows.length &&
                 !pageRows[sEnd].isNoise &&
                 pageRows[sEnd].proc === rStart.proc &&
-                pageRows[sEnd].workerName === rStart.workerName &&
+                (pageRows[sEnd]._workerKey || pageRows[sEnd].workerName || '') === rKey &&
                 pageRows[sEnd].location === rStart.location &&
                 (pageRows[sEnd].sampleId || '').trim() === sid
             ) {
@@ -731,7 +733,7 @@ function renderAllPages(rows, meta) {
                 if (def.isGroupSpan === 'worker') {
                     if (row.workerSpan === 0) return ''; // 이전 행에 병합됨
                     if (colId === 'workerName') {
-                        return `<td class="mes-td-center mes-td-worker" rowspan="${row.workerSpan}">${esc(row.workerName)}</td>`;
+                        return `<td class="mes-td-center mes-td-empty mes-td-worker" rowspan="${row.workerSpan}"></td>`;
                     } else if (colId === 'location') {
                         return `<td class="mes-td-center mes-td-loc" rowspan="${row.workerSpan}">${esc(row.location)}</td>`;
                     }
@@ -1049,11 +1051,12 @@ function exportToExcel() {
         let wStart = 0;
         while (wStart < totalRows.length) {
             const cur = totalRows[wStart];
+            const curKey = cur._workerKey || cur.workerName || '';
             let wEnd = wStart + 1;
             while (
                 wEnd < totalRows.length &&
                 totalRows[wEnd].proc === cur.proc &&
-                totalRows[wEnd].workerName === cur.workerName &&
+                (totalRows[wEnd]._workerKey || totalRows[wEnd].workerName || '') === curKey &&
                 totalRows[wEnd].location === cur.location
             ) {
                 wEnd++;
@@ -1067,6 +1070,7 @@ function exportToExcel() {
         while (sStart < totalRows.length) {
             const rStart = totalRows[sStart];
             const sid = (rStart.sampleId || '').trim();
+            const rKey = rStart._workerKey || rStart.workerName || '';
 
             if (rStart.isNoise || !sid) {
                 totalRows[sStart].sampleSpan = 1;
@@ -1079,7 +1083,7 @@ function exportToExcel() {
                 sEnd < totalRows.length &&
                 !totalRows[sEnd].isNoise &&
                 totalRows[sEnd].proc === rStart.proc &&
-                totalRows[sEnd].workerName === rStart.workerName &&
+                (totalRows[sEnd]._workerKey || totalRows[sEnd].workerName || '') === rKey &&
                 totalRows[sEnd].location === rStart.location &&
                 (totalRows[sEnd].sampleId || '').trim() === sid
             ) {
@@ -1140,8 +1144,11 @@ function exportToExcel() {
                             e: { r: excelR + row.workerSpan - 1, c: cIdx }
                         });
                     }
+                    if (colId === 'workerName') {
+                        return ''; // 근로자명은 항상 빈칸
+                    }
                     if (row.workerSpan > 0) {
-                        return colId === 'workerName' ? (row.workerName || '') : (row.location || '');
+                        return row.location || '';
                     }
                     return '';
                 }
